@@ -9,12 +9,12 @@ function releaseCreate() {
     
     const currentVersion = getVersion();
     if (!currentVersion) {
-        logError('󰜣', 'Cannot get version from package.json');
+        logError('❌', 'Cannot get version from package.json');
         return false;
     }
     
     if (execCommand(`git switch -c release/${currentVersion}`, null, null)) {
-        logSuccess('󱓊', `Create new release branch ${getCurrentBranch()}.`);
+        logSuccess('🌱', `Create new release branch ${getCurrentBranch()}.`);
         return true;
     }
     
@@ -25,8 +25,8 @@ function releasePush() {
     const currentBranch = getCurrentBranch();
     
     if (execCommand(`git push origin ${currentBranch}`, null, null)) {
-        logSuccess('󱓎', `Push release branch ${currentBranch}.`);
-        console.log(` ${colors.yellow} ${colors.reset}Go to https://gitlab.spectrumdata.tech/ and merge branch manually.`);
+        logSuccess('📤', `Push release branch ${currentBranch}.`);
+        logSuccess('🌐', 'Go to https://gitlab.spectrumdata.tech/ and merge branch manually.');
         goToMainBranch();
         return true;
     }
@@ -44,10 +44,10 @@ function releaseClose() {
     updateCurrentBranch();
     
     if (execCommand(`git merge ${mainBranch}`, null, null)) {
-        logSuccess('󰘬', `Merge branch ${getCurrentBranch()} with ${mainBranch}.`);
+        logSuccess('🔀', `Merge branch ${getCurrentBranch()} with ${mainBranch}.`);
         
         if (execCommand(`git push origin ${getCurrentBranch()} -o ci.skip`, null, null)) {
-            logSuccess('󱓎', `Push branch ${getCurrentBranch()}.`);
+            logSuccess('📤', `Push branch ${getCurrentBranch()}.`);
             return true;
         }
     }

@@ -9,7 +9,7 @@ const release = require('./src/release');
 program
     .name('spectrum')
     .description('🚀 Spectrum CLI for development workflow')
-    .version('1.0.4');
+    .version('1.0.5');
 
 // Release commands
 const releaseCmd = program

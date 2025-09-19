@@ -11,7 +11,7 @@ const colors = {
 };
 
 function log(emoji, message, color = colors.green) {
-    console.log(` ${colors.yellow} ${emoji}${colors.reset} ${message}`);
+    console.log(` ${emoji} ${message}`);
 }
 
 function logSuccess(emoji, message) {

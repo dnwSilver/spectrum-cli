@@ -34,10 +34,10 @@ function setVersionTypescript(versionType) {
         packageJson.version = newVersion;
         fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
         
-        console.log(` ${colors.yellow}󱜱${colors.reset} Current version ${oldVersion} up to ${colors.green}${newVersion}${colors.reset}.`);
+        logSuccess('🏷️', `Current version ${oldVersion} up to ${colors.green}${newVersion}${colors.reset}.`);
         return true;
     } catch (error) {
-        logError('󰜣', 'Error updating version in package.json');
+        logError('❌', 'Error updating version in package.json');
         return false;
     }
 }
