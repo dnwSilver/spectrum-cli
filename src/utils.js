@@ -47,7 +47,11 @@ function getCurrentBranch() {
 }
 
 function getMainBranch() {
-    return execSilent('git symbolic-ref refs/remotes/origin/HEAD | sed "s@^refs/remotes/origin/@@"') || 'main';
+    const branches = execSilent('git branch -r');
+    if (branches && branches.includes('origin/master')) {
+        return 'master';
+    }
+    return 'main';
 }
 
 function getDevelopBranch() {
