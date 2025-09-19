@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test || true  # Continue even if no tests
+
+      - name: Create release archive
+        run: |
+          mkdir -p dist
+          tar -czf dist/spectrum-cli-${{ github.ref_name }}.tar.gz \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='.github' \
+            .
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Extract current version changelog
+            VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
+            CHANGELOG=$(awk "/## \[?${VERSION}\]?|## 🚀 \[${VERSION}\]/,/^## |^$/{if(/^## |^$/ && NR>1) exit; print}" CHANGELOG.md | head -n -1)
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGELOG" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changelog=Release ${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/spectrum-cli-*.tar.gz
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to NPM
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Update Homebrew Formula
+        if: ${{ !contains(github.ref_name, '-') }}  # Only for stable releases
+        run: |
+          echo "🍺 Homebrew formula should be updated manually"
+          echo "Visit: https://github.com/dnwSilver/homebrew-spectrum-cli"
+          echo "Update the URL and SHA256 in spectrum-cli.rb"

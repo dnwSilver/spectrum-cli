@@ -1,0 +1,65 @@
+{
+  "name": "spectrum-cli",
+  "version": "1.0.3",
+  "description": "🚀 Modern CLI for development workflow automation - release management, versioning, and changelog generation",
+  "main": "index.js",
+  "bin": {
+    "spectrum": "./index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepublishOnly": "echo \"Publishing spectrum-cli v$(node -p 'require(\"./package.json\").version')\"",
+    "postpack": "echo \"Packed successfully\""
+  },
+  "files": [
+    "index.js",
+    "src/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "cli",
+    "tools",
+    "development",
+    "git",
+    "release",
+    "changelog",
+    "version",
+    "semver",
+    "workflow",
+    "automation",
+    "devops",
+    "continuous-integration"
+  ],
+  "author": {
+    "name": "Kolosov Aleksandr",
+    "email": "dnwSilver@gmail.com",
+    "url": "https://github.com/dnwsilver"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/dnwSilver/spectrum-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dnwSilver/spectrum-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dnwSilver/spectrum-cli/issues"
+  },
+  "dependencies": {
+    "commander": "^11.1.0"
+  },
+  "engines": {
+    "node": ">=14.0.0",
+    "npm": ">=6.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "preferGlobal": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}
