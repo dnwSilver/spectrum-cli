@@ -27,7 +27,7 @@ check_requirements() {
 
     # Node.js
     if ! command -v node &> /dev/null; then
-        echo -e "${RED}❌ Node.js not found. Please install Node.js >= 14${NC}"
+        echo -e "${RED}❌ Node.js not found. Please install Node.js >= 20${NC}"
         echo -e "${YELLOW}💡 Install from: https://nodejs.org/${NC}"
         exit 1
     fi

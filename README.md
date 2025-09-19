@@ -77,7 +77,7 @@ spectrum up version --help
 
 ## 🔧 Требования
 
-- Node.js >= 14
+- Node.js >= 20
 - Git
 
 ## 🏗️ Архитектура
