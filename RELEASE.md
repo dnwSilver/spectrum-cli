@@ -103,55 +103,6 @@ git push origin v1.0.3
    - NPM пакет доступен: `npm install -g spectrum-cli`
    - Обновление доступно: `npm update -g spectrum-cli`
 
-## 🍺 Обновление Homebrew Formula
-
-После успешного NPM релиза нужно обновить Homebrew formula **вручную**:
-
-### 1. Создание Homebrew Tap (единоразово)
-
-```bash
-# Создать репозиторий homebrew-spectrum-cli
-gh repo create homebrew-spectrum-cli --public
-git clone https://github.com/dnwsilver/homebrew-spectrum-cli.git
-cd homebrew-spectrum-cli
-
-# Создать формулу  
-mkdir Formula
-cp ../spectrum-cli/spectrum-cli.rb Formula/spectrum-cli.rb
-git add .
-git commit -m "Initial spectrum-cli formula"
-git push origin main
-```
-
-### 2. Обновление формулы при релизе
-
-```bash
-cd homebrew-spectrum-cli
-
-# Получить SHA256 нового релиза
-curl -s https://registry.npmjs.org/spectrum-cli/1.0.3 | jq -r '.dist.shasum'
-
-# Обновить Formula/spectrum-cli.rb
-sed -i 's/spectrum-cli-[0-9.]*.tgz/spectrum-cli-1.0.3.tgz/' Formula/spectrum-cli.rb
-sed -i 's/sha256 ".*"/sha256 "NEW_SHA256"/' Formula/spectrum-cli.rb
-
-# Коммит и пуш
-git add Formula/spectrum-cli.rb
-git commit -m "Update spectrum-cli to v1.0.3"
-git push origin main
-```
-
-### 3. Установка через Homebrew
-
-```bash
-# Пользователи смогут установить:
-brew tap dnwsilver/spectrum-cli
-brew install spectrum-cli
-
-# Или обновить:
-brew upgrade spectrum-cli
-```
-
 ## 🧪 Тестирование релиза
 
 ### NPM релиз
@@ -207,12 +158,6 @@ gh release delete v1.0.3
 - GitHub Insights → Traffic
 - GitHub Insights → Community
 
-### Homebrew статистика
-```bash
-# Проверить статистику формулы
-brew info spectrum-cli
-```
-
 ## 🚨 Частые проблемы
 
 ### `npm publish` ошибка
@@ -223,10 +168,6 @@ brew info spectrum-cli
 ### GitHub Actions не запускаются  
 - Проверить что тег начинается с `v`
 - Убедиться что Actions включены в репозитории
-
-### Homebrew установка не работает
-- Проверить синтаксис `.rb` формулы
-- Убедиться что URL и SHA256 корректны
 
 ## 🎯 Best Practices
 

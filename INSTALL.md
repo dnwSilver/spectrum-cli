@@ -4,7 +4,7 @@
 
 ## 🚀 Быстрая установка
 
-### Вариант 1: NPM (рекомендуется)
+### NPM
 
 ```bash
 # Установить глобально из npm registry
@@ -15,58 +15,15 @@ spectrum --version
 spectrum --help
 ```
 
-### Вариант 2: Homebrew (macOS/Linux)
-
-```bash
-# Добавить tap
-brew tap dnwsilver/spectrum-cli
-
-# Установить
-brew install spectrum-cli
-
-# Проверить установку
-spectrum --version
-spectrum --help
-```
-
-### Вариант 3: Из исходников
-
-```bash
-# Склонировать репозиторий
-git clone https://github.com/dnwsilver/spectrum-cli.git
-cd spectrum-cli
-
 # Установить зависимости
-npm install
 
-# Проверить установку
-./index.js --help
-```
-
-### Вариант 4: Автоматический установщик
-
-```bash
-# Использовать установочный скрипт
-curl -fsSL https://raw.githubusercontent.com/dnwsilver/spectrum-cli/main/install.sh | bash
-
-# Проверить установку
-spectrum --help
-```
-
-### Вариант 5: Portable версия
-
-```bash
-# Скачать архив релиза
-curl -L https://github.com/dnwsilver/spectrum-cli/releases/latest/download/spectrum-cli.tar.gz | tar -xz
-
-# Перейти в директорию
-cd spectrum-cli-*
-
-# Установить зависимости
 npm install --production
 
 # Использовать
+
+```
 ./index.js --help
+
 ```
 
 ## 🔧 Системные требования
@@ -74,29 +31,6 @@ npm install --production
 - **Node.js** >= 20.0.0
 - **npm** или **yarn**
 - **Git** >= 2.0.0
-
-### Установка зависимостей на macOS:
-
-```bash
-# Homebrew
-brew install node git
-```
-
-### Установка зависимостей на Ubuntu/Debian:
-
-```bash
-# NodeJS
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt-get install -y nodejs git
-```
-
-### Установка зависимостей на CentOS/RHEL:
-
-```bash
-# NodeJS
-curl -fsSL https://rpm.nodesource.com/setup_lts.x | sudo bash -
-sudo yum install nodejs git
-```
 
 ## ✅ Проверка установки
 
@@ -146,6 +80,7 @@ my-project/
 ## 🆘 Решение проблем
 
 ### "Command not found"
+
 ```bash
 # Убедитесь что Node.js установлен
 which node
@@ -155,18 +90,21 @@ which node
 ```
 
 ### "Permission denied"
+
 ```bash
 # Сделайте файл исполняемым
 chmod +x index.js
 ```
 
 ### "Cannot find module 'commander'"
+
 ```bash
 # Установите зависимости
 npm install
 ```
 
 ### "Git branch not found"
+
 ```bash
 # Создайте необходимые ветки
 git checkout -b develop
@@ -181,4 +119,4 @@ git checkout -b main
 
 ---
 
-*После установки переходите к [README.md](./README.md) для изучения команд* 📚
+_После установки переходите к [README.md](./README.md) для изучения команд_ 📚

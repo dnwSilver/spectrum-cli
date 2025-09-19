@@ -14,17 +14,6 @@ npm install -g spectrum-cli
 spectrum --help
 ```
 
-### 🍺 Homebrew (macOS/Linux)
-
-```bash
-# Добавить tap и установить
-brew tap dnwsilver/spectrum-cli
-brew install spectrum-cli
-
-# Использовать
-spectrum --help
-```
-
 ### 🔧 Из исходников
 
 ```bash

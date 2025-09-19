@@ -72,10 +72,3 @@ jobs:
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Update Homebrew Formula
-        if: ${{ !contains(github.ref_name, '-') }}  # Only for stable releases
-        run: |
-          echo "🍺 Homebrew formula should be updated manually"
-          echo "Visit: https://github.com/dnwSilver/homebrew-spectrum-cli"
-          echo "Update the URL and SHA256 in spectrum-cli.rb"
