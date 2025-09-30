@@ -55,11 +55,8 @@ jobs:
           git commit -m "Initial commit"
           git branch -M main
           
-      - name: Test version bump in test project
-        working-directory: test-project
-        run: |
-          node ../index.js up version patch
-          grep -q "1.0.1" package.json || (echo "Version not updated" && exit 1)
+      - name: Run Jest tests
+        run: npm test 
           
   lint:
     name: Lint Code
