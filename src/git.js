@@ -87,7 +87,7 @@ function gitCreateTagAndPush() {
     }
     
     if (execCommand(`git tag v${currentVersion}`, null, null)) {
-        logSuccess('🏷️', `Create tag v${currentVersion}.`);
+        logSuccess('🔖', `Create tag v${currentVersion}.`);
         
         if (execCommand(`git push origin v${currentVersion}`, null, null)) {
             logSuccess('🚀', `Push tag v${currentVersion}.`);

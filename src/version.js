@@ -34,7 +34,7 @@ function setVersionTypescript(versionType) {
         packageJson.version = newVersion;
         fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
         
-        logSuccess('🏷️', `Current version ${oldVersion} up to ${colors.green}${newVersion}${colors.reset}.`);
+        logSuccess('🔖', `Current version ${oldVersion} up to ${colors.green}${newVersion}${colors.reset}.`);
         return true;
     } catch (error) {
         logError('❌', 'Error updating version in package.json');

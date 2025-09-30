@@ -106,7 +106,6 @@ Thumbs.db
 test/
 tests/
 spec/
-__tests__/
 
 # Distribution files
 dist/
