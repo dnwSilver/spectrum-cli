@@ -6,11 +6,12 @@ const git = require("./src/git");
 const version = require("./src/version");
 const release = require("./src/release");
 const changelog = require("./src/changelog");
+const { version: pkgVersion } = require("./package.json");
 
 program
   .name("spectrum")
   .description("🚀 Spectrum CLI for development workflow")
-  .version("1.0.7");
+  .version(pkgVersion, "-v, --version");
 
 // Release commands
 const releaseCmd = program

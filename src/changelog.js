@@ -4,8 +4,39 @@ const path = require('path');
 const readline = require('readline');
 const { logSuccess, logError, execCommand, execSilent, getVersion, getCurrentBranch, colors } = require('./utils');
 
+function getPrettierRunner() {
+    const npxVersion = execSilent('npx --yes prettier --version');
+    if (npxVersion) return 'npx --yes prettier';
+    const directVersion = execSilent('prettier --version');
+    if (directVersion) return 'prettier';
+    return null;
+}
+
+function ensurePrettierAvailable() {
+    const runner = getPrettierRunner();
+    if (!runner) {
+        logError('❌', 'Prettier is not available. Install it or use npx.');
+        return null;
+    }
+    return runner;
+}
+
+function checkChangelogWithPrettier() {
+    const runner = ensurePrettierAvailable();
+    if (!runner) return false;
+    const ok = execCommand(`${runner} --check CHANGELOG.md`, null, null);
+    if (!ok) {
+        logError('❌', 'CHANGELOG.md failed Prettier check. Fix formatting before proceeding.');
+        return false;
+    }
+    return true;
+}
+
 function changelogChangeHeader() {
     try {
+        if (!checkChangelogWithPrettier()) {
+            return false;
+        }
         const currentVersion = getVersion();
         if (!currentVersion) {
             return false;
@@ -27,6 +58,9 @@ function changelogChangeHeader() {
 
 function changelogRemoveEmptyChapters() {
     try {
+        if (!checkChangelogWithPrettier()) {
+            return false;
+        }
         const data = fs.readFileSync('CHANGELOG.md', 'utf8');
         const updatedData = data.replaceAll(/###.*\n\n_.*_\n\n/gm, '');
         fs.writeFileSync('CHANGELOG.md', updatedData);
@@ -40,6 +74,9 @@ function changelogRemoveEmptyChapters() {
 
 function changelogAddUnreleasedBlock() {
     try {
+        if (!checkChangelogWithPrettier()) {
+            return false;
+        }
         const currentVersion = getVersion();
         if (!currentVersion) {
             return false;
@@ -220,6 +257,9 @@ function displayContext(lines, insertIndex, entry) {
 
 async function changelogAppend(message) {
     try {
+        if (!checkChangelogWithPrettier()) {
+            return false;
+        }
         const task = await extractTaskFromBranch();
         if (!task) return false;
         
