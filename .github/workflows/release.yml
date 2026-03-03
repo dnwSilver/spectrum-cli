@@ -69,4 +69,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to NPM
-        run: npm publish --access public --provenance
+        run: |
+          npm config delete //registry.npmjs.org/:_authToken || true
+          npm publish --access public --provenance
