@@ -7,6 +7,7 @@ const { runCommand } = require('./command-executor');
 const {
     requireGitRepo,
     requireCleanWorkingTree,
+    requireCurrentBranchUpToDateWithRemote,
     requireMainAndDevBranches,
     requireOnReleaseBranch,
     requireReleaseBranchMissing,
@@ -62,6 +63,7 @@ function releaseClose() {
         checks: [
             { name: 'git-repo', run: requireGitRepo },
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
+            { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'on-release-branch', run: requireOnReleaseBranch },
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches }
         ],
@@ -102,6 +104,7 @@ function releaseStart() {
         checks: [
             { name: 'git-repo', run: requireGitRepo },
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
+            { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches },
             { name: 'package-version', run: requirePackageVersion },
             { name: 'changelog-exists', run: () => requireFileExists('CHANGELOG.md') },

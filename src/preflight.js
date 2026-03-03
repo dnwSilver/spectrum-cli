@@ -96,6 +96,39 @@ function requireRemoteReachable() {
     return ok();
 }
 
+function requireCurrentBranchUpToDateWithRemote() {
+    const currentBranch = getCurrentBranch();
+    if (!currentBranch) {
+        return fail('Cannot determine current branch.');
+    }
+
+    if (!execCommand('git fetch --all --prune --jobs=10')) {
+        return fail('Cannot fetch remote changes.');
+    }
+
+    const upstreamBranch = execSilent('git rev-parse --abbrev-ref --symbolic-full-name "@{u}"');
+    if (!upstreamBranch || !upstreamBranch.trim()) {
+        return fail(`Current branch "${currentBranch}" has no upstream branch.`);
+    }
+
+    const aheadBehind = execSilent(`git rev-list --left-right --count HEAD...${upstreamBranch.trim()}`);
+    if (!aheadBehind) {
+        return fail(`Cannot compare current branch "${currentBranch}" with "${upstreamBranch.trim()}".`);
+    }
+
+    const parts = aheadBehind.trim().split(/\s+/);
+    const behindBy = Number(parts[1] || 0);
+    if (!Number.isFinite(behindBy)) {
+        return fail(`Cannot parse ahead/behind info for "${upstreamBranch.trim()}".`);
+    }
+
+    if (behindBy > 0) {
+        return fail(`Remote branch has new commits (${behindBy}). Run "git pull" and retry.`);
+    }
+
+    return ok({ currentBranch, upstreamBranch: upstreamBranch.trim() });
+}
+
 function requireFileExists(filePath) {
     if (!fs.existsSync(filePath)) {
         return fail(`Required file "${filePath}" does not exist.`);
@@ -498,6 +531,7 @@ module.exports = {
     requireOnMainBranch,
     requireRemoteOrigin,
     requireRemoteReachable,
+    requireCurrentBranchUpToDateWithRemote,
     requireFileExists,
     requirePackageVersion,
     requireTagMissing,

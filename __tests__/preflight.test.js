@@ -67,6 +67,27 @@ describe("preflight", () => {
     expect(preflight.requireRemoteReachable().ok).toBe(false);
   });
 
+  test("requireCurrentBranchUpToDateWithRemote", () => {
+    utils.getCurrentBranch.mockReturnValue("feature/x");
+    utils.execCommand.mockReturnValue(true);
+    utils.execSilent
+      .mockReturnValueOnce("origin/feature/x")
+      .mockReturnValueOnce("3 0");
+    expect(preflight.requireCurrentBranchUpToDateWithRemote().ok).toBe(true);
+
+    utils.execCommand.mockReturnValue(false);
+    expect(preflight.requireCurrentBranchUpToDateWithRemote().ok).toBe(false);
+
+    utils.execCommand.mockReturnValue(true);
+    utils.execSilent.mockReturnValueOnce(null);
+    expect(preflight.requireCurrentBranchUpToDateWithRemote().ok).toBe(false);
+
+    utils.execSilent
+      .mockReturnValueOnce("origin/feature/x")
+      .mockReturnValueOnce("1 2");
+    expect(preflight.requireCurrentBranchUpToDateWithRemote().ok).toBe(false);
+  });
+
   test("requireSingleChart", () => {
     fs.existsSync.mockImplementation((p) => p === "charts" || p === "charts/app/Chart.yaml");
     fs.readdirSync.mockReturnValue([{ name: "app", isDirectory: () => true }]);

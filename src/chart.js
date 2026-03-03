@@ -9,6 +9,7 @@ const {
     requireGitRepo,
     requireCleanWorkingTree,
     requireOnMainBranch,
+    requireCurrentBranchUpToDateWithRemote,
     requireRemoteOrigin,
     requireRemoteReachable,
     requireSingleChart,
@@ -390,6 +391,7 @@ function chartVerify(sourcePath) {
         name: 'chart verify',
         checks: [
             { name: 'git-repo', run: requireGitRepo },
+            { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'single-values-yaml', run: requireSingleValuesYaml },
             { name: 'values-ingress-sections', run: (ctx) => requireIngressPathSections(ctx.valuesYamlPath) },
             { name: 'source-path-directory', run: () => requireSourcePathDirectory(sourcePath) },
@@ -464,6 +466,7 @@ function chartCreateTag(version) {
             { name: 'git-repo', run: requireGitRepo },
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'on-main-branch', run: requireOnMainBranch },
+            { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             {
                 name: 'valid-semver',
                 run: () => {
@@ -676,6 +679,7 @@ function chartDeploy() {
             { name: 'git-repo', run: requireGitRepo },
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'on-main-branch', run: requireOnMainBranch },
+            { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'remote-origin', run: requireRemoteOrigin },
             { name: 'remote-reachable', run: requireRemoteReachable },
             { name: 'single-chart', run: requireSingleChart },
