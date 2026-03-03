@@ -27,6 +27,7 @@ describe("changelog", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     console.log = jest.fn();
+    fs.existsSync.mockReturnValue(true);
     utils.execSilent.mockImplementation((command) => {
       if (command === "npx --yes prettier --version") return "3.0.0";
       if (command === "prettier --version") return null;
@@ -259,10 +260,7 @@ describe("changelog", () => {
   test("changelogAppend returns false on prettier check fail", async () => {
     utils.execCommand.mockImplementation((command) => command.includes("--check") ? false : true);
     expect(await changelog.changelogAppend("Message")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith(
-      "❌",
-      "CHANGELOG.md failed Prettier check. Fix formatting before proceeding."
-    );
+    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Preflight failed (%s): %s", "changelog append", "changelog-prettier-check", "CHANGELOG.md failed Prettier check.");
   });
 
   test("changelogAppend returns false when no section in changelog", async () => {
@@ -277,11 +275,7 @@ describe("changelog", () => {
     mockQuestionAnswers(["1"]);
 
     expect(await changelog.changelogAppend("Add feature")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith(
-      "❌",
-      'Cannot find "%s" section in CHANGELOG.md.',
-      "### 🆕 Added"
-    );
+    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Preflight failed (%s): %s", "changelog append", "prepare-entry", "Cannot find \"### 🆕 Added\" section in CHANGELOG.md.");
   });
 
   test("changelogAppend success and removes default text", async () => {
@@ -353,7 +347,7 @@ describe("changelog", () => {
     });
 
     expect(await changelog.changelogAppend("oops")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Error adding changelog entry: %s", "read failed");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Preflight failed (%s): %s", "changelog append", "prepare-entry", "Error preparing changelog entry: read failed");
   });
 
   test("changelogAppend covers hasOtherEntries branch", async () => {

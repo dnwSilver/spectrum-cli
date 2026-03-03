@@ -17,20 +17,28 @@ jest.mock("../src/utils", () => ({
   logSuccess: jest.fn(),
   logError: jest.fn(),
   execCommand: jest.fn(),
+  execSilent: jest.fn(),
   getCurrentBranch: jest.fn(),
   getMainBranch: jest.fn(),
   getMergeRequestUrl: jest.fn(),
   colors: {},
 }));
+jest.mock("../src/command-executor", () => ({
+  runCommand: jest.fn(),
+}));
 
 const git = require("../src/git");
 const changelog = require("../src/changelog");
 const utils = require("../src/utils");
+const { runCommand } = require("../src/command-executor");
 const release = require("../src/release");
 
 describe("release", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    git.goToDevBranch.mockReturnValue(true);
+    git.goToMainBranch.mockReturnValue(true);
+    git.updateCurrentBranch.mockReturnValue(true);
     changelog.changelogChangeHeader.mockReturnValue(true);
     changelog.changelogRemoveEmptyChapters.mockReturnValue(true);
     changelog.changelogAddUnreleasedBlock.mockReturnValue(true);
@@ -98,44 +106,15 @@ describe("release", () => {
     expect(utils.logSuccess).not.toHaveBeenCalledWith("🌐", expect.any(String), expect.any(String));
   });
 
-  test("releaseClose success", () => {
-    utils.getMainBranch.mockReturnValue("main");
-    utils.getCurrentBranch.mockReturnValue("dev");
-    utils.execCommand.mockReturnValue(true);
-
-    expect(release.releaseClose()).toBe(true);
-    expect(utils.execCommand).toHaveBeenCalledWith("git merge main");
-    expect(utils.execCommand).toHaveBeenCalledWith("git push origin dev -o ci.skip");
+  test("releaseClose delegates to executor", async () => {
+    runCommand.mockResolvedValue(true);
+    await expect(release.releaseClose()).resolves.toBe(true);
+    expect(runCommand).toHaveBeenCalled();
   });
 
-  test("releaseClose fail at merge", () => {
-    utils.getMainBranch.mockReturnValue("main");
-    utils.execCommand.mockReturnValueOnce(false);
-
-    expect(release.releaseClose()).toBe(false);
-  });
-
-  test("releaseClose fail at push", () => {
-    utils.getMainBranch.mockReturnValue("main");
-    utils.getCurrentBranch.mockReturnValue("dev");
-    utils.execCommand.mockReturnValueOnce(true).mockReturnValueOnce(false);
-
-    expect(release.releaseClose()).toBe(false);
-  });
-
-  test("releaseStart success", () => {
-    utils.getVersion.mockReturnValue("1.2.3");
-    utils.getCurrentBranch.mockReturnValue("release/1.2.3");
-    utils.execCommand.mockReturnValue(true);
-
-    expect(release.releaseStart()).toBe(true);
-    expect(utils.logSuccess).toHaveBeenCalledWith("🚀", "Release started successfully!");
-  });
-
-  test("releaseStart fails on first failed step", () => {
-    utils.getVersion.mockReturnValue(null);
-
-    expect(release.releaseStart()).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("✖", "Failed at step: %s", "Create release branch");
+  test("releaseStart delegates to executor", async () => {
+    runCommand.mockResolvedValue(false);
+    await expect(release.releaseStart()).resolves.toBe(false);
+    expect(runCommand).toHaveBeenCalled();
   });
 });

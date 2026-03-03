@@ -1,5 +1,13 @@
 #!/usr/bin/env node
-const { logSuccess, logError, execSilent, execCommand, getCurrentBranch, getMainBranch, getDevelopBranch, getVersion } = require('./utils');
+const { logSuccess, execCommand, getCurrentBranch, getMainBranch, getDevelopBranch } = require('./utils');
+const { runCommand } = require('./command-executor');
+const {
+    requireGitRepo,
+    requireCleanWorkingTree,
+    requireOnMainBranch,
+    requirePackageVersion,
+    requireTagMissing
+} = require('./preflight');
 
 function goToMainBranch() {
     const mainBranch = getMainBranch();
@@ -70,32 +78,41 @@ function gitLfsReset() {
 }
 
 function gitCreateTagAndPush() {
-    goToMainBranch();
-    updateCurrentBranch();
-    
-    const currentVersion = getVersion();
-    if (!currentVersion) {
-        logError('❌', 'Cannot get version from package.json');
-        return false;
-    }
-    
-    const existingTag = execSilent(`git tag -l "v${currentVersion}"`);
-    
-    if (existingTag) {
-        logError('❌', 'Tag v%s already created.', currentVersion);
-        return false;
-    }
-    
-    if (execCommand(`git tag v${currentVersion}`)) {
-        logSuccess('🔖', 'Create tag v%s.', currentVersion);
-        
-        if (execCommand(`git push origin v${currentVersion}`)) {
-            logSuccess('🚀', 'Push tag v%s.', currentVersion);
-            return true;
-        }
-    }
-    
-    return false;
+    return runCommand({
+        name: 'release deploy',
+        checks: [
+            { name: 'git-repo', run: requireGitRepo },
+            { name: 'clean-working-tree', run: requireCleanWorkingTree },
+            { name: 'on-main-branch', run: requireOnMainBranch },
+            { name: 'package-version', run: requirePackageVersion },
+            {
+                name: 'tag-missing',
+                run: (ctx) => requireTagMissing(`v${ctx.version}`)
+            }
+        ],
+        steps: [
+            {
+                name: 'update-main-branch',
+                run: () => updateCurrentBranch()
+            },
+            {
+                name: 'create-tag',
+                run: (ctx) => {
+                    if (!execCommand(`git tag v${ctx.version}`)) return false;
+                    logSuccess('🔖', 'Create tag v%s.', ctx.version);
+                    return true;
+                }
+            },
+            {
+                name: 'push-tag',
+                run: (ctx) => {
+                    if (!execCommand(`git push origin v${ctx.version}`)) return false;
+                    logSuccess('🚀', 'Push tag v%s.', ctx.version);
+                    return true;
+                }
+            }
+        ]
+    });
 }
 
 

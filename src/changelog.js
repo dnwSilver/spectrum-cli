@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { logSuccess, logError, execCommand, execSilent, getVersion, getCurrentBranch, colors } = require('./utils');
+const { runCommand } = require('./command-executor');
+const { requireFileExists, requirePrettierAvailable, requireChangelogFormatted } = require('./preflight');
 
 function getPrettierRunner() {
     const npxVersion = execSilent('npx --yes prettier --version');
@@ -256,26 +258,43 @@ function displayContext(lines, insertIndex, entry) {
 }
 
 async function changelogAppend(message) {
+    return runCommand({
+        name: 'changelog append',
+        checks: [
+            { name: 'changelog-exists', run: () => requireFileExists('CHANGELOG.md') },
+            { name: 'prettier-available', run: requirePrettierAvailable },
+            { name: 'changelog-prettier-check', run: requireChangelogFormatted },
+            {
+                name: 'prepare-entry',
+                run: async () => prepareChangelogEntry(message)
+            }
+        ],
+        steps: [
+            {
+                name: 'append-entry',
+                run: (ctx) => appendPreparedChangelogEntry(ctx)
+            }
+        ]
+    });
+}
+
+async function prepareChangelogEntry(message) {
     try {
-        if (!checkChangelogWithPrettier()) {
-            return false;
-        }
         const task = await extractTaskFromBranch();
-        if (!task) return false;
-        
+        if (!task) return { ok: false, reason: 'Cannot resolve task ID.' };
+
         const user = await getGitUser();
-        if (!user) return false;
-        
+        if (!user) return { ok: false, reason: 'Cannot resolve git user.' };
+
         const formattedMessage = formatMessage(message);
         const entry = `- ${task} ${formattedMessage} ${user}`;
-        
         const availableSections = detectSectionFromBranch();
         const selectedSection = await selectSection(availableSections);
-        if (!selectedSection) return false;
-        
+        if (!selectedSection) return { ok: false, reason: 'Section selection failed.' };
+
         const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
         const lines = changelog.split('\n');
-        
+
         let sectionIndex = -1;
         for (let i = 0; i < lines.length; i++) {
             if (lines[i] === selectedSection) {
@@ -283,27 +302,47 @@ async function changelogAppend(message) {
                 break;
             }
         }
-        
+
         if (sectionIndex === -1) {
-            logError('❌', 'Cannot find "%s" section in CHANGELOG.md.', selectedSection);
+            return { ok: false, reason: `Cannot find "${selectedSection}" section in CHANGELOG.md.` };
+        }
+
+        return {
+            ok: true,
+            data: {
+                appendState: {
+                    entry,
+                    selectedSection,
+                    lines,
+                    sectionIndex
+                }
+            }
+        };
+    } catch (error) {
+        return { ok: false, reason: `Error preparing changelog entry: ${error.message}` };
+    }
+}
+
+function appendPreparedChangelogEntry(context) {
+    try {
+        const appendState = context.appendState;
+        if (!appendState) {
             return false;
         }
-        
-        let insertIndex = sectionIndex + 2;
+
+        const lines = [...appendState.lines];
+        const selectedSection = appendState.selectedSection;
+        const entry = appendState.entry;
+        let insertIndex = appendState.sectionIndex + 2;
         let defaultTextLines = 0;
-        
-        // Count and remember default text lines to remove them
-        while (insertIndex + defaultTextLines < lines.length && 
-               lines[insertIndex + defaultTextLines].startsWith('_')) {
+
+        while (insertIndex + defaultTextLines < lines.length && lines[insertIndex + defaultTextLines].startsWith('_')) {
             defaultTextLines++;
         }
-        
-        // Insert the new entry
+
         lines.splice(insertIndex, 0, entry);
-        
-        // Remove default text lines if this is the first real entry in the section
+
         if (defaultTextLines > 0) {
-            // Check if there are any non-default entries after our insertion
             let hasOtherEntries = false;
             for (let i = insertIndex + 1; i < insertIndex + 1 + defaultTextLines; i++) {
                 if (lines[i] && lines[i].startsWith('- ')) {
@@ -311,16 +350,13 @@ async function changelogAppend(message) {
                     break;
                 }
             }
-            
-            // If no other entries, remove default text
+
             if (!hasOtherEntries) {
                 lines.splice(insertIndex + 1, defaultTextLines);
             }
         }
-        
-        const updatedChangelog = lines.join('\n');
-        fs.writeFileSync('CHANGELOG.md', updatedChangelog);
-        
+
+        fs.writeFileSync('CHANGELOG.md', lines.join('\n'));
         displayContext(lines, insertIndex, entry);
         logSuccess('✅', 'Entry added to %s', selectedSection);
         return true;
@@ -341,5 +377,7 @@ module.exports = {
     getGitUser,
     formatMessage,
     detectSectionFromBranch,
-    selectSection
+    selectSection,
+    prepareChangelogEntry,
+    appendPreparedChangelogEntry
 };

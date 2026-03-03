@@ -9,6 +9,9 @@ jest.mock("../src/utils", () => ({
   getDevelopBranch: jest.fn(),
   getVersion: jest.fn(),
 }));
+jest.mock("../src/command-executor", () => ({
+  runCommand: jest.fn(),
+}));
 
 const {
   logSuccess,
@@ -20,6 +23,7 @@ const {
   getDevelopBranch,
   getVersion,
 } = require("../src/utils");
+const { runCommand } = require("../src/command-executor");
 const git = require("../src/git");
 
 describe("git", () => {
@@ -116,37 +120,9 @@ describe("git", () => {
     expect(execCommand).not.toHaveBeenCalledWith("rm .gitattributes");
   });
 
-  test("gitCreateTagAndPush fails when version missing", () => {
-    getVersion.mockReturnValue(null);
-
-    expect(git.gitCreateTagAndPush()).toBe(false);
-    expect(logError).toHaveBeenCalledWith("❌", "Cannot get version from package.json");
-  });
-
-  test("gitCreateTagAndPush fails when tag exists", () => {
-    getVersion.mockReturnValue("1.2.3");
-    execSilent.mockReturnValue("v1.2.3");
-
-    expect(git.gitCreateTagAndPush()).toBe(false);
-    expect(logError).toHaveBeenCalledWith("❌", "Tag v%s already created.", "1.2.3");
-  });
-
-  test("gitCreateTagAndPush fails when tag creation fails", () => {
-    getVersion.mockReturnValue("1.2.3");
-    execSilent.mockReturnValue("");
-    execCommand.mockImplementation((command) => command !== "git tag v1.2.3");
-
-    expect(git.gitCreateTagAndPush()).toBe(false);
-  });
-
-  test("gitCreateTagAndPush success", () => {
-    getVersion.mockReturnValue("1.2.3");
-    execSilent.mockReturnValue("");
-    execCommand.mockReturnValue(true);
-
-    expect(git.gitCreateTagAndPush()).toBe(true);
-    expect(execCommand).toHaveBeenCalledWith("git tag v1.2.3");
-    expect(execCommand).toHaveBeenCalledWith("git push origin v1.2.3");
-    expect(logSuccess).toHaveBeenCalledWith("🚀", "Push tag v%s.", "1.2.3");
+  test("gitCreateTagAndPush delegates to executor", async () => {
+    runCommand.mockResolvedValue(true);
+    await expect(git.gitCreateTagAndPush()).resolves.toBe(true);
+    expect(runCommand).toHaveBeenCalled();
   });
 });

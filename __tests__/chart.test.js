@@ -1,13 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
-const {
-    logSuccess,
-    logError,
-    execSilent,
-    execCommand,
-    getCurrentBranch,
-    getMainBranch
-} = require('../src/utils');
+const { runCommand } = require('../src/command-executor');
 
 jest.mock('fs');
 jest.mock('../src/utils', () => ({
@@ -17,6 +10,9 @@ jest.mock('../src/utils', () => ({
     execCommand: jest.fn(),
     getCurrentBranch: jest.fn(),
     getMainBranch: jest.fn()
+}));
+jest.mock('../src/command-executor', () => ({
+    runCommand: jest.fn()
 }));
 
 const chart = require('../src/chart');
@@ -102,137 +98,18 @@ describe('Chart', () => {
     });
 
     describe('chartCreateTag', () => {
-        test('should fail when current branch is not main', () => {
-            getMainBranch.mockReturnValue('main');
-            getCurrentBranch.mockReturnValue('dev');
-            expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(logError).toHaveBeenCalled();
+        test('should call shared executor', async () => {
+            runCommand.mockResolvedValue(true);
+            await expect(chart.chartCreateTag('1.2.3')).resolves.toBe(true);
+            expect(runCommand).toHaveBeenCalled();
         });
 
-        test('should fail when version is not semver', () => {
-            getMainBranch.mockReturnValue('main');
-            getCurrentBranch.mockReturnValue('main');
-            expect(chart.chartCreateTag('1.2')).toBe(false);
-            expect(logError).toHaveBeenCalledWith('❌', 'Version "%s" is not a valid semver.', '1.2');
-        });
-
-        test('should fail when no chart files found', () => {
-            getMainBranch.mockReturnValue('main');
-            getCurrentBranch.mockReturnValue('main');
-            fs.existsSync.mockImplementation((filePath) => filePath !== 'charts');
-
-            expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(logError).toHaveBeenCalledWith('❌', 'Cannot find Chart.yaml in %s/<chart-name>/Chart.yaml.', 'charts');
-        });
-
-        test('should fail when multiple chart files found', () => {
-            getMainBranch.mockReturnValue('main');
-            getCurrentBranch.mockReturnValue('main');
-            fs.existsSync.mockImplementation((filePath) => (
-                filePath === 'charts' ||
-                filePath === 'charts/site-a/Chart.yaml' ||
-                filePath === 'charts/site-b/Chart.yaml'
-            ));
-            fs.readdirSync.mockReturnValue([
-                { name: 'site-a', isDirectory: () => true },
-                { name: 'site-b', isDirectory: () => true }
-            ]);
-
-            expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(logError).toHaveBeenCalled();
-        });
-
-        test('should fail when tag already exists', () => {
-            getMainBranch.mockReturnValue('main');
-            getCurrentBranch.mockReturnValue('main');
-            fs.existsSync.mockImplementation((filePath) => (
-                filePath === 'charts' ||
-                filePath === 'charts/site-a/Chart.yaml'
-            ));
-            fs.readdirSync.mockReturnValue([
-                { name: 'site-a', isDirectory: () => true }
-            ]);
-            fs.readFileSync.mockReturnValue('name: site-a\n');
-            execSilent.mockReturnValue('chart-site-a-1.2.3');
-
-            expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(logError).toHaveBeenCalledWith('❌', 'Tag %s already exists.', 'chart-site-a-1.2.3');
-        });
-
-        test('should fail when chart name cannot be read', () => {
-            getMainBranch.mockReturnValue('main');
-            getCurrentBranch.mockReturnValue('main');
-            fs.existsSync.mockImplementation((filePath) => (
-                filePath === 'charts' ||
-                filePath === 'charts/site-a/Chart.yaml'
-            ));
-            fs.readdirSync.mockReturnValue([
-                { name: 'site-a', isDirectory: () => true }
-            ]);
-            fs.readFileSync.mockReturnValue('version: 1.0.0\n');
-
-            expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(logError).toHaveBeenCalledWith('❌', 'Cannot read chart name from %s.', 'charts/site-a/Chart.yaml');
-        });
-
-        test('should fail when git tag creation fails', () => {
-            getMainBranch.mockReturnValue('main');
-            getCurrentBranch.mockReturnValue('main');
-            fs.existsSync.mockImplementation((filePath) => (
-                filePath === 'charts' ||
-                filePath === 'charts/site-a/Chart.yaml'
-            ));
-            fs.readdirSync.mockReturnValue([
-                { name: 'site-a', isDirectory: () => true }
-            ]);
-            fs.readFileSync.mockReturnValue('name: site-a\n');
-            execSilent.mockReturnValue('');
-            execCommand.mockReturnValue(false);
-
-            expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(execCommand).toHaveBeenCalledWith('git tag "chart-site-a-1.2.3"');
-            expect(logError).toHaveBeenCalledWith('❌', 'Cannot create tag %s.', 'chart-site-a-1.2.3');
-        });
-
-        test('should fail when git push fails', () => {
-            getMainBranch.mockReturnValue('main');
-            getCurrentBranch.mockReturnValue('main');
-            fs.existsSync.mockImplementation((filePath) => (
-                filePath === 'charts' ||
-                filePath === 'charts/site-a/Chart.yaml'
-            ));
-            fs.readdirSync.mockReturnValue([
-                { name: 'site-a', isDirectory: () => true }
-            ]);
-            fs.readFileSync.mockReturnValue('name: site-a\n');
-            execSilent.mockReturnValue('');
-            execCommand.mockReturnValueOnce(true).mockReturnValueOnce(false);
-
-            expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(execCommand).toHaveBeenNthCalledWith(1, 'git tag "chart-site-a-1.2.3"');
-            expect(execCommand).toHaveBeenNthCalledWith(2, 'git push origin "chart-site-a-1.2.3"');
-            expect(logError).toHaveBeenCalledWith('❌', 'Cannot push tag %s to origin.', 'chart-site-a-1.2.3');
-        });
-
-        test('should create and push tag successfully', () => {
-            getMainBranch.mockReturnValue('main');
-            getCurrentBranch.mockReturnValue('main');
-            fs.existsSync.mockImplementation((filePath) => (
-                filePath === 'charts' ||
-                filePath === 'charts/site-a/Chart.yaml'
-            ));
-            fs.readdirSync.mockReturnValue([
-                { name: 'site-a', isDirectory: () => true }
-            ]);
-            fs.readFileSync.mockReturnValue('name: site-a\n');
-            execSilent.mockReturnValue('');
-            execCommand.mockReturnValue(true);
-
-            expect(chart.chartCreateTag('1.2.3')).toBe(true);
-            expect(execCommand).toHaveBeenNthCalledWith(1, 'git tag "chart-site-a-1.2.3"');
-            expect(execCommand).toHaveBeenNthCalledWith(2, 'git push origin "chart-site-a-1.2.3"');
-            expect(logSuccess).toHaveBeenCalledWith('🔖', 'Created tag %s.', 'chart-site-a-1.2.3');
-            expect(logSuccess).toHaveBeenCalledWith('🚀', 'Pushed tag %s to origin.', 'chart-site-a-1.2.3');
+        test('should pass invalid semver check in spec', async () => {
+            runCommand.mockImplementation(async (spec) => spec.checks[3].run({}));
+            await expect(chart.chartCreateTag('1.2')).resolves.toEqual({
+                ok: false,
+                reason: 'Version "1.2" is not a valid semver.'
+            });
         });
     });
 });

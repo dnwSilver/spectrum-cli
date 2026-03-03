@@ -9,6 +9,18 @@ const changelog = require("./src/changelog");
 const chart = require("./src/chart");
 const { version: pkgVersion } = require("./package.json");
 
+async function runAction(action, ...args) {
+  try {
+    const result = await action(...args);
+    if (!result) {
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error(`❌ Error: ${error.message}`);
+    process.exit(1);
+  }
+}
+
 program
   .name("spectrum")
   .description("🚀 Spectrum CLI for development workflow")
@@ -22,17 +34,17 @@ const releaseCmd = program
 releaseCmd
   .command("start")
   .description("Start full release process")
-  .action(() => release.releaseStart());
+  .action(() => runAction(release.releaseStart));
 
 releaseCmd
   .command("close")
   .description("Close release and merge to dev")
-  .action(() => release.releaseClose());
+  .action(() => runAction(release.releaseClose));
 
 releaseCmd
   .command("deploy")
   .description("Deploy release (create and push tag)")
-  .action(() => git.gitCreateTagAndPush());
+  .action(() => runAction(git.gitCreateTagAndPush));
 
 // Version up commands
 const versionCmd = program
@@ -46,17 +58,17 @@ const upCmd = versionCmd
 upCmd
   .command("major")
   .description("Bump major version (x.0.0)")
-  .action(() => version.setVersion("major"));
+  .action(() => runAction(() => version.setVersion("major")));
 
 upCmd
   .command("minor")
   .description("Bump minor version (x.y.0)")
-  .action(() => version.setVersion("minor"));
+  .action(() => runAction(() => version.setVersion("minor")));
 
 upCmd
   .command("patch")
   .description("Bump patch version (x.y.z)")
-  .action(() => version.setVersion("patch"));
+  .action(() => runAction(() => version.setVersion("patch")));
 
 // Changelog commands
 const changelogCmd = program
@@ -66,14 +78,7 @@ const changelogCmd = program
 changelogCmd
   .command("append <message>")
   .description("Append entry to changelog with task number from branch")
-  .action(async (message) => {
-    try {
-      await changelog.changelogAppend(message);
-    } catch (error) {
-      console.error(`❌ Error: ${error.message}`);
-      process.exit(1);
-    }
-  });
+  .action((message) => runAction(() => changelog.changelogAppend(message)));
 
 // Chart commands
 const chartCmd = program
@@ -83,7 +88,7 @@ const chartCmd = program
 chartCmd
   .command("create <version>")
   .description("Create and push chart tag (chart-<name>-<version>)")
-  .action((version) => chart.chartCreateTag(version));
+  .action((version) => runAction(() => chart.chartCreateTag(version)));
 
 // Override help to show custom format with aliases
 program.configureHelp({

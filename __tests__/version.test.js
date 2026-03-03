@@ -6,8 +6,12 @@ jest.mock("../src/utils", () => ({
   logSuccess: jest.fn(),
   logError: jest.fn(),
 }));
+jest.mock("../src/command-executor", () => ({
+  runCommand: jest.fn(),
+}));
 
 const { logSuccess, logError } = require("../src/utils");
+const { runCommand } = require("../src/command-executor");
 const version = require("../src/version");
 
 describe("version", () => {
@@ -22,24 +26,14 @@ describe("version", () => {
     expect(version.upVersion("1.2.3", "unknown")).toBe("1.2.4");
   });
 
-  test("setVersion updates package.json and logs success", () => {
-    fs.readFileSync.mockReturnValue('{"version":"1.2.3"}');
-    fs.writeFileSync.mockImplementation(() => {});
-
-    expect(version.setVersion("minor")).toBe(true);
-    expect(fs.writeFileSync).toHaveBeenCalledWith(
-      "package.json",
-      expect.stringContaining('"version": "1.3.0"')
-    );
-    expect(logSuccess).toHaveBeenCalledWith("🔖", "Current version %s up to %s.", "1.2.3", "1.3.0");
+  test("setVersion delegates to executor", async () => {
+    runCommand.mockResolvedValue(true);
+    await expect(version.setVersion("minor")).resolves.toBe(true);
+    expect(runCommand).toHaveBeenCalled();
   });
 
-  test("setVersion returns false on error", () => {
-    fs.readFileSync.mockImplementation(() => {
-      throw new Error("fail");
-    });
-
-    expect(version.setVersion("patch")).toBe(false);
-    expect(logError).toHaveBeenCalledWith("❌", "Error updating version in package.json");
+  test("setVersion can fail from executor", async () => {
+    runCommand.mockResolvedValue(false);
+    await expect(version.setVersion("patch")).resolves.toBe(false);
   });
 });

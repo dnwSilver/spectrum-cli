@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const { logSuccess, logError } = require('./utils');
+const { runCommand } = require('./command-executor');
+const { requireCleanWorkingTree, requireFileExists, requirePackageVersion } = require('./preflight');
 
 function upVersion(oldVersion, upType) {
     const [major, minor, patch] = oldVersion.split('.').map(Number);
@@ -16,21 +18,34 @@ function upVersion(oldVersion, upType) {
     }
 }
 
-function setVersion(versionType) {
+function updateVersionFile(versionType) {
     try {
         const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
         const oldVersion = packageJson.version;
         const newVersion = upVersion(oldVersion, versionType);
-        
+
         packageJson.version = newVersion;
         fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
-        
         logSuccess('🔖', 'Current version %s up to %s.', oldVersion, newVersion);
         return true;
     } catch (error) {
         logError('❌', 'Error updating version in package.json');
         return false;
     }
+}
+
+function setVersion(versionType) {
+    return runCommand({
+        name: `version up ${versionType}`,
+        checks: [
+            { name: 'package-json-exists', run: () => requireFileExists('package.json') },
+            { name: 'package-version', run: requirePackageVersion },
+            { name: 'clean-working-tree', run: requireCleanWorkingTree }
+        ],
+        steps: [
+            { name: 'update-package-version', run: () => updateVersionFile(versionType) }
+        ]
+    });
 }
 
 
