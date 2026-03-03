@@ -70,6 +70,16 @@ describe("release", () => {
     expect(release.releaseCreate()).toBe(false);
   });
 
+  test("releaseCreate fails when goToDevBranch fails", () => {
+    git.goToDevBranch.mockReturnValue(false);
+    expect(release.releaseCreate()).toBe(false);
+  });
+
+  test("releaseCreate fails when updateCurrentBranch fails", () => {
+    git.updateCurrentBranch.mockReturnValue(false);
+    expect(release.releaseCreate()).toBe(false);
+  });
+
   test("releasePush success with MR url", () => {
     utils.getCurrentBranch.mockReturnValue("release/1.2.3");
     utils.getMainBranch.mockReturnValue("main");
@@ -116,5 +126,30 @@ describe("release", () => {
     runCommand.mockResolvedValue(false);
     await expect(release.releaseStart()).resolves.toBe(false);
     expect(runCommand).toHaveBeenCalled();
+  });
+
+  test("releaseClose merge step failure", async () => {
+    utils.getMainBranch.mockReturnValue("main");
+    utils.execCommand.mockImplementation((cmd) => cmd !== "git merge main");
+    runCommand.mockImplementation(async (spec) => spec.steps[4].run({}));
+
+    await expect(release.releaseClose()).resolves.toBe(false);
+  });
+
+  test("releaseClose push step failure", async () => {
+    utils.getCurrentBranch.mockReturnValue("dev");
+    utils.execCommand.mockImplementation((cmd) => cmd !== "git push origin dev -o ci.skip");
+    runCommand.mockImplementation(async (spec) => spec.steps[5].run({}));
+
+    await expect(release.releaseClose()).resolves.toBe(false);
+  });
+
+  test("releaseStart lint-changelog step covers failed preflight", async () => {
+    const preflight = require("../src/preflight");
+    jest.spyOn(preflight, "requireChangelogFormatted").mockReturnValue({ ok: false, reason: "bad format" });
+    runCommand.mockImplementation(async (spec) => spec.steps[3].run({}));
+
+    await expect(release.releaseStart()).resolves.toBe(false);
+    preflight.requireChangelogFormatted.mockRestore();
   });
 });

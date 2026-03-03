@@ -3,7 +3,7 @@ const mockRelease = { releaseStart: jest.fn(), releaseClose: jest.fn() };
 const mockGit = { gitCreateTagAndPush: jest.fn() };
 const mockVersion = { setVersion: jest.fn() };
 const mockChangelog = { changelogAppend: jest.fn() };
-const mockChart = { chartCreateTag: jest.fn(), chartVerify: jest.fn() };
+const mockChart = { chartCreateTag: jest.fn(), chartVerify: jest.fn(), chartDeploy: jest.fn() };
 
 const mockState = {
   root: null,
@@ -150,6 +150,15 @@ describe("index CLI wiring", () => {
     expect(mockChart.chartVerify).toHaveBeenCalledWith("/tmp/source");
   });
 
+  test("chart deploy command calls chart deploy handler", () => {
+    const chartCmd = mockState.root._commands.find((c) => c._name === "chart");
+    const deploy = chartCmd._commands.find((c) => c._name === "deploy");
+
+    deploy._action();
+
+    expect(mockChart.chartDeploy).toHaveBeenCalled();
+  });
+
   test("changelog append command handles success", async () => {
     mockChangelog.changelogAppend.mockResolvedValue(true);
     const changelogCmd = mockState.root._commands.find((c) => c._name === "changelog");
@@ -218,5 +227,46 @@ describe("index CLI wiring", () => {
 
     const text = mockState.helpConfig.formatHelp(mockState.root, helper);
     expect(text).toBe("");
+  });
+
+  test("custom help formatter falls back to default helpWidth", () => {
+    const helper = {
+      padWidth: () => 10,
+      commandUsage: () => "spectrum",
+      commandDescription: () => "desc",
+      visibleOptions: () => [],
+      visibleCommands: () => [],
+      optionTerm: (o) => o.flags,
+      optionDescription: (o) => o.description,
+    };
+
+    const text = mockState.helpConfig.formatHelp(mockState.root, helper);
+    expect(text).toContain("Usage: spectrum");
+  });
+
+  test("custom help formatter renders command without aliases", () => {
+    const helper = {
+      padWidth: () => 10,
+      helpWidth: 80,
+      commandUsage: () => "spectrum chart",
+      commandDescription: () => "chart commands",
+      visibleOptions: () => [],
+      visibleCommands: () => [
+        {
+          name: () => "deploy",
+          usage: () => "deploy",
+          aliases: () => [],
+          description: () => "deploy chart",
+        },
+      ],
+      optionTerm: (o) => o.flags,
+      optionDescription: (o) => o.description,
+    };
+
+    const text = mockState.helpConfig.formatHelp(mockState.root, helper);
+    expect(text).toContain("Usage: spectrum chart");
+    expect(text).toContain("chart commands");
+    expect(text).toContain("deploy");
+    expect(text).toContain("deploy chart");
   });
 });

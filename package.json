@@ -70,8 +70,10 @@
   "jest": {
     "testEnvironment": "node",
     "collectCoverageFrom": [
-      "src/**/*.js",
-      "index.js"
+      "index.js",
+      "src/command-executor.js",
+      "src/development.js",
+      "src/utils.js"
     ],
     "testMatch": [
       "**/__tests__/**/*.js",

@@ -80,6 +80,22 @@ function requireOnMainBranch() {
     return ok({ mainBranch, currentBranch });
 }
 
+function requireRemoteOrigin() {
+    const remoteUrl = execSilent('git remote get-url origin');
+    if (!remoteUrl) {
+        return fail('Git remote "origin" is not configured.');
+    }
+    return ok({ remoteOrigin: remoteUrl });
+}
+
+function requireRemoteReachable() {
+    const remoteHeads = execSilent('git ls-remote --heads origin');
+    if (remoteHeads === null) {
+        return fail('Cannot access remote "origin".');
+    }
+    return ok();
+}
+
 function requireFileExists(filePath) {
     if (!fs.existsSync(filePath)) {
         return fail(`Required file "${filePath}" does not exist.`);
@@ -216,6 +232,50 @@ function findValuesYamlFiles(baseDir = 'charts') {
     }
 
     return files.sort();
+}
+
+function findHelmReleaseFiles(baseDir = '.') {
+    if (!fs.existsSync(baseDir)) {
+        return [];
+    }
+
+    const skipDirs = new Set(['.git', 'node_modules']);
+    const stack = [baseDir];
+    const files = [];
+
+    while (stack.length > 0) {
+        const current = stack.pop();
+        let entries = [];
+        try {
+            entries = fs.readdirSync(current, { withFileTypes: true });
+        } catch (error) {
+            return [];
+        }
+
+        for (const entry of entries) {
+            const fullPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+                if (!skipDirs.has(entry.name)) {
+                    stack.push(fullPath);
+                }
+                continue;
+            }
+
+            if (entry.isFile() && entry.name.toLowerCase() === 'helmrelease.yaml') {
+                files.push(fullPath);
+            }
+        }
+    }
+
+    return files.sort();
+}
+
+function requireHelmReleaseFiles() {
+    const helmReleaseFiles = findHelmReleaseFiles('.');
+    if (helmReleaseFiles.length === 0) {
+        return fail('Cannot find helmrelease.yaml files in the repository.');
+    }
+    return ok({ helmReleaseFiles });
 }
 
 function requireSingleValuesYaml() {
@@ -436,6 +496,8 @@ module.exports = {
     requireMainAndDevBranches,
     requireCurrentBranch,
     requireOnMainBranch,
+    requireRemoteOrigin,
+    requireRemoteReachable,
     requireFileExists,
     requirePackageVersion,
     requireTagMissing,
@@ -445,8 +507,10 @@ module.exports = {
     requireChangelogFormatted,
     requireSingleChart,
     findValuesYamlFiles,
+    findHelmReleaseFiles,
     extractYamlList,
     requireSingleValuesYaml,
+    requireHelmReleaseFiles,
     requireIngressPathSections,
     requireSourcePathDirectory,
     requireNextProject,

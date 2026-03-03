@@ -48,6 +48,7 @@ spectrum release deploy      # Деплой релиза (создать тег)
 
 # 📈 Теги chart
 spectrum chart create 1.2.3  # Создать и запушить chart-$name-$version
+spectrum chart deploy  # Обновить helmrelease.yaml до последнего chart-тега и запушить
 spectrum chart verify ~/repo  # Сравнить ingress paths AS IS vs TO BE для Next.js исходников
 
 # 📝 Управление changelog
@@ -105,17 +106,18 @@ spectrum-cli/
 
 ### Команды
 
-| Команда                     | Описание                      |
-| --------------------------- | ----------------------------- |
-| `spectrum release start`    | Запустить полный цикл релиза  |
-| `spectrum release deploy`   | Деплой релиза                 |
-| `spectrum release close`    | Закрыть релиз                 |
-| `spectrum version up major` | Увеличить major версию        |
-| `spectrum version up minor` | Увеличить minor версию        |
-| `spectrum version up patch` | Увеличить patch версию        |
-| `spectrum changelog append` | Добавить запись в changelog   |
-| `spectrum chart create`     | Создать и запушить chart тег  |
-| `spectrum chart verify`     | Проверить ingress paths chart |
+| Команда                     | Описание                            |
+| --------------------------- | ----------------------------------- |
+| `spectrum release start`    | Запустить полный цикл релиза        |
+| `spectrum release deploy`   | Деплой релиза                       |
+| `spectrum release close`    | Закрыть релиз                       |
+| `spectrum version up major` | Увеличить major версию              |
+| `spectrum version up minor` | Увеличить minor версию              |
+| `spectrum version up patch` | Увеличить patch версию              |
+| `spectrum changelog append` | Добавить запись в changelog         |
+| `spectrum chart create`     | Создать и запушить chart тег        |
+| `spectrum chart deploy`     | Обновить chart версию в helmrelease |
+| `spectrum chart verify`     | Проверить ingress paths chart       |
 
 ### 🛡️ Preflight-проверки по командам
 
@@ -127,6 +129,7 @@ spectrum-cli/
 - `spectrum version up patch`: `package-json-exists`, `package-version`, `clean-working-tree`.
 - `spectrum changelog append <message>`: `changelog-exists`, `prettier-available` (доступен `prettier` или `npx --yes prettier`), `changelog-prettier-check`.
 - `spectrum chart create <version>`: `git-repo`, `clean-working-tree`, `on-main-branch`, `valid-semver` (переданный `<version>` — semver), `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), `tag-missing` (тега `chart-<name>-<version>` нет локально и на `origin`).
+- `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
 - `spectrum chart verify <source_path>`: `git-repo`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
 
 ## 🔄 Workflow релиза
@@ -164,6 +167,15 @@ spectrum-cli/
 4. Собирает тег `chart-<name>-<version>`
 5. Проверяет, что такого тега еще нет
 6. Создает тег и пушит его в `origin`
+
+### `spectrum chart deploy`
+
+1. Находит последний тег чарта на remote `origin` в формате `chart-<app>-<version>`
+2. Ищет все `helmrelease.yaml` в репозитории
+3. Обновляет `spec.chart.spec.version` до найденной версии и печатает список файлов (`зеленым` обновленные, `серым` без изменений)
+4. Если обновлений нет, завершает выполнение сообщением, что все уже на последней версии
+5. Запрашивает подтверждение публикации через Enter
+6. Делает `git add` обновленных файлов, создает коммит `🚀 Deploy service.` и пушит изменения
 
 ### `spectrum chart verify <source_path>`
 

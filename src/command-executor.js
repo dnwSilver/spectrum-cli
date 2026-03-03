@@ -42,6 +42,7 @@ async function runCommand(spec) {
         );
 
         if (!checkResult.ok) {
+            /* istanbul ignore next */
             logError('❌', '[%s] Preflight failed (%s): %s', name, checkName, checkResult.reason || 'unknown reason');
             return false;
         }

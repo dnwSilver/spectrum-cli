@@ -245,6 +245,12 @@ describe('Utils', () => {
             const result = utils.getRemoteUrl();
             expect(result).toBeNull();
         });
+
+        test('should return null for unsupported remote format', () => {
+            execSync.mockReturnValue('file:///tmp/repo.git');
+            const result = utils.getRemoteUrl();
+            expect(result).toBeNull();
+        });
     });
 
     describe('getMergeRequestUrl', () => {

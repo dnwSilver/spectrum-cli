@@ -2,14 +2,18 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { logSuccess, logError, execCommand, colors } = require('./utils');
+const readline = require('readline');
+const { logSuccess, logError, execCommand, execSilent, colors } = require('./utils');
 const { runCommand } = require('./command-executor');
 const {
     requireGitRepo,
     requireCleanWorkingTree,
     requireOnMainBranch,
+    requireRemoteOrigin,
+    requireRemoteReachable,
     requireSingleChart,
     requireTagMissing,
+    requireHelmReleaseFiles,
     requireSingleValuesYaml,
     requireIngressPathSections,
     requireSourcePathDirectory,
@@ -504,8 +508,299 @@ function chartCreateTag(version) {
     });
 }
 
+function compareSemver(a, b) {
+    const parse = (value) => {
+        const [rawMain, rawMeta] = String(value || '').split('+', 2);
+        const [rawVersion, rawPre] = rawMain.split('-', 2);
+        const versionParts = rawVersion.split('.').map((part) => Number(part));
+        const preParts = rawPre ? rawPre.split('.') : [];
+        return { versionParts, preParts, hasPre: Boolean(rawPre), meta: rawMeta || '' };
+    };
+    const pa = parse(a);
+    const pb = parse(b);
+
+    for (let i = 0; i < 3; i += 1) {
+        const diff = (pa.versionParts[i] || 0) - (pb.versionParts[i] || 0);
+        if (diff !== 0) return diff;
+    }
+
+    if (pa.hasPre && !pb.hasPre) return -1;
+    if (!pa.hasPre && pb.hasPre) return 1;
+    if (!pa.hasPre && !pb.hasPre) return 0;
+
+    const len = Math.max(pa.preParts.length, pb.preParts.length);
+    for (let i = 0; i < len; i += 1) {
+        const aa = pa.preParts[i];
+        const bb = pb.preParts[i];
+        if (aa === undefined) return -1;
+        if (bb === undefined) return 1;
+        const aNum = /^\d+$/.test(aa);
+        const bNum = /^\d+$/.test(bb);
+        if (aNum && bNum) {
+            const diff = Number(aa) - Number(bb);
+            if (diff !== 0) return diff;
+            continue;
+        }
+        if (aNum && !bNum) return -1;
+        if (!aNum && bNum) return 1;
+        if (aa < bb) return -1;
+        if (aa > bb) return 1;
+    }
+
+    return 0;
+}
+
+function getLatestRemoteChartVersion(chartName) {
+    const safeChartName = String(chartName || '').trim();
+    if (!safeChartName) return null;
+
+    const prefix = `chart-${safeChartName}-`;
+    let output = '';
+    try {
+        output = execSync(`git ls-remote --tags origin "refs/tags/${prefix}*"`, { stdio: 'pipe', encoding: 'utf8' });
+    } catch (error) {
+        return null;
+    }
+
+    const versions = String(output || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => line.split(/\s+/)[1] || '')
+        .map((ref) => ref.replace('refs/tags/', ''))
+        .filter((tag) => tag.startsWith(prefix))
+        .map((tag) => tag.slice(prefix.length))
+        .filter((version) => isSemver(version));
+
+    if (versions.length === 0) {
+        return null;
+    }
+
+    versions.sort(compareSemver);
+    return versions[versions.length - 1];
+}
+
+function updateHelmReleaseVersion(filePath, nextVersion) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const lines = content.split('\n');
+    const keyStack = [];
+    const oldVersions = [];
+    let changed = false;
+
+    const updatedLines = lines.map((line) => {
+        const keyMatch = line.match(/^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(.*)$/);
+        if (!keyMatch || line.trim().startsWith('#')) {
+            return line;
+        }
+
+        const indent = keyMatch[1].length;
+        const key = keyMatch[2];
+
+        while (keyStack.length > 0 && keyStack[keyStack.length - 1].indent >= indent) {
+            keyStack.pop();
+        }
+
+        const parentPath = keyStack.map((item) => item.key).join('.');
+        keyStack.push({ key, indent });
+        if (!(parentPath === 'spec.chart.spec' && key === 'version')) {
+            return line;
+        }
+
+        const valuePart = keyMatch[3];
+        const valueMatch = valuePart.match(/^(\s*)(['"]?)([^'"#\s]+)\2(\s*(?:#.*)?)$/);
+        if (!valueMatch) {
+            return line;
+        }
+
+        const oldVersion = valueMatch[3];
+        oldVersions.push(oldVersion);
+        if (oldVersion === nextVersion) {
+            return line;
+        }
+
+        changed = true;
+        const spacing = valueMatch[1] || ' ';
+        return `${keyMatch[1]}version:${spacing}${valueMatch[2]}${nextVersion}${valueMatch[2]}${valueMatch[4]}`;
+    });
+
+    if (changed) {
+        fs.writeFileSync(filePath, updatedLines.join('\n'));
+    }
+
+    const uniqueOld = Array.from(new Set(oldVersions));
+    return {
+        filePath,
+        oldVersion: uniqueOld.length > 0 ? uniqueOld.join(', ') : 'unknown',
+        newVersion: nextVersion,
+        changed
+    };
+}
+
+function printDeployChanges(changes) {
+    changes.forEach((item) => {
+        const icon = item.changed ? '●' : '○';
+        const color = item.changed ? colors.green : '\x1b[90m';
+        console.log(
+            `${color}${icon} ${item.filePath}: ${item.oldVersion} -> ${item.newVersion}${colors.reset}`
+        );
+    });
+}
+
+function waitForEnter(promptText) {
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+        rl.question(promptText, () => {
+            rl.close();
+            resolve(true);
+        });
+    });
+}
+
+function splitGitNameOnly(output) {
+    if (output === null || output === undefined) {
+        return null;
+    }
+    return String(output)
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+}
+
+function chartDeploy() {
+    return runCommand({
+        name: 'chart deploy',
+        checks: [
+            { name: 'git-repo', run: requireGitRepo },
+            { name: 'clean-working-tree', run: requireCleanWorkingTree },
+            { name: 'on-main-branch', run: requireOnMainBranch },
+            { name: 'remote-origin', run: requireRemoteOrigin },
+            { name: 'remote-reachable', run: requireRemoteReachable },
+            { name: 'single-chart', run: requireSingleChart },
+            { name: 'helmrelease-files', run: requireHelmReleaseFiles }
+        ],
+        steps: [
+            {
+                name: 'resolve-latest-chart-version',
+                run: (ctx) => {
+                    const latestVersion = getLatestRemoteChartVersion(ctx.chartName);
+                    if (!latestVersion) {
+                        logError('❌', 'Cannot find remote chart tag for %s.', ctx.chartName);
+                        return false;
+                    }
+                    ctx.latestChartVersion = latestVersion;
+                    logSuccess('🏷️', 'Latest remote chart version for %s is %s.', ctx.chartName, latestVersion);
+                    return true;
+                }
+            },
+            {
+                name: 'update-helmrelease-files',
+                run: (ctx) => {
+                    const changes = (ctx.helmReleaseFiles || []).map((filePath) => updateHelmReleaseVersion(filePath, ctx.latestChartVersion));
+                    ctx.deployChanges = changes;
+                    ctx.updatedFiles = changes.filter((item) => item.changed).map((item) => item.filePath);
+
+                    printDeployChanges(changes);
+                    if (ctx.updatedFiles.length === 0) {
+                        ctx.noUpdates = true;
+                        logSuccess('✅', 'All helmrelease.yaml files are already on latest chart version.');
+                        return true;
+                    }
+
+                    return true;
+                }
+            },
+            {
+                name: 'confirm-publish',
+                run: async (ctx) => {
+                    if (ctx.noUpdates) {
+                        return true;
+                    }
+                    await waitForEnter('Готов ли ты к публикации? Нажми Enter для продолжения (Ctrl+C для отмены): ');
+                    return true;
+                }
+            },
+            {
+                name: 'commit-and-push',
+                run: (ctx) => {
+                    if (ctx.noUpdates) {
+                        return true;
+                    }
+                    const files = ctx.updatedFiles || [];
+                    if (files.length === 0) {
+                        logSuccess('✅', 'No files were changed.');
+                        return true;
+                    }
+
+                    const stagedBeforeAdd = splitGitNameOnly(execSilent('git diff --cached --name-only'));
+                    const unstagedBeforeAdd = splitGitNameOnly(execSilent('git diff --name-only'));
+                    if (stagedBeforeAdd === null || unstagedBeforeAdd === null) {
+                        logError('❌', 'Cannot verify changed files before commit.');
+                        return false;
+                    }
+                    if (stagedBeforeAdd.length > 0) {
+                        logError('❌', 'Unexpected staged changes detected: %s', stagedBeforeAdd.join(', '));
+                        return false;
+                    }
+
+                    const expectedSet = new Set(files);
+                    const unexpectedChanges = unstagedBeforeAdd.filter((filePath) => !expectedSet.has(filePath));
+                    if (unexpectedChanges.length > 0) {
+                        logError('❌', 'Unexpected file changes detected: %s', unexpectedChanges.join(', '));
+                        return false;
+                    }
+
+                    const missingExpectedChanges = files.filter((filePath) => !unstagedBeforeAdd.includes(filePath));
+                    if (missingExpectedChanges.length > 0) {
+                        logError('❌', 'Expected updated files are missing in diff: %s', missingExpectedChanges.join(', '));
+                        return false;
+                    }
+
+                    const quoted = files.map((filePath) => `"${filePath}"`).join(' ');
+                    if (!execCommand(`git add ${quoted}`)) {
+                        logError('❌', 'Cannot add updated helmrelease files.');
+                        return false;
+                    }
+
+                    const stagedAfterAdd = splitGitNameOnly(execSilent('git diff --cached --name-only'));
+                    if (stagedAfterAdd === null) {
+                        logError('❌', 'Cannot verify staged files after git add.');
+                        return false;
+                    }
+                    const unexpectedStaged = stagedAfterAdd.filter((filePath) => !expectedSet.has(filePath));
+                    const missingStaged = files.filter((filePath) => !stagedAfterAdd.includes(filePath));
+                    if (unexpectedStaged.length > 0 || missingStaged.length > 0) {
+                        if (unexpectedStaged.length > 0) {
+                            logError('❌', 'Unexpected staged files detected: %s', unexpectedStaged.join(', '));
+                        }
+                        if (missingStaged.length > 0) {
+                            logError('❌', 'Expected files are not staged: %s', missingStaged.join(', '));
+                        }
+                        return false;
+                    }
+
+                    if (!execCommand('git commit -m "🚀 Deploy service."')) {
+                        logError('❌', 'Cannot create deploy commit.');
+                        return false;
+                    }
+                    if (!execCommand('git push')) {
+                        logError('❌', 'Cannot push deploy commit.');
+                        return false;
+                    }
+
+                    logSuccess('🚀', 'Deploy commit is pushed.');
+                    return true;
+                }
+            }
+        ]
+    });
+}
+
 module.exports = {
     chartCreateTag,
+    chartDeploy,
     chartVerify,
     normalizeList,
     normalizeToBeList,
@@ -514,5 +809,8 @@ module.exports = {
     buildGitLikeDiff,
     getChartName,
     getChartFiles,
-    isSemver
+    isSemver,
+    compareSemver,
+    getLatestRemoteChartVersion,
+    updateHelmReleaseVersion
 };

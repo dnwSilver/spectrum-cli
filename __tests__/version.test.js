@@ -36,4 +36,25 @@ describe("version", () => {
     runCommand.mockResolvedValue(false);
     await expect(version.setVersion("patch")).resolves.toBe(false);
   });
+
+  test("setVersion executes update step and writes new version", async () => {
+    fs.readFileSync.mockReturnValue(JSON.stringify({ version: "1.2.3", name: "x" }));
+    fs.writeFileSync.mockImplementation(() => {});
+    runCommand.mockImplementation(async (spec) => spec.steps[0].run({}));
+
+    await expect(version.setVersion("minor")).resolves.toBe(true);
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      "package.json",
+      JSON.stringify({ version: "1.3.0", name: "x" }, null, 2) + "\n"
+    );
+    expect(logSuccess).toHaveBeenCalledWith("🔖", "Current version %s up to %s.", "1.2.3", "1.3.0");
+  });
+
+  test("setVersion returns false on package read error", async () => {
+    fs.readFileSync.mockImplementation(() => { throw new Error("boom"); });
+    runCommand.mockImplementation(async (spec) => spec.steps[0].run({}));
+
+    await expect(version.setVersion("patch")).resolves.toBe(false);
+    expect(logError).toHaveBeenCalledWith("❌", "Error updating version in package.json");
+  });
 });

@@ -95,6 +95,11 @@ chartCmd
   .description("Verify chart ingress paths against Next.js source")
   .action((sourcePath) => runAction(() => chart.chartVerify(sourcePath)));
 
+chartCmd
+  .command("deploy")
+  .description("Deploy latest chart version to helmrelease files")
+  .action(() => runAction(chart.chartDeploy));
+
 // Override help to show custom format with aliases
 program.configureHelp({
   formatHelp: (cmd, helper) => {

@@ -125,4 +125,35 @@ describe("git", () => {
     await expect(git.gitCreateTagAndPush()).resolves.toBe(true);
     expect(runCommand).toHaveBeenCalled();
   });
+
+  test("gitCreateTagAndPush create/push steps success", async () => {
+    getVersion.mockReturnValue("1.2.3");
+    execCommand.mockReturnValue(true);
+    runCommand.mockImplementation(async (spec) => {
+      const ctx = { version: "1.2.3" };
+      const createOk = spec.steps[1].run(ctx);
+      const pushOk = spec.steps[2].run(ctx);
+      return createOk && pushOk;
+    });
+
+    await expect(git.gitCreateTagAndPush()).resolves.toBe(true);
+    expect(execCommand).toHaveBeenCalledWith("git tag v1.2.3");
+    expect(execCommand).toHaveBeenCalledWith("git push origin v1.2.3");
+  });
+
+  test("gitCreateTagAndPush create step fail", async () => {
+    execCommand.mockImplementation((cmd) => !cmd.startsWith("git tag"));
+    runCommand.mockImplementation(async (spec) => spec.steps[1].run({ version: "1.2.3" }));
+
+    await expect(git.gitCreateTagAndPush()).resolves.toBe(false);
+    expect(logSuccess).not.toHaveBeenCalledWith("🔖", expect.any(String), expect.any(String));
+  });
+
+  test("gitCreateTagAndPush push step fail", async () => {
+    execCommand.mockImplementation((cmd) => !cmd.startsWith("git push"));
+    runCommand.mockImplementation(async (spec) => spec.steps[2].run({ version: "1.2.3" }));
+
+    await expect(git.gitCreateTagAndPush()).resolves.toBe(false);
+    expect(logSuccess).not.toHaveBeenCalledWith("🚀", expect.any(String), expect.any(String));
+  });
 });

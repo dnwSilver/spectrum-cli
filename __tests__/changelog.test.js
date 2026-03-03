@@ -375,4 +375,24 @@ describe("changelog", () => {
 
     String.prototype.startsWith = originalStartsWith;
   });
+
+  test("appendPreparedChangelogEntry returns false when append state is missing", () => {
+    expect(changelog.appendPreparedChangelogEntry({})).toBe(false);
+  });
+
+  test("appendPreparedChangelogEntry logs error on write failure", () => {
+    fs.writeFileSync.mockImplementation(() => {
+      throw new Error("write failed");
+    });
+    const result = changelog.appendPreparedChangelogEntry({
+      appendState: {
+        lines: ["## [Unreleased]", "", "### 🆕 Added", ""],
+        selectedSection: "### 🆕 Added",
+        entry: "- SPEC-1 Test. [A](a@b.com)",
+        sectionIndex: 2,
+      },
+    });
+    expect(result).toBe(false);
+    expect(utils.logError).toHaveBeenCalledWith("❌", "Error adding changelog entry: %s", "write failed");
+  });
 });
