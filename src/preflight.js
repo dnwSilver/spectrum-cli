@@ -112,6 +112,29 @@ function requireTagMissing(tagName) {
     return ok();
 }
 
+function requireOnReleaseBranch() {
+    const currentBranch = getCurrentBranch();
+    if (!currentBranch) {
+        return fail('Cannot determine current branch.');
+    }
+    if (!currentBranch.startsWith('release/')) {
+        return fail(`Current branch is "${currentBranch}", expected "release/*".`);
+    }
+    return ok({ currentBranch });
+}
+
+function requireReleaseBranchMissing(branchName) {
+    const localBranch = execSilent(`git branch --list "${branchName}"`);
+    if (localBranch && localBranch.trim()) {
+        return fail(`Branch "${branchName}" already exists locally.`);
+    }
+    const remoteBranch = execSilent(`git ls-remote --heads origin "refs/heads/${branchName}"`);
+    if (remoteBranch && remoteBranch.trim()) {
+        return fail(`Branch "${branchName}" already exists on origin.`);
+    }
+    return ok();
+}
+
 function requirePrettierAvailable() {
     const runner = getPrettierRunner();
     if (!runner) {
@@ -416,6 +439,8 @@ module.exports = {
     requireFileExists,
     requirePackageVersion,
     requireTagMissing,
+    requireOnReleaseBranch,
+    requireReleaseBranchMissing,
     requirePrettierAvailable,
     requireChangelogFormatted,
     requireSingleChart,

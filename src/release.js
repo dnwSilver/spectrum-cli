@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 const { goToDevBranch, goToMainBranch, updateCurrentBranch } = require('./git');
 const { changelogChangeHeader, changelogRemoveEmptyChapters, changelogAddUnreleasedBlock, changelogCommit } = require('./changelog');
+const path = require('path');
 const { getVersion, logSuccess, logError, execCommand, getCurrentBranch, getMainBranch, getMergeRequestUrl } = require('./utils');
 const { runCommand } = require('./command-executor');
 const {
     requireGitRepo,
     requireCleanWorkingTree,
     requireMainAndDevBranches,
+    requireOnReleaseBranch,
+    requireReleaseBranchMissing,
     requirePackageVersion,
     requireFileExists,
     requireChangelogFormatted
@@ -44,12 +47,22 @@ function releasePush() {
     return goToMainBranch();
 }
 
+function releaseCheckChangelogLint() {
+    const result = requireChangelogFormatted();
+    if (!result.ok) {
+        logError('❌', result.reason || 'CHANGELOG.md failed linting.');
+        return false;
+    }
+    return true;
+}
+
 function releaseClose() {
     return runCommand({
         name: 'release close',
         checks: [
             { name: 'git-repo', run: requireGitRepo },
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
+            { name: 'on-release-branch', run: requireOnReleaseBranch },
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches }
         ],
         steps: [
@@ -92,13 +105,16 @@ function releaseStart() {
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches },
             { name: 'package-version', run: requirePackageVersion },
             { name: 'changelog-exists', run: () => requireFileExists('CHANGELOG.md') },
-            { name: 'changelog-prettier-check', run: requireChangelogFormatted }
+            { name: 'unreleased-template-exists', run: () => requireFileExists(path.join(__dirname, 'UNRELEASED.md')) },
+            { name: 'changelog-prettier-check', run: requireChangelogFormatted },
+            { name: 'release-branch-missing', run: (ctx) => requireReleaseBranchMissing(`release/${ctx.version}`) }
         ],
         steps: [
-            { name: 'create-release-branch', run: releaseCreate },
             { name: 'change-header', run: changelogChangeHeader },
             { name: 'remove-empty-chapters', run: changelogRemoveEmptyChapters },
             { name: 'add-unreleased-block', run: changelogAddUnreleasedBlock },
+            { name: 'lint-changelog', run: releaseCheckChangelogLint },
+            { name: 'create-release-branch', run: releaseCreate },
             { name: 'commit-changelog', run: changelogCommit },
             { name: 'push-release', run: releasePush }
         ]

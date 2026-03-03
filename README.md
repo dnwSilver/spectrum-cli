@@ -48,6 +48,7 @@ spectrum release deploy      # Деплой релиза (создать тег)
 
 # 📈 Теги chart
 spectrum chart create 1.2.3  # Создать и запушить chart-$name-$version
+spectrum chart verify ~/repo  # Сравнить ingress paths AS IS vs TO BE для Next.js исходников
 
 # 📝 Управление changelog
 spectrum changelog append "Сообщение"  # Добавить запись в CHANGELOG.md
@@ -102,18 +103,19 @@ spectrum-cli/
 └── README.md          # 📖 Документация
 ```
 
-### Команды:
+### Команды
 
-| Команда                       | Описание                     |
-| ----------------------------- | ---------------------------- |
-| `spectrum release start`      | Запустить полный цикл релиза |
-| `spectrum release deploy`     | Деплой релиза                |
-| `spectrum release close`      | Закрыть релиз                |
-| `spectrum version up major`   | Увеличить major версию       |
-| `spectrum version up minor`   | Увеличить minor версию       |
-| `spectrum version up patch`   | Увеличить patch версию       |
-| `spectrum changelog append`   | Добавить запись в changelog  |
-| `spectrum chart create`       | Создать и запушить chart тег |
+| Команда                     | Описание                      |
+| --------------------------- | ----------------------------- |
+| `spectrum release start`    | Запустить полный цикл релиза  |
+| `spectrum release deploy`   | Деплой релиза                 |
+| `spectrum release close`    | Закрыть релиз                 |
+| `spectrum version up major` | Увеличить major версию        |
+| `spectrum version up minor` | Увеличить minor версию        |
+| `spectrum version up patch` | Увеличить patch версию        |
+| `spectrum changelog append` | Добавить запись в changelog   |
+| `spectrum chart create`     | Создать и запушить chart тег  |
+| `spectrum chart verify`     | Проверить ingress paths chart |
 
 ### 🛡️ Preflight-проверки по командам
 
@@ -125,6 +127,7 @@ spectrum-cli/
 - `spectrum version up patch`: `package-json-exists`, `package-version`, `clean-working-tree`.
 - `spectrum changelog append <message>`: `changelog-exists`, `prettier-available` (доступен `prettier` или `npx --yes prettier`), `changelog-prettier-check`.
 - `spectrum chart create <version>`: `git-repo`, `clean-working-tree`, `on-main-branch`, `valid-semver` (переданный `<version>` — semver), `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), `tag-missing` (тега `chart-<name>-<version>` нет локально и на `origin`).
+- `spectrum chart verify <source_path>`: `git-repo`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
 
 ## 🔄 Workflow релиза
 
@@ -161,6 +164,14 @@ spectrum-cli/
 4. Собирает тег `chart-<name>-<version>`
 5. Проверяет, что такого тега еще нет
 6. Создает тег и пушит его в `origin`
+
+### `spectrum chart verify <source_path>`
+
+1. Находит `charts/**/values.yaml` и читает `ingress.paths.api/pages/assets` как AS IS
+2. Собирает TO BE для Next.js из `.next` артефактов, при необходимости запускает build, затем делает fallback на файловую структуру роутов
+3. Для `assets` использует фиксированный набор regex-путей
+4. Печатает diff только по изменениям: лишние пути (`-`) и недостающие (`+`) с цветовой подсветкой
+5. Завершает команду с ошибкой, если есть расхождения
 
 ## 📝 Работа с Changelog
 

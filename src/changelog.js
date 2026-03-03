@@ -4,7 +4,7 @@ const path = require('path');
 const readline = require('readline');
 const { logSuccess, logError, execCommand, execSilent, getVersion, getCurrentBranch, colors } = require('./utils');
 const { runCommand } = require('./command-executor');
-const { requireFileExists, requirePrettierAvailable, requireChangelogFormatted } = require('./preflight');
+const { requireGitRepo, requireFileExists, requirePrettierAvailable, requireChangelogFormatted } = require('./preflight');
 
 function getPrettierRunner() {
     const npxVersion = execSilent('npx --yes prettier --version');
@@ -261,6 +261,7 @@ async function changelogAppend(message) {
     return runCommand({
         name: 'changelog append',
         checks: [
+            { name: 'git-repo', run: requireGitRepo },
             { name: 'changelog-exists', run: () => requireFileExists('CHANGELOG.md') },
             { name: 'prettier-available', run: requirePrettierAvailable },
             { name: 'changelog-prettier-check', run: requireChangelogFormatted },
