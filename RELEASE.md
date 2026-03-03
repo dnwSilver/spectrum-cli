@@ -33,7 +33,7 @@ git checkout main
 git pull origin main
 
 # Увеличьте версию (используя сам Spectrum CLI!)
-./index.js up version patch   # для patch: 1.0.0 → 1.0.1  
+./index.js up version patch   # для patch: 1.0.0 → 1.0.1
 ./index.js up version minor   # для minor: 1.0.0 → 1.1.0
 ./index.js up version major   # для major: 1.0.0 → 2.0.0
 ```

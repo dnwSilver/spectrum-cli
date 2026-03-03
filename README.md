@@ -46,6 +46,9 @@ spectrum release start       # Полный цикл релиза
 spectrum release close       # Закрыть релиз и смержить в dev
 spectrum release deploy      # Деплой релиза (создать тег)
 
+# 📈 Теги chart
+spectrum chart create 1.2.3  # Создать и запушить chart-$name-$version
+
 # 📝 Управление changelog
 spectrum changelog append "Сообщение"  # Добавить запись в CHANGELOG.md
 ```
@@ -61,6 +64,9 @@ spectrum version up --help
 
 # Справка по changelog
 spectrum changelog --help
+
+# Справка по chart
+spectrum chart --help
 ```
 
 ## ✨ Особенности
@@ -87,6 +93,7 @@ spectrum-cli/
 │   ├── git.js         # 📝 Git операции
 │   ├── version.js     # 📦 Управление версиями SemVer
 │   ├── changelog.js   # 📋 Работа с CHANGELOG.md
+│   ├── chart.js       # 📈 Создание и push chart тегов
 │   ├── development.js # ⚡ Dev команды (внутренние)
 │   └── release.js     # 🚀 Release процесс
 ├── package.json       # 📦 Конфигурация проекта
@@ -106,6 +113,7 @@ spectrum-cli/
 | `spectrum version up minor`   | Увеличить minor версию       |
 | `spectrum version up patch`   | Увеличить patch версию       |
 | `spectrum changelog append`   | Добавить запись в changelog  |
+| `spectrum chart create`       | Создать и запушить chart тег |
 
 ## 🔄 Workflow релиза
 
@@ -132,6 +140,15 @@ spectrum-cli/
 1. Переключается на main ветку
 2. Создает тег с текущей версией
 3. Пушит тег в remote
+
+### `spectrum chart create <version>`
+
+1. Ищет `Chart.yaml` в `charts/<chart-name>/Chart.yaml` и читает поле `name`
+2. Проверяет, что текущая ветка — `main`
+3. Проверяет semver для переданной версии
+4. Собирает тег `chart-<name>-<version>`
+5. Проверяет, что такого тега еще нет
+6. Создает тег и пушит его в `origin`
 
 ## 📝 Работа с Changelog
 

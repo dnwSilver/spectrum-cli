@@ -161,6 +161,11 @@ describe('Basic Functionality Tests', () => {
         const release = require('../src/release');
         expect(typeof release.releaseStart).toBe('function');
         expect(typeof release.releaseClose).toBe('function');
+
+        const chart = require('../src/chart');
+        expect(typeof chart.chartCreateTag).toBe('function');
+        expect(typeof chart.getChartName).toBe('function');
+        expect(typeof chart.isSemver).toBe('function');
     });
 
     test('should have correct colors object', () => {

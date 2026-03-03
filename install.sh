@@ -1,4 +1,4 @@
-e#!/bin/bash
+#!/bin/bash
 
 # 🚀 Spectrum CLI - Automatic Installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/dnwsilver/spectrum-cli/main/install.sh | bash

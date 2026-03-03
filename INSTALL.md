@@ -57,6 +57,9 @@ cd /path/to/your/project
 
 # Запустить полный цикл релиза
 ./index.js release start
+
+# Создать и запушить chart тег
+./index.js chart create 1.2.3
 ```
 
 ## 🔧 Настройка проекта
@@ -67,6 +70,7 @@ cd /path/to/your/project
 2. **CHANGELOG.md** - в формате Keep a Changelog
 3. **Git репозиторий** - с настроенными remote
 4. **Ветки** - `main`/`master` и `develop`/`dev`
+5. **Helm chart** - файл `charts/<chart-name>/Chart.yaml` с полем `name` (для `chart create`)
 
 ### Пример минимальной структуры:
 

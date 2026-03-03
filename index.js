@@ -6,6 +6,7 @@ const git = require("./src/git");
 const version = require("./src/version");
 const release = require("./src/release");
 const changelog = require("./src/changelog");
+const chart = require("./src/chart");
 const { version: pkgVersion } = require("./package.json");
 
 program
@@ -73,6 +74,16 @@ changelogCmd
       process.exit(1);
     }
   });
+
+// Chart commands
+const chartCmd = program
+  .command("chart")
+  .description("Chart tag management commands");
+
+chartCmd
+  .command("create <version>")
+  .description("Create and push chart tag (chart-<name>-<version>)")
+  .action((version) => chart.chartCreateTag(version));
 
 // Override help to show custom format with aliases
 program.configureHelp({
