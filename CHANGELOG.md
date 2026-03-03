@@ -9,14 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🆕 Added
 
-- Добавлена команда `spectrum chart create <version>` для создания `helm chart`
-- Изменен формат вывода сообщений в консоли
-- Добавлен вывод прямой ссылки на создание Merge Request при `spectrum release start`
-- Добавлена команда `spectrum chart deploy` для обновления `spec.chart.spec.version` в `helmrelease.yaml` до последнего remote chart-тега с интерактивным подтверждением, автокоммитом и пушем
+_Список новой функциональности._
 
 ### 🛠 Changed
 
-- Добавлены новые preflight-проверки для chart deploy: проверка `origin`, доступности remote и наличия `helmrelease.yaml`
+_Список изменившейся функциональности._
 
 ### 📜 Deprecated
 
@@ -29,6 +26,27 @@ _Список удаленной функциональности._
 ### 🪲 Fixed
 
 _Список исправлений багов._
+
+### 🔐 Security
+
+_Список правок для обеспечения безопасности._
+
+### 📦 Support
+
+_Список правок для обеспечения технической поддержки._
+
+## 🚀 [1.2.0] - 2026-03-03
+
+### 🆕 Added
+
+- Добавлена команда `spectrum chart create <version>` для создания `helm chart`
+- Изменен формат вывода сообщений в консоли
+- Добавлен вывод прямой ссылки на создание Merge Request при `spectrum release start`
+- Добавлена команда `spectrum chart deploy` для обновления `spec.chart.spec.version` в `helmrelease.yaml` до последнего remote chart-тега с интерактивным подтверждением, автокоммитом и пушем
+
+### 🛠 Changed
+
+- Добавлены новые preflight-проверки для chart deploy: проверка `origin`, доступности remote и наличия `helmrelease.yaml`
 
 ### 🔐 Security
 
