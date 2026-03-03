@@ -19,6 +19,7 @@ jest.mock("../src/utils", () => ({
   execCommand: jest.fn(),
   getCurrentBranch: jest.fn(),
   getMainBranch: jest.fn(),
+  getMergeRequestUrl: jest.fn(),
   colors: {},
 }));
 
@@ -61,11 +62,31 @@ describe("release", () => {
     expect(release.releaseCreate()).toBe(false);
   });
 
-  test("releasePush success", () => {
+  test("releasePush success with MR url", () => {
     utils.getCurrentBranch.mockReturnValue("release/1.2.3");
+    utils.getMainBranch.mockReturnValue("main");
+    utils.getMergeRequestUrl.mockReturnValue(
+      "https://gitlab.spectrumdata.tech/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main"
+    );
 
     expect(release.releasePush()).toBe(true);
     expect(utils.execCommand).toHaveBeenCalledWith("git push origin release/1.2.3");
+    expect(utils.getMergeRequestUrl).toHaveBeenCalledWith("release/1.2.3", "main");
+    expect(utils.logSuccess).toHaveBeenCalledWith(
+      "🌐",
+      "Create Merge Request: %s",
+      "https://gitlab.spectrumdata.tech/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main"
+    );
+    expect(git.goToMainBranch).toHaveBeenCalled();
+  });
+
+  test("releasePush success without MR url", () => {
+    utils.getCurrentBranch.mockReturnValue("release/1.2.3");
+    utils.getMainBranch.mockReturnValue("main");
+    utils.getMergeRequestUrl.mockReturnValue(null);
+
+    expect(release.releasePush()).toBe(true);
+    expect(utils.logSuccess).not.toHaveBeenCalledWith("🌐", expect.any(String), expect.any(String));
     expect(git.goToMainBranch).toHaveBeenCalled();
   });
 
@@ -74,6 +95,7 @@ describe("release", () => {
     utils.execCommand.mockReturnValue(false);
 
     expect(release.releasePush()).toBe(false);
+    expect(utils.logSuccess).not.toHaveBeenCalledWith("🌐", expect.any(String), expect.any(String));
   });
 
   test("releaseClose success", () => {

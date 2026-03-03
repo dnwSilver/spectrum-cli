@@ -126,6 +126,7 @@ spectrum-cli/
 5. Добавляет новый блок Unreleased
 6. Коммитит изменения
 7. Пушит release ветку
+8. Выводит прямую ссылку на создание Merge Request
 
 ### `spectrum release close`
 

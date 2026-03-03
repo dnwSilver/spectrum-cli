@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const { goToDevBranch, goToMainBranch, updateCurrentBranch } = require('./git');
 const { changelogChangeHeader, changelogRemoveEmptyChapters, changelogAddUnreleasedBlock, changelogCommit } = require('./changelog');
-const { getVersion, logSuccess, logError, execCommand, getCurrentBranch, getMainBranch, colors } = require('./utils');
+const { getVersion, logSuccess, logError, execCommand, getCurrentBranch, getMainBranch, getMergeRequestUrl, colors } = require('./utils');
 
 function releaseCreate() {
     goToDevBranch();
@@ -26,7 +26,10 @@ function releasePush() {
     
     if (execCommand(`git push origin ${currentBranch}`)) {
         logSuccess('📤', 'Push release branch %s.', currentBranch);
-        logSuccess('🌐', 'Go to https://gitlab.spectrumdata.tech/ and merge branch manually.');
+        const mrUrl = getMergeRequestUrl(currentBranch, getMainBranch());
+        if (mrUrl) {
+            logSuccess('🌐', 'Create Merge Request: %s', mrUrl);
+        }
         goToMainBranch();
         return true;
     }

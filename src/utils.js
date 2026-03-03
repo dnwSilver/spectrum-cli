@@ -92,6 +92,28 @@ function getVersion() {
     }
 }
 
+function getRemoteUrl() {
+    const raw = execSilent('git remote get-url origin');
+    if (!raw) return null;
+
+    const sshMatch = raw.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+    if (sshMatch) return `https://${sshMatch[1]}/${sshMatch[2]}`;
+
+    const httpsMatch = raw.match(/^https?:\/\/([^/]+)\/(.+?)(?:\.git)?$/);
+    if (httpsMatch) return `https://${httpsMatch[1]}/${httpsMatch[2]}`;
+
+    return null;
+}
+
+function getMergeRequestUrl(sourceBranch, targetBranch) {
+    const baseUrl = getRemoteUrl();
+    if (!baseUrl) return null;
+
+    const source = encodeURIComponent(sourceBranch);
+    const target = encodeURIComponent(targetBranch);
+    return `${baseUrl}/-/merge_requests/new?merge_request[source_branch]=${source}&merge_request[target_branch]=${target}`;
+}
+
 module.exports = {
     colors,
     log,
@@ -103,5 +125,7 @@ module.exports = {
     getMainBranch,
     getDevelopBranch,
     getPackageManager,
-    getVersion
+    getVersion,
+    getRemoteUrl,
+    getMergeRequestUrl
 };

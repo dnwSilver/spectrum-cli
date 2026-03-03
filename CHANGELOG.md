@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Добавлена команда `spectrum chart create <version>` для создания `helm chart`
 - Изменен формат вывода сообщений в консоли
+- Добавлен вывод прямой ссылки на создание Merge Request при `spectrum release start`
 
 ### 🛠 Changed
 

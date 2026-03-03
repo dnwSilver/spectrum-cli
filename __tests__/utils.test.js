@@ -214,4 +214,52 @@ describe('Utils', () => {
             expect(result).toBeNull();
         });
     });
+
+    describe('getRemoteUrl', () => {
+        test('should parse SSH remote url', () => {
+            execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project.git');
+            const result = utils.getRemoteUrl();
+            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+        });
+
+        test('should parse SSH remote url without .git suffix', () => {
+            execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project');
+            const result = utils.getRemoteUrl();
+            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+        });
+
+        test('should parse HTTPS remote url', () => {
+            execSync.mockReturnValue('https://gitlab.spectrumdata.tech/group/project.git');
+            const result = utils.getRemoteUrl();
+            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+        });
+
+        test('should parse HTTPS remote url without .git suffix', () => {
+            execSync.mockReturnValue('https://gitlab.spectrumdata.tech/group/project');
+            const result = utils.getRemoteUrl();
+            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+        });
+
+        test('should return null when git command fails', () => {
+            execSync.mockImplementation(() => { throw new Error('fail'); });
+            const result = utils.getRemoteUrl();
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('getMergeRequestUrl', () => {
+        test('should build MR url with encoded branches', () => {
+            execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project.git');
+            const result = utils.getMergeRequestUrl('release/1.2.3', 'main');
+            expect(result).toBe(
+                'https://gitlab.spectrumdata.tech/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main'
+            );
+        });
+
+        test('should return null when remote url is unavailable', () => {
+            execSync.mockImplementation(() => { throw new Error('fail'); });
+            const result = utils.getMergeRequestUrl('release/1.0.0', 'main');
+            expect(result).toBeNull();
+        });
+    });
 });
