@@ -65,9 +65,21 @@ describe('Chart', () => {
                 'charts/site-b/Chart.yaml'
             ]);
         });
+
+        test('should return empty array on fs error', () => {
+            fs.existsSync.mockReturnValue(true);
+            fs.readdirSync.mockImplementation(() => {
+                throw new Error('fs error');
+            });
+            expect(chart.getChartFiles()).toEqual([]);
+        });
     });
 
     describe('getChartName', () => {
+        test('should return null for empty path', () => {
+            expect(chart.getChartName('')).toBeNull();
+        });
+
         test('should read chart name from Chart.yaml', () => {
             fs.existsSync.mockReturnValue(true);
             fs.readFileSync.mockReturnValue('apiVersion: v2\nname: mychart\nversion: 1.0.0\n');
@@ -77,6 +89,14 @@ describe('Chart', () => {
         test('should return null if chart file has no name', () => {
             fs.existsSync.mockReturnValue(true);
             fs.readFileSync.mockReturnValue('apiVersion: v2\nversion: 1.0.0\n');
+            expect(chart.getChartName('charts/mychart/Chart.yaml')).toBeNull();
+        });
+
+        test('should return null when read fails', () => {
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockImplementation(() => {
+                throw new Error('fail');
+            });
             expect(chart.getChartName('charts/mychart/Chart.yaml')).toBeNull();
         });
     });
@@ -137,6 +157,22 @@ describe('Chart', () => {
 
             expect(chart.chartCreateTag('1.2.3')).toBe(false);
             expect(logError).toHaveBeenCalledWith('❌', 'Tag %s already exists.', 'chart-site-a-1.2.3');
+        });
+
+        test('should fail when chart name cannot be read', () => {
+            getMainBranch.mockReturnValue('main');
+            getCurrentBranch.mockReturnValue('main');
+            fs.existsSync.mockImplementation((filePath) => (
+                filePath === 'charts' ||
+                filePath === 'charts/site-a/Chart.yaml'
+            ));
+            fs.readdirSync.mockReturnValue([
+                { name: 'site-a', isDirectory: () => true }
+            ]);
+            fs.readFileSync.mockReturnValue('version: 1.0.0\n');
+
+            expect(chart.chartCreateTag('1.2.3')).toBe(false);
+            expect(logError).toHaveBeenCalledWith('❌', 'Cannot read chart name from %s.', 'charts/site-a/Chart.yaml');
         });
 
         test('should fail when git tag creation fails', () => {

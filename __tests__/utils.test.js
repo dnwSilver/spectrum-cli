@@ -52,6 +52,11 @@ describe('Utils', () => {
             utils.logSuccess('✅', 'Merge branch %s with %s.', 'feature/x', 'main');
             expect(console.log).toHaveBeenCalledWith(` ✅ Merge branch ${utils.colors.green}feature/x${utils.colors.reset} with ${utils.colors.green}main${utils.colors.reset}.`);
         });
+
+        test('should keep placeholder when argument missing', () => {
+            utils.logSuccess('✅', 'Value %s and %s.', 'one');
+            expect(console.log).toHaveBeenCalledWith(` ✅ Value ${utils.colors.green}one${utils.colors.reset} and %s.`);
+        });
     });
 
     describe('logError', () => {
