@@ -14,7 +14,7 @@ function releaseCreate() {
     }
     
     if (execCommand(`git switch -c release/${currentVersion}`, null, null)) {
-        logSuccess('🌱', `Create new release branch ${getCurrentBranch()}.`);
+        logSuccess('🌱', 'Create new release branch %s.', getCurrentBranch());
         return true;
     }
     
@@ -25,7 +25,7 @@ function releasePush() {
     const currentBranch = getCurrentBranch();
     
     if (execCommand(`git push origin ${currentBranch}`, null, null)) {
-        logSuccess('📤', `Push release branch ${currentBranch}.`);
+        logSuccess('📤', 'Push release branch %s.', currentBranch);
         logSuccess('🌐', 'Go to https://gitlab.spectrumdata.tech/ and merge branch manually.');
         goToMainBranch();
         return true;
@@ -44,10 +44,10 @@ function releaseClose() {
     updateCurrentBranch();
     
     if (execCommand(`git merge ${mainBranch}`, null, null)) {
-        logSuccess('🔀', `Merge branch ${getCurrentBranch()} with ${mainBranch}.`);
+        logSuccess('🔀', 'Merge branch %s with %s.', getCurrentBranch(), mainBranch);
         
         if (execCommand(`git push origin ${getCurrentBranch()} -o ci.skip`, null, null)) {
-            logSuccess('📤', `Push branch ${getCurrentBranch()}.`);
+            logSuccess('📤', 'Push branch %s.', getCurrentBranch());
             return true;
         }
     }
@@ -67,7 +67,7 @@ function releaseStart() {
     
     for (const step of steps) {
         if (!step.fn()) {
-            logError('✖', `Failed at step: ${step.name}`);
+            logError('✖', 'Failed at step: %s', step.name);
             return false;
         }
     }

@@ -38,16 +38,31 @@ describe('Utils', () => {
     });
 
     describe('logSuccess', () => {
-        test('should log success message in green', () => {
+        test('should log plain success message without coloring whole text', () => {
             utils.logSuccess('✅', 'Success message');
-            expect(console.log).toHaveBeenCalledWith(` ✅ ${utils.colors.green}Success message${utils.colors.reset}`);
+            expect(console.log).toHaveBeenCalledWith(' ✅ Success message');
+        });
+
+        test('should color only one parameter in success message', () => {
+            utils.logSuccess('✅', 'Create tag v%s.', '1.2.3');
+            expect(console.log).toHaveBeenCalledWith(` ✅ Create tag v${utils.colors.green}1.2.3${utils.colors.reset}.`);
+        });
+
+        test('should color multiple parameters in success message', () => {
+            utils.logSuccess('✅', 'Merge branch %s with %s.', 'feature/x', 'main');
+            expect(console.log).toHaveBeenCalledWith(` ✅ Merge branch ${utils.colors.green}feature/x${utils.colors.reset} with ${utils.colors.green}main${utils.colors.reset}.`);
         });
     });
 
     describe('logError', () => {
-        test('should log error message in red', () => {
+        test('should log plain error message without coloring whole text', () => {
             utils.logError('❌', 'Error message');
-            expect(console.log).toHaveBeenCalledWith(` ❌ ${utils.colors.red}Error message${utils.colors.reset}`);
+            expect(console.log).toHaveBeenCalledWith(' ❌ Error message');
+        });
+
+        test('should color only parameter in error message', () => {
+            utils.logError('❌', 'Tag %s already exists.', 'v1.2.3');
+            expect(console.log).toHaveBeenCalledWith(` ❌ Tag ${utils.colors.red}v1.2.3${utils.colors.reset} already exists.`);
         });
     });
 

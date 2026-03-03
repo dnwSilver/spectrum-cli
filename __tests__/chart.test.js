@@ -89,7 +89,7 @@ describe('Chart', () => {
         test('should fail when version is not semver', () => {
             getCurrentBranch.mockReturnValue('main');
             expect(chart.chartCreateTag('1.2')).toBe(false);
-            expect(logError).toHaveBeenCalledWith('❌', 'Version "1.2" is not a valid semver.');
+            expect(logError).toHaveBeenCalledWith('❌', 'Version "%s" is not a valid semver.', '1.2');
         });
 
         test('should fail when no chart files found', () => {
@@ -97,7 +97,7 @@ describe('Chart', () => {
             fs.existsSync.mockImplementation((filePath) => filePath !== 'charts');
 
             expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(logError).toHaveBeenCalledWith('❌', 'Cannot find Chart.yaml in charts/<chart-name>/Chart.yaml.');
+            expect(logError).toHaveBeenCalledWith('❌', 'Cannot find Chart.yaml in %s/<chart-name>/Chart.yaml.', 'charts');
         });
 
         test('should fail when multiple chart files found', () => {
@@ -129,7 +129,7 @@ describe('Chart', () => {
             execSilent.mockReturnValue('chart-site-a-1.2.3');
 
             expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(logError).toHaveBeenCalledWith('❌', 'Tag chart-site-a-1.2.3 already exists.');
+            expect(logError).toHaveBeenCalledWith('❌', 'Tag %s already exists.', 'chart-site-a-1.2.3');
         });
 
         test('should fail when git tag creation fails', () => {
@@ -147,7 +147,7 @@ describe('Chart', () => {
 
             expect(chart.chartCreateTag('1.2.3')).toBe(false);
             expect(execCommand).toHaveBeenCalledWith('git tag "chart-site-a-1.2.3"', null, null);
-            expect(logError).toHaveBeenCalledWith('❌', 'Cannot create tag chart-site-a-1.2.3.');
+            expect(logError).toHaveBeenCalledWith('❌', 'Cannot create tag %s.', 'chart-site-a-1.2.3');
         });
 
         test('should fail when git push fails', () => {
@@ -166,7 +166,7 @@ describe('Chart', () => {
             expect(chart.chartCreateTag('1.2.3')).toBe(false);
             expect(execCommand).toHaveBeenNthCalledWith(1, 'git tag "chart-site-a-1.2.3"', null, null);
             expect(execCommand).toHaveBeenNthCalledWith(2, 'git push origin "chart-site-a-1.2.3"', null, null);
-            expect(logError).toHaveBeenCalledWith('❌', 'Cannot push tag chart-site-a-1.2.3 to origin.');
+            expect(logError).toHaveBeenCalledWith('❌', 'Cannot push tag %s to origin.', 'chart-site-a-1.2.3');
         });
 
         test('should create and push tag successfully', () => {
@@ -185,8 +185,8 @@ describe('Chart', () => {
             expect(chart.chartCreateTag('1.2.3')).toBe(true);
             expect(execCommand).toHaveBeenNthCalledWith(1, 'git tag "chart-site-a-1.2.3"', null, null);
             expect(execCommand).toHaveBeenNthCalledWith(2, 'git push origin "chart-site-a-1.2.3"', null, null);
-            expect(logSuccess).toHaveBeenCalledWith('🔖', 'Created tag chart-site-a-1.2.3.');
-            expect(logSuccess).toHaveBeenCalledWith('🚀', 'Pushed tag chart-site-a-1.2.3 to origin.');
+            expect(logSuccess).toHaveBeenCalledWith('🔖', 'Created tag %s.', 'chart-site-a-1.2.3');
+            expect(logSuccess).toHaveBeenCalledWith('🚀', 'Pushed tag %s to origin.', 'chart-site-a-1.2.3');
         });
     });
 });

@@ -4,7 +4,7 @@ const { logSuccess, logError, execSilent, execCommand, getCurrentBranch, getMain
 function goToMainBranch() {
     const mainBranch = getMainBranch();
     if (execCommand(`git switch ${mainBranch}`, null, null)) {
-        logSuccess('🌿', `Swap to branch ${mainBranch}.`);
+        logSuccess('🌿', 'Swap to branch %s.', mainBranch);
         return true;
     }
     return false;
@@ -13,7 +13,7 @@ function goToMainBranch() {
 function goToDevBranch() {
     const devBranch = getDevelopBranch();
     if (execCommand(`git switch ${devBranch}`, null, null)) {
-        logSuccess('🌿', `Swap to branch ${getCurrentBranch()}.`);
+        logSuccess('🌿', 'Swap to branch %s.', getCurrentBranch());
         return true;
     }
     return false;
@@ -25,7 +25,7 @@ function updateCurrentBranch() {
     const fetchSuccess = execCommand(`git fetch --all --prune --jobs=10`, null, null);
     
     if (pullSuccess && fetchSuccess) {
-        logSuccess('🔄', `Pull and fetch from branch ${currentBranch}.`);
+        logSuccess('🔄', 'Pull and fetch from branch %s.', currentBranch);
         return true;
     }
     return false;
@@ -82,15 +82,15 @@ function gitCreateTagAndPush() {
     const existingTag = execSilent(`git tag -l "v${currentVersion}"`);
     
     if (existingTag) {
-        logError('❌', `Tag v${currentVersion} already created.`);
+        logError('❌', 'Tag v%s already created.', currentVersion);
         return false;
     }
     
     if (execCommand(`git tag v${currentVersion}`, null, null)) {
-        logSuccess('🔖', `Create tag v${currentVersion}.`);
+        logSuccess('🔖', 'Create tag v%s.', currentVersion);
         
         if (execCommand(`git push origin v${currentVersion}`, null, null)) {
-            logSuccess('🚀', `Push tag v${currentVersion}.`);
+            logSuccess('🚀', 'Push tag v%s.', currentVersion);
             return true;
         }
     }

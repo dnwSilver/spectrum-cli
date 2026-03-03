@@ -49,7 +49,7 @@ function changelogChangeHeader() {
         );
 
         fs.writeFileSync('CHANGELOG.md', updatedChangelog);
-        logSuccess('🔄', `Update header ${colors.green}🚀 [${currentVersion}]${colors.reset}.`);
+        logSuccess('🔄', 'Update header %s.', '🚀 [' + currentVersion + ']');
         return true;
     } catch (error) {
         return false;
@@ -285,7 +285,7 @@ async function changelogAppend(message) {
         }
         
         if (sectionIndex === -1) {
-            logError('❌', `Cannot find "${selectedSection}" section in CHANGELOG.md.`);
+            logError('❌', 'Cannot find "%s" section in CHANGELOG.md.', selectedSection);
             return false;
         }
         
@@ -322,10 +322,10 @@ async function changelogAppend(message) {
         fs.writeFileSync('CHANGELOG.md', updatedChangelog);
         
         displayContext(lines, insertIndex, entry);
-        logSuccess('✅', `Entry added to ${selectedSection}`);
+        logSuccess('✅', 'Entry added to %s', selectedSection);
         return true;
     } catch (error) {
-        logError('❌', `Error adding changelog entry: ${error.message}`);
+        logError('❌', 'Error adding changelog entry: %s', error.message);
         return false;
     }
 }

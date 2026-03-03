@@ -44,53 +44,53 @@ function isSemver(version) {
 function chartCreateTag(version) {
     const currentBranch = getCurrentBranch();
     if (currentBranch !== 'main') {
-        logError('❌', `Current branch is "${currentBranch || 'unknown'}". Switch to "main" first.`);
+        logError('❌', 'Current branch is "%s". Switch to "main" first.', currentBranch || 'unknown');
         return false;
     }
 
     if (!isSemver(version)) {
-        logError('❌', `Version "${version}" is not a valid semver.`);
+        logError('❌', 'Version "%s" is not a valid semver.', version);
         return false;
     }
 
     const chartFiles = getChartFiles();
     if (chartFiles.length === 0) {
-        logError('❌', `Cannot find Chart.yaml in ${CHARTS_DIR}/<chart-name>/Chart.yaml.`);
+        logError('❌', 'Cannot find Chart.yaml in %s/<chart-name>/Chart.yaml.', CHARTS_DIR);
         return false;
     }
 
     if (chartFiles.length > 1) {
-        logError('❌', `Found multiple charts: ${chartFiles.join(', ')}. Keep only one chart directory.`);
+        logError('❌', 'Found multiple charts: %s. Keep only one chart directory.', chartFiles.join(', '));
         return false;
     }
 
     const chartFilePath = chartFiles[0];
     const chartName = getChartName(chartFilePath);
     if (!chartName) {
-        logError('❌', `Cannot read chart name from ${chartFilePath}.`);
+        logError('❌', 'Cannot read chart name from %s.', chartFilePath);
         return false;
     }
 
     const tagName = `chart-${chartName}-${version}`;
     const existingTag = execSilent(`git tag -l "${tagName}"`);
     if (existingTag) {
-        logError('❌', `Tag ${tagName} already exists.`);
+        logError('❌', 'Tag %s already exists.', tagName);
         return false;
     }
 
     if (!execCommand(`git tag "${tagName}"`, null, null)) {
-        logError('❌', `Cannot create tag ${tagName}.`);
+        logError('❌', 'Cannot create tag %s.', tagName);
         return false;
     }
 
-    logSuccess('🔖', `Created tag ${tagName}.`);
+    logSuccess('🔖', 'Created tag %s.', tagName);
 
     if (!execCommand(`git push origin "${tagName}"`, null, null)) {
-        logError('❌', `Cannot push tag ${tagName} to origin.`);
+        logError('❌', 'Cannot push tag %s to origin.', tagName);
         return false;
     }
 
-    logSuccess('🚀', `Pushed tag ${tagName} to origin.`);
+    logSuccess('🚀', 'Pushed tag %s to origin.', tagName);
     return true;
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
-const { execCommand, logSuccess, logError, colors } = require('./utils');
+const { execCommand, logSuccess, logError } = require('./utils');
 
 function upVersion(oldVersion, upType) {
     const [major, minor, patch] = oldVersion.split('.').map(Number);
@@ -34,7 +34,7 @@ function setVersionTypescript(versionType) {
         packageJson.version = newVersion;
         fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
         
-        logSuccess('🔖', `Current version ${oldVersion} up to ${colors.green}${newVersion}${colors.reset}.`);
+        logSuccess('🔖', 'Current version %s up to %s.', oldVersion, newVersion);
         return true;
     } catch (error) {
         logError('❌', 'Error updating version in package.json');

@@ -14,12 +14,29 @@ function log(emoji, message, color = colors.green) {
     console.log(` ${emoji} ${message}`);
 }
 
-function logSuccess(emoji, message) {
-    log(emoji, `${colors.green}${message}${colors.reset}`);
+function formatLogMessage(template, args, color) {
+    if (!args || args.length === 0) {
+        return template;
+    }
+
+    let argIndex = 0;
+    return template.replace(/%s/g, () => {
+        if (argIndex >= args.length) {
+            return '%s';
+        }
+
+        const value = args[argIndex];
+        argIndex += 1;
+        return `${color}${String(value)}${colors.reset}`;
+    });
 }
 
-function logError(emoji, message) {
-    log(emoji, `${colors.red}${message}${colors.reset}`);
+function logSuccess(emoji, message, ...args) {
+    log(emoji, formatLogMessage(message, args, colors.green));
+}
+
+function logError(emoji, message, ...args) {
+    log(emoji, formatLogMessage(message, args, colors.red));
 }
 
 function execSilent(command) {
