@@ -17,7 +17,7 @@ function getPrettierRunner() {
 function ensurePrettierAvailable() {
     const runner = getPrettierRunner();
     if (!runner) {
-        logError('❌', 'Prettier is not available. Install it or use npx.');
+        logError('❌', 'Prettier недоступен. Установите его или используйте npx.');
         return null;
     }
     return runner;
@@ -28,7 +28,7 @@ function checkChangelogWithPrettier() {
     if (!runner) return false;
     const ok = execCommand(`${runner} --check CHANGELOG.md`);
     if (!ok) {
-        logError('❌', 'CHANGELOG.md failed Prettier check. Fix formatting before proceeding.');
+        logError('❌', 'Файл CHANGELOG.md не прошел проверку Prettier. Исправьте форматирование перед продолжением.');
         return false;
     }
     return true;
@@ -51,7 +51,7 @@ function changelogChangeHeader() {
         );
 
         fs.writeFileSync('CHANGELOG.md', updatedChangelog);
-        logSuccess('🔄', 'Update header 🚀 [%s].', currentVersion);
+        logSuccess('🔄', 'Заголовок обновлен до 🚀 [%s].', currentVersion);
         return true;
     } catch (error) {
         return false;
@@ -67,7 +67,7 @@ function changelogRemoveEmptyChapters() {
         const updatedData = data.replaceAll(/###.*\n\n_.*_\n\n/gm, '');
         fs.writeFileSync('CHANGELOG.md', updatedData);
 
-        logSuccess('🧹', 'Remove empty chapters.');
+        logSuccess('🧹', 'Пустые разделы удалены.');
         return true;
     } catch (error) {
         return false;
@@ -93,7 +93,7 @@ function changelogAddUnreleasedBlock() {
         );
 
         fs.writeFileSync('CHANGELOG.md', updatedChangelog);
-        logSuccess('📋', 'Add unreleased block.');
+        logSuccess('📋', 'Блок unreleased добавлен.');
         return true;
     } catch (error) {
         return false;
@@ -102,10 +102,10 @@ function changelogAddUnreleasedBlock() {
 
 function changelogCommit() {
     const addSuccess = execCommand('git add CHANGELOG.md');
-    const commitSuccess = execCommand('git commit --message "📝 Update changelog." --no-verify');
+    const commitSuccess = execCommand('git commit --message "📝 Обновить changelog." --no-verify');
 
     if (addSuccess && commitSuccess) {
-        logSuccess('📝', 'Commit updated changelog.');
+        logSuccess('📝', 'Коммит с обновленным changelog создан.');
         return true;
     }
     return false;
@@ -131,16 +131,16 @@ function askQuestion(question) {
 async function extractTaskFromBranch() {
     const currentBranch = getCurrentBranch();
     if (!currentBranch) {
-        logError('❌', 'Cannot get current branch name.');
+        logError('❌', 'Не удалось получить имя текущей ветки.');
         return null;
     }
     
     const taskMatch = currentBranch.match(/([a-zA-Z]+-[0-9]+)/);
     if (!taskMatch) {
-        console.log(`⚠️  ${colors.yellow}Branch name "${currentBranch}" does not contain task number in format [a-zA-Z]+-[0-9]+.${colors.reset}`);
-        const task = await askQuestion('📝 Please enter task number (e.g. SPEC-123): ');
+        console.log(`⚠️  ${colors.yellow}Имя ветки "${currentBranch}" не содержит номер задачи в формате [a-zA-Z]+-[0-9]+.${colors.reset}`);
+        const task = await askQuestion('📝 Введите номер задачи (например, SPEC-123): ');
         if (!task || !task.match(/^[a-zA-Z]+-[0-9]+$/)) {
-            logError('❌', 'Invalid task format. Expected format: [a-zA-Z]+-[0-9]+');
+            logError('❌', 'Неверный формат задачи. Ожидается формат: [a-zA-Z]+-[0-9]+');
             return null;
         }
         return task;
@@ -154,24 +154,24 @@ async function getGitUser() {
     let email = execSilent('git config user.email');
     
     if (!name || !email) {
-        console.log(`⚠️  ${colors.yellow}Git user name and email are not configured.${colors.reset}`);
-        console.log(`💡 You can configure them using:`);
-        console.log(`   git config user.name "Your Name"`);
+        console.log(`⚠️  ${colors.yellow}Имя и email пользователя git не настроены.${colors.reset}`);
+        console.log(`💡 Их можно настроить так:`);
+        console.log(`   git config user.name "Ваше Имя"`);
         console.log(`   git config user.email "your.email@domain.com"`);
         console.log('');
         
         if (!name) {
-            name = await askQuestion('👤 Please enter your name: ');
+            name = await askQuestion('👤 Введите ваше имя: ');
             if (!name) {
-                logError('❌', 'Name is required.');
+                logError('❌', 'Имя обязательно.');
                 return null;
             }
         }
         
         if (!email) {
-            email = await askQuestion('📧 Please enter your email: ');
+            email = await askQuestion('📧 Введите ваш email: ');
             if (!email || !email.includes('@')) {
-                logError('❌', 'Valid email is required.');
+                logError('❌', 'Требуется корректный email.');
                 return null;
             }
         }
@@ -226,16 +226,16 @@ async function selectSection(availableSections) {
         return availableSections[0];
     }
     
-    console.log(`\n📋 Please select a section:`);
+    console.log(`\n📋 Выберите раздел:`);
     availableSections.forEach((section, index) => {
         console.log(`   ${index + 1}. ${section}`);
     });
     
-    const choice = await askQuestion('\n🔢 Enter section number: ');
+    const choice = await askQuestion('\n🔢 Введите номер раздела: ');
     const choiceNum = parseInt(choice);
     
     if (isNaN(choiceNum) || choiceNum < 1 || choiceNum > availableSections.length) {
-        logError('❌', 'Invalid choice.');
+        logError('❌', 'Неверный выбор.');
         return null;
     }
     
@@ -243,7 +243,7 @@ async function selectSection(availableSections) {
 }
 
 function displayContext(lines, insertIndex, entry) {
-    console.log('\n📝 Changelog updated:');
+    console.log('\n📝 Changelog обновлен:');
     
     if (insertIndex > 0) {
         console.log(`   ${colors.reset}${lines[insertIndex - 1]}${colors.reset}`);
@@ -282,16 +282,16 @@ async function changelogAppend(message) {
 async function prepareChangelogEntry(message) {
     try {
         const task = await extractTaskFromBranch();
-        if (!task) return { ok: false, reason: 'Cannot resolve task ID.' };
+        if (!task) return { ok: false, reason: 'Не удалось определить ID задачи.' };
 
         const user = await getGitUser();
-        if (!user) return { ok: false, reason: 'Cannot resolve git user.' };
+        if (!user) return { ok: false, reason: 'Не удалось определить пользователя git.' };
 
         const formattedMessage = formatMessage(message);
         const entry = `- ${task} ${formattedMessage} ${user}`;
         const availableSections = detectSectionFromBranch();
         const selectedSection = await selectSection(availableSections);
-        if (!selectedSection) return { ok: false, reason: 'Section selection failed.' };
+        if (!selectedSection) return { ok: false, reason: 'Не удалось выбрать раздел.' };
 
         const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
         const lines = changelog.split('\n');
@@ -305,7 +305,7 @@ async function prepareChangelogEntry(message) {
         }
 
         if (sectionIndex === -1) {
-            return { ok: false, reason: `Cannot find "${selectedSection}" section in CHANGELOG.md.` };
+            return { ok: false, reason: `Не удалось найти раздел "${selectedSection}" в CHANGELOG.md.` };
         }
 
         return {
@@ -320,7 +320,7 @@ async function prepareChangelogEntry(message) {
             }
         };
     } catch (error) {
-        return { ok: false, reason: `Error preparing changelog entry: ${error.message}` };
+        return { ok: false, reason: `Ошибка при подготовке записи changelog: ${error.message}` };
     }
 }
 
@@ -359,10 +359,10 @@ function appendPreparedChangelogEntry(context) {
 
         fs.writeFileSync('CHANGELOG.md', lines.join('\n'));
         displayContext(lines, insertIndex, entry);
-        logSuccess('✅', 'Entry added to %s', selectedSection);
+        logSuccess('✅', 'Запись добавлена в %s', selectedSection);
         return true;
     } catch (error) {
-        logError('❌', 'Error adding changelog entry: %s', error.message);
+        logError('❌', 'Ошибка при добавлении записи changelog: %s', error.message);
         return false;
     }
 }

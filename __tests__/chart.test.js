@@ -151,7 +151,7 @@ describe('Chart', () => {
             runCommand.mockImplementation(async (spec) => spec.checks.find((item) => item.name === 'valid-semver').run({}));
             await expect(chart.chartCreateTag('1.2')).resolves.toEqual({
                 ok: false,
-                reason: 'Version "1.2" is not a valid semver.'
+                reason: 'Версия "1.2" не соответствует semver.'
             });
         });
 

@@ -40,14 +40,14 @@ describe("development", () => {
       getPackageManager.mockReturnValue("bun");
 
       expect(fn()).toBe(false);
-      expect(logError).toHaveBeenCalledWith("⚠️", "Bun not implemented");
+      expect(logError).toHaveBeenCalledWith("⚠️", "Bun пока не поддерживается");
     });
 
     test("returns false when package manager missing", () => {
       getPackageManager.mockReturnValue(null);
 
       expect(fn()).toBe(false);
-      expect(logError).toHaveBeenCalledWith("⚠️", "No package manager found");
+      expect(logError).toHaveBeenCalledWith("⚠️", "Менеджер пакетов не найден");
     });
   });
 
@@ -75,6 +75,6 @@ describe("development", () => {
     getPackageManager.mockReturnValue(undefined);
 
     expect(development.build()).toBe(false);
-    expect(logError).toHaveBeenCalledWith("⚠️", "No package manager found");
+    expect(logError).toHaveBeenCalledWith("⚠️", "Менеджер пакетов не найден");
   });
 });

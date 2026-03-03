@@ -37,7 +37,7 @@ describe("git", () => {
 
     expect(git.goToMainBranch()).toBe(true);
     expect(execCommand).toHaveBeenCalledWith("git switch main");
-    expect(logSuccess).toHaveBeenCalledWith("🌿", "Swap to branch %s.", "main");
+    expect(logSuccess).toHaveBeenCalledWith("🌿", "Переключение на ветку %s выполнено.", "main");
   });
 
   test("goToMainBranch fail", () => {
@@ -54,7 +54,7 @@ describe("git", () => {
 
     expect(git.goToDevBranch()).toBe(true);
     expect(execCommand).toHaveBeenCalledWith("git switch dev");
-    expect(logSuccess).toHaveBeenCalledWith("🌿", "Swap to branch %s.", "dev");
+    expect(logSuccess).toHaveBeenCalledWith("🌿", "Переключение на ветку %s выполнено.", "dev");
   });
 
   test("goToDevBranch fail", () => {

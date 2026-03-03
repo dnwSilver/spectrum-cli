@@ -30,7 +30,7 @@ async function runCommand(spec) {
     } = spec || {};
 
     if (!name) {
-        logError('❌', 'Command name is required.');
+        logError('❌', 'Требуется имя команды.');
         return false;
     }
 
@@ -38,12 +38,12 @@ async function runCommand(spec) {
         const checkName = check.name || 'unknown-check';
         const checkResult = normalizeCheckResult(
             await check.run(context),
-            `Check failed: ${checkName}`
+            `Проверка не пройдена: ${checkName}`
         );
 
         if (!checkResult.ok) {
             /* istanbul ignore next */
-            logError('❌', '[%s] Preflight failed (%s): %s', name, checkName, checkResult.reason || 'unknown reason');
+            logError('❌', '[%s] Предпроверка не пройдена (%s): %s', name, checkName, checkResult.reason || 'неизвестная причина');
             return false;
         }
 
@@ -56,12 +56,12 @@ async function runCommand(spec) {
         const stepName = step.name || 'unknown-step';
         const ok = await step.run(context);
         if (!ok) {
-            logError('❌', '[%s] Step failed: %s', name, stepName);
+            logError('❌', '[%s] Шаг не выполнен: %s', name, stepName);
             return false;
         }
     }
 
-    logSuccess('✅', '[%s] Completed.', name);
+    logSuccess('✅', '[%s] Выполнено.', name);
     return true;
 }
 

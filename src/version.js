@@ -26,10 +26,10 @@ function updateVersionFile(versionType) {
 
         packageJson.version = newVersion;
         fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
-        logSuccess('🔖', 'Current version %s up to %s.', oldVersion, newVersion);
+        logSuccess('🔖', 'Версия обновлена с %s до %s.', oldVersion, newVersion);
         return true;
     } catch (error) {
-        logError('❌', 'Error updating version in package.json');
+        logError('❌', 'Ошибка при обновлении версии в package.json');
         return false;
     }
 }

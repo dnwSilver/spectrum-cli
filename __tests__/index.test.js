@@ -177,7 +177,7 @@ describe("index CLI wiring", () => {
 
     await append._action("Message");
 
-    expect(console.error).toHaveBeenCalledWith("❌ Error: boom");
+    expect(console.error).toHaveBeenCalledWith("❌ Ошибка: boom");
     expect(process.exit).toHaveBeenCalledWith(1);
   });
 
@@ -207,9 +207,9 @@ describe("index CLI wiring", () => {
 
     const text = mockState.helpConfig.formatHelp(mockState.root, helper);
 
-    expect(text).toContain("Usage: spectrum <command>");
-    expect(text).toContain("Commands:");
-    expect(text).toContain("Options:");
+    expect(text).toContain("Использование: spectrum <command>");
+    expect(text).toContain("Команды:");
+    expect(text).toContain("Опции:");
     expect(text).toContain("[r]");
   });
 
@@ -241,7 +241,7 @@ describe("index CLI wiring", () => {
     };
 
     const text = mockState.helpConfig.formatHelp(mockState.root, helper);
-    expect(text).toContain("Usage: spectrum");
+    expect(text).toContain("Использование: spectrum");
   });
 
   test("custom help formatter renders command without aliases", () => {
@@ -264,7 +264,7 @@ describe("index CLI wiring", () => {
     };
 
     const text = mockState.helpConfig.formatHelp(mockState.root, helper);
-    expect(text).toContain("Usage: spectrum chart");
+    expect(text).toContain("Использование: spectrum chart");
     expect(text).toContain("chart commands");
     expect(text).toContain("deploy");
     expect(text).toContain("deploy chart");

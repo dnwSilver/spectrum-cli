@@ -50,7 +50,7 @@ describe("release", () => {
     utils.getVersion.mockReturnValue(null);
 
     expect(release.releaseCreate()).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Cannot get version from package.json");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "Не удалось получить версию из package.json");
   });
 
   test("releaseCreate success", () => {
@@ -92,7 +92,7 @@ describe("release", () => {
     expect(utils.getMergeRequestUrl).toHaveBeenCalledWith("release/1.2.3", "main");
     expect(utils.logSuccess).toHaveBeenCalledWith(
       "🌐",
-      "Create Merge Request: %s",
+      "Создать Merge Request: %s",
       "https://gitlab.spectrumdata.tech/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main"
     );
     expect(git.goToMainBranch).toHaveBeenCalled();

@@ -33,7 +33,7 @@ describe("command-executor", () => {
     });
 
     expect(result).toBe(true);
-    expect(logSuccess).toHaveBeenCalledWith("✅", "[%s] Completed.", "demo");
+    expect(logSuccess).toHaveBeenCalledWith("✅", "[%s] Выполнено.", "demo");
   });
 
   test("stops on failed step", async () => {
@@ -51,7 +51,7 @@ describe("command-executor", () => {
   test("fails when command name is missing", async () => {
     const result = await runCommand({});
     expect(result).toBe(false);
-    expect(logError).toHaveBeenCalledWith("❌", "Command name is required.");
+    expect(logError).toHaveBeenCalledWith("❌", "Требуется имя команды.");
   });
 
   test("fails when command spec is undefined", async () => {
@@ -66,7 +66,7 @@ describe("command-executor", () => {
       steps: [{ name: "s1", run: () => true }],
     });
     expect(result).toBe(false);
-    expect(logError).toHaveBeenCalledWith("❌", "[%s] Preflight failed (%s): %s", "demo", "a", "custom reason");
+    expect(logError).toHaveBeenCalledWith("❌", "[%s] Предпроверка не пройдена (%s): %s", "demo", "a", "custom reason");
   });
 
   test("normalizes object preflight result with data merge", async () => {
@@ -96,7 +96,7 @@ describe("command-executor", () => {
       steps: [{ run: () => true }],
     });
     expect(result).toBe(true);
-    expect(logSuccess).toHaveBeenCalledWith("✅", "[%s] Completed.", "demo");
+    expect(logSuccess).toHaveBeenCalledWith("✅", "[%s] Выполнено.", "demo");
   });
 
   test("uses fallback reason for boolean false preflight", async () => {
@@ -108,10 +108,10 @@ describe("command-executor", () => {
     expect(result).toBe(false);
     expect(logError).toHaveBeenCalledWith(
       "❌",
-      "[%s] Preflight failed (%s): %s",
+      "[%s] Предпроверка не пройдена (%s): %s",
       "demo",
       "strict-check",
-      "Check failed: strict-check"
+      "Проверка не пройдена: strict-check"
     );
   });
 
@@ -124,10 +124,10 @@ describe("command-executor", () => {
     expect(result).toBe(false);
     expect(logError).toHaveBeenCalledWith(
       "❌",
-      "[%s] Preflight failed (%s): %s",
+      "[%s] Предпроверка не пройдена (%s): %s",
       "demo",
       "strict-check",
-      "Check failed: strict-check"
+      "Проверка не пройдена: strict-check"
     );
   });
 });

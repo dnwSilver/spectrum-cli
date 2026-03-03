@@ -22,7 +22,7 @@ function releaseCreate() {
 
     const currentVersion = getVersion();
     if (!currentVersion) {
-        logError('❌', 'Cannot get version from package.json');
+        logError('❌', 'Не удалось получить версию из package.json');
         return false;
     }
 
@@ -30,7 +30,7 @@ function releaseCreate() {
         return false;
     }
 
-    logSuccess('🌱', 'Create new release branch %s.', getCurrentBranch());
+    logSuccess('🌱', 'Создана новая release-ветка %s.', getCurrentBranch());
     return true;
 }
 
@@ -40,10 +40,10 @@ function releasePush() {
         return false;
     }
 
-    logSuccess('📤', 'Push release branch %s.', currentBranch);
+    logSuccess('📤', 'Release-ветка %s отправлена.', currentBranch);
     const mrUrl = getMergeRequestUrl(currentBranch, getMainBranch());
     if (mrUrl) {
-        logSuccess('🌐', 'Create Merge Request: %s', mrUrl);
+        logSuccess('🌐', 'Создать Merge Request: %s', mrUrl);
     }
     return goToMainBranch();
 }
@@ -51,7 +51,7 @@ function releasePush() {
 function releaseCheckChangelogLint() {
     const result = requireChangelogFormatted();
     if (!result.ok) {
-        logError('❌', result.reason || 'CHANGELOG.md failed linting.');
+        logError('❌', result.reason || 'Файл CHANGELOG.md не прошел линтинг.');
         return false;
     }
     return true;
@@ -79,7 +79,7 @@ function releaseClose() {
                     if (!execCommand(`git merge ${mainBranch}`)) {
                         return false;
                     }
-                    logSuccess('🔀', 'Merge branch %s with %s.', getCurrentBranch(), mainBranch);
+                    logSuccess('🔀', 'Ветка %s смержена с %s.', getCurrentBranch(), mainBranch);
                     return true;
                 }
             },
@@ -90,7 +90,7 @@ function releaseClose() {
                     if (!execCommand(`git push origin ${currentBranch} -o ci.skip`)) {
                         return false;
                     }
-                    logSuccess('📤', 'Push branch %s.', currentBranch);
+                    logSuccess('📤', 'Ветка %s отправлена.', currentBranch);
                     return true;
                 }
             }

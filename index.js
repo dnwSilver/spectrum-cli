@@ -16,91 +16,91 @@ async function runAction(action, ...args) {
       process.exit(1);
     }
   } catch (error) {
-    console.error(`❌ Error: ${error.message}`);
+    console.error(`❌ Ошибка: ${error.message}`);
     process.exit(1);
   }
 }
 
 program
   .name("spectrum")
-  .description("🚀 Spectrum CLI for development workflow")
+  .description("🚀 Spectrum CLI для процесса разработки")
   .version(pkgVersion, "-v, --version");
 
-// Release commands
+// Команды релиза
 const releaseCmd = program
   .command("release")
-  .description("Release management commands");
+  .description("Команды управления релизом");
 
 releaseCmd
   .command("start")
-  .description("Start full release process")
+  .description("Запустить полный процесс релиза")
   .action(() => runAction(release.releaseStart));
 
 releaseCmd
   .command("close")
-  .description("Close release and merge to dev")
+  .description("Закрыть релиз и влить в dev")
   .action(() => runAction(release.releaseClose));
 
 releaseCmd
   .command("deploy")
-  .description("Deploy release (create and push tag)")
+  .description("Деплой релиза (создать и отправить тег)")
   .action(() => runAction(git.gitCreateTagAndPush));
 
-// Version up commands
+// Команды обновления версии
 const versionCmd = program
   .command("version")
-  .description("Update version using semantic versioning");
+  .description("Обновить версию по semantic versioning");
 
 const upCmd = versionCmd
   .command("up")
-  .description("Update version using semantic versioning");
+  .description("Обновить версию по semantic versioning");
 
 upCmd
   .command("major")
-  .description("Bump major version (x.0.0)")
+  .description("Повысить major версию (x.0.0)")
   .action(() => runAction(() => version.setVersion("major")));
 
 upCmd
   .command("minor")
-  .description("Bump minor version (x.y.0)")
+  .description("Повысить minor версию (x.y.0)")
   .action(() => runAction(() => version.setVersion("minor")));
 
 upCmd
   .command("patch")
-  .description("Bump patch version (x.y.z)")
+  .description("Повысить patch версию (x.y.z)")
   .action(() => runAction(() => version.setVersion("patch")));
 
-// Changelog commands
+// Команды changelog
 const changelogCmd = program
   .command("changelog")
-  .description("Changelog management commands");
+  .description("Команды управления changelog");
 
 changelogCmd
   .command("append <message>")
-  .description("Append entry to changelog with task number from branch")
+  .description("Добавить запись в changelog с номером задачи из ветки")
   .action((message) => runAction(() => changelog.changelogAppend(message)));
 
-// Chart commands
+// Команды chart
 const chartCmd = program
   .command("chart")
-  .description("Chart tag management commands");
+  .description("Команды управления тегами chart");
 
 chartCmd
   .command("create <version>")
-  .description("Create and push chart tag (chart-<name>-<version>)")
+  .description("Создать и отправить chart-тег (chart-<name>-<version>)")
   .action((version) => runAction(() => chart.chartCreateTag(version)));
 
 chartCmd
   .command("verify <source_path>")
-  .description("Verify chart ingress paths against Next.js source")
+  .description("Проверить пути ingress chart относительно исходников Next.js")
   .action((sourcePath) => runAction(() => chart.chartVerify(sourcePath)));
 
 chartCmd
   .command("deploy")
-  .description("Deploy latest chart version to helmrelease files")
+  .description("Задеплоить последнюю версию chart в файлы helmrelease")
   .action(() => runAction(chart.chartDeploy));
 
-// Override help to show custom format with aliases
+// Переопределяем help, чтобы показать кастомный формат с алиасами
 program.configureHelp({
   formatHelp: (cmd, helper) => {
     const termWidth = helper.padWidth(cmd, helper);
@@ -114,19 +114,19 @@ program.configureHelp({
 
     let output = "";
 
-    // Usage
+    // Использование
     if (cmdUsage) {
-      output += `Usage: ${cmdUsage}\n\n`;
+      output += `Использование: ${cmdUsage}\n\n`;
     }
 
-    // Description
+    // Описание
     if (cmdDescription) {
       output += `${cmdDescription}\n\n`;
     }
 
-    // Commands with aliases
+    // Команды с алиасами
     if (commands.length > 0) {
-      output += "Commands:\n";
+      output += "Команды:\n";
       commands.forEach((cmd) => {
         const nameAndArgs = cmd.name() + cmd.usage().replace(/^[^\s]+\s*/, " ");
         const aliases = cmd.aliases();
@@ -142,9 +142,9 @@ program.configureHelp({
       output += "\n";
     }
 
-    // Options
+    // Опции
     if (options.length > 0) {
-      output += "Options:\n";
+      output += "Опции:\n";
       options.forEach((option) => {
         const flags = helper.optionTerm(option);
         const description = helper.optionDescription(option);

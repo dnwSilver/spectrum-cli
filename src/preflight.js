@@ -23,7 +23,7 @@ function getPrettierRunner() {
 
 function requireGitRepo() {
     if (!execCommand('git rev-parse --is-inside-work-tree')) {
-        return fail('Not inside a git repository.');
+        return fail('Текущая директория не является git-репозиторием.');
     }
     return ok();
 }
@@ -31,10 +31,10 @@ function requireGitRepo() {
 function requireCleanWorkingTree() {
     const status = execSilent('git status --porcelain');
     if (status === null) {
-        return fail('Cannot read git working tree status.');
+        return fail('Не удалось получить состояние рабочего дерева git.');
     }
     if (status.trim() !== '') {
-        return fail('Working tree is not clean.');
+        return fail('Рабочее дерево не чистое.');
     }
     return ok();
 }
@@ -42,7 +42,7 @@ function requireCleanWorkingTree() {
 function requireMainAndDevBranches() {
     const branches = execSilent('git branch -r');
     if (!branches) {
-        return fail('Cannot read remote branches.');
+        return fail('Не удалось получить список удаленных веток.');
     }
 
     const mainBranch = getMainBranch();
@@ -51,7 +51,7 @@ function requireMainAndDevBranches() {
     const hasDev = branches.includes(`origin/${devBranch}`);
 
     if (!hasMain || !hasDev) {
-        return fail(`Required remote branches are missing (origin/${mainBranch}, origin/${devBranch}).`);
+        return fail(`Отсутствуют обязательные удаленные ветки (origin/${mainBranch}, origin/${devBranch}).`);
     }
 
     return ok({ mainBranch, devBranch });
@@ -60,10 +60,10 @@ function requireMainAndDevBranches() {
 function requireCurrentBranch(expectedBranch) {
     const currentBranch = getCurrentBranch();
     if (!currentBranch) {
-        return fail('Cannot determine current branch.');
+        return fail('Не удалось определить текущую ветку.');
     }
     if (currentBranch !== expectedBranch) {
-        return fail(`Current branch is "${currentBranch}", expected "${expectedBranch}".`);
+        return fail(`Текущая ветка "${currentBranch}", ожидалась "${expectedBranch}".`);
     }
     return ok({ currentBranch });
 }
@@ -72,10 +72,10 @@ function requireOnMainBranch() {
     const mainBranch = getMainBranch();
     const currentBranch = getCurrentBranch();
     if (!currentBranch) {
-        return fail('Cannot determine current branch.');
+        return fail('Не удалось определить текущую ветку.');
     }
     if (currentBranch !== mainBranch) {
-        return fail(`Current branch is "${currentBranch}", expected "${mainBranch}".`);
+        return fail(`Текущая ветка "${currentBranch}", ожидалась "${mainBranch}".`);
     }
     return ok({ mainBranch, currentBranch });
 }
@@ -83,7 +83,7 @@ function requireOnMainBranch() {
 function requireRemoteOrigin() {
     const remoteUrl = execSilent('git remote get-url origin');
     if (!remoteUrl) {
-        return fail('Git remote "origin" is not configured.');
+        return fail('Удаленный репозиторий "origin" не настроен.');
     }
     return ok({ remoteOrigin: remoteUrl });
 }
@@ -91,7 +91,7 @@ function requireRemoteOrigin() {
 function requireRemoteReachable() {
     const remoteHeads = execSilent('git ls-remote --heads origin');
     if (remoteHeads === null) {
-        return fail('Cannot access remote "origin".');
+        return fail('Не удалось получить доступ к удаленному репозиторию "origin".');
     }
     return ok();
 }
@@ -99,31 +99,31 @@ function requireRemoteReachable() {
 function requireCurrentBranchUpToDateWithRemote() {
     const currentBranch = getCurrentBranch();
     if (!currentBranch) {
-        return fail('Cannot determine current branch.');
+        return fail('Не удалось определить текущую ветку.');
     }
 
     if (!execCommand('git fetch --all --prune --jobs=10')) {
-        return fail('Cannot fetch remote changes.');
+        return fail('Не удалось получить изменения с удаленного репозитория.');
     }
 
     const upstreamBranch = execSilent('git rev-parse --abbrev-ref --symbolic-full-name "@{u}"');
     if (!upstreamBranch || !upstreamBranch.trim()) {
-        return fail(`Current branch "${currentBranch}" has no upstream branch.`);
+        return fail(`Для текущей ветки "${currentBranch}" не настроена upstream-ветка.`);
     }
 
     const aheadBehind = execSilent(`git rev-list --left-right --count HEAD...${upstreamBranch.trim()}`);
     if (!aheadBehind) {
-        return fail(`Cannot compare current branch "${currentBranch}" with "${upstreamBranch.trim()}".`);
+        return fail(`Не удалось сравнить текущую ветку "${currentBranch}" с "${upstreamBranch.trim()}".`);
     }
 
     const parts = aheadBehind.trim().split(/\s+/);
     const behindBy = Number(parts[1] || 0);
     if (!Number.isFinite(behindBy)) {
-        return fail(`Cannot parse ahead/behind info for "${upstreamBranch.trim()}".`);
+        return fail(`Не удалось разобрать информацию ahead/behind для "${upstreamBranch.trim()}".`);
     }
 
     if (behindBy > 0) {
-        return fail(`Remote branch has new commits (${behindBy}). Run "git pull" and retry.`);
+        return fail(`В удаленной ветке есть новые коммиты (${behindBy}). Выполните "git pull" и повторите попытку.`);
     }
 
     return ok({ currentBranch, upstreamBranch: upstreamBranch.trim() });
@@ -131,7 +131,7 @@ function requireCurrentBranchUpToDateWithRemote() {
 
 function requireFileExists(filePath) {
     if (!fs.existsSync(filePath)) {
-        return fail(`Required file "${filePath}" does not exist.`);
+        return fail(`Обязательный файл "${filePath}" не существует.`);
     }
     return ok();
 }
@@ -139,10 +139,10 @@ function requireFileExists(filePath) {
 function requirePackageVersion() {
     const version = getVersion();
     if (!version) {
-        return fail('Cannot read version from package.json.');
+        return fail('Не удалось прочитать версию из package.json.');
     }
     if (!SEMVER_PATTERN.test(version)) {
-        return fail(`Version "${version}" is not valid semver.`);
+        return fail(`Версия "${version}" не соответствует semver.`);
     }
     return ok({ version });
 }
@@ -150,12 +150,12 @@ function requirePackageVersion() {
 function requireTagMissing(tagName) {
     const localTag = execSilent(`git tag -l "${tagName}"`);
     if (localTag && localTag.trim()) {
-        return fail(`Tag "${tagName}" already exists locally.`);
+        return fail(`Тег "${tagName}" уже существует локально.`);
     }
 
     const remoteTag = execSilent(`git ls-remote --tags origin "refs/tags/${tagName}"`);
     if (remoteTag && remoteTag.trim()) {
-        return fail(`Tag "${tagName}" already exists on origin.`);
+        return fail(`Тег "${tagName}" уже существует на origin.`);
     }
 
     return ok();
@@ -164,10 +164,10 @@ function requireTagMissing(tagName) {
 function requireOnReleaseBranch() {
     const currentBranch = getCurrentBranch();
     if (!currentBranch) {
-        return fail('Cannot determine current branch.');
+        return fail('Не удалось определить текущую ветку.');
     }
     if (!currentBranch.startsWith('release/')) {
-        return fail(`Current branch is "${currentBranch}", expected "release/*".`);
+        return fail(`Текущая ветка "${currentBranch}", ожидалась "release/*".`);
     }
     return ok({ currentBranch });
 }
@@ -175,11 +175,11 @@ function requireOnReleaseBranch() {
 function requireReleaseBranchMissing(branchName) {
     const localBranch = execSilent(`git branch --list "${branchName}"`);
     if (localBranch && localBranch.trim()) {
-        return fail(`Branch "${branchName}" already exists locally.`);
+        return fail(`Ветка "${branchName}" уже существует локально.`);
     }
     const remoteBranch = execSilent(`git ls-remote --heads origin "refs/heads/${branchName}"`);
     if (remoteBranch && remoteBranch.trim()) {
-        return fail(`Branch "${branchName}" already exists on origin.`);
+        return fail(`Ветка "${branchName}" уже существует на origin.`);
     }
     return ok();
 }
@@ -187,7 +187,7 @@ function requireReleaseBranchMissing(branchName) {
 function requirePrettierAvailable() {
     const runner = getPrettierRunner();
     if (!runner) {
-        return fail('Prettier is not available.');
+        return fail('Prettier недоступен.');
     }
     return ok({ prettierRunner: runner });
 }
@@ -195,10 +195,10 @@ function requirePrettierAvailable() {
 function requireChangelogFormatted() {
     const runner = getPrettierRunner();
     if (!runner) {
-        return fail('Prettier is not available.');
+        return fail('Prettier недоступен.');
     }
     if (!execCommand(`${runner} --check CHANGELOG.md`)) {
-        return fail('CHANGELOG.md failed Prettier check.');
+        return fail('Файл CHANGELOG.md не прошел проверку Prettier.');
     }
     return ok({ prettierRunner: runner });
 }
@@ -206,7 +206,7 @@ function requireChangelogFormatted() {
 function requireSingleChart() {
     const chartsDir = 'charts';
     if (!fs.existsSync(chartsDir)) {
-        return fail('Cannot find charts directory.');
+        return fail('Не удалось найти директорию charts.');
     }
 
     const entries = fs.readdirSync(chartsDir, { withFileTypes: true });
@@ -216,11 +216,11 @@ function requireSingleChart() {
         .filter((chartFilePath) => fs.existsSync(chartFilePath));
 
     if (chartFiles.length === 0) {
-        return fail('Cannot find Chart.yaml in charts/<chart-name>/Chart.yaml.');
+        return fail('Не удалось найти Chart.yaml по пути charts/<chart-name>/Chart.yaml.');
     }
 
     if (chartFiles.length > 1) {
-        return fail(`Found multiple charts: ${chartFiles.join(', ')}.`);
+        return fail(`Найдено несколько chart-файлов: ${chartFiles.join(', ')}.`);
     }
 
     const chartFilePath = chartFiles[0];
@@ -228,7 +228,7 @@ function requireSingleChart() {
     const nameMatch = chartYaml.match(/^\s*name:\s*([^\s#]+)\s*$/m);
     const chartName = nameMatch ? nameMatch[1] : null;
     if (!chartName) {
-        return fail(`Cannot read chart name from ${chartFilePath}.`);
+        return fail(`Не удалось прочитать имя чарта из ${chartFilePath}.`);
     }
 
     return ok({ chartFilePath, chartName });
@@ -306,7 +306,7 @@ function findHelmReleaseFiles(baseDir = '.') {
 function requireHelmReleaseFiles() {
     const helmReleaseFiles = findHelmReleaseFiles('.');
     if (helmReleaseFiles.length === 0) {
-        return fail('Cannot find helmrelease.yaml files in the repository.');
+        return fail('Не удалось найти файлы helmrelease.yaml в репозитории.');
     }
     return ok({ helmReleaseFiles });
 }
@@ -314,10 +314,10 @@ function requireHelmReleaseFiles() {
 function requireSingleValuesYaml() {
     const valuesFiles = findValuesYamlFiles('charts');
     if (valuesFiles.length === 0) {
-        return fail('Cannot find values.yaml under charts/**/values.yaml.');
+        return fail('Не удалось найти values.yaml по маске charts/**/values.yaml.');
     }
     if (valuesFiles.length > 1) {
-        return fail(`Found multiple values.yaml files: ${valuesFiles.join(', ')}.`);
+        return fail(`Найдено несколько файлов values.yaml: ${valuesFiles.join(', ')}.`);
     }
     return ok({ valuesYamlPath: valuesFiles[0] });
 }
@@ -401,14 +401,14 @@ function extractYamlList(content, sectionName) {
 
 function requireIngressPathSections(valuesYamlPath) {
     if (!valuesYamlPath || !fs.existsSync(valuesYamlPath)) {
-        return fail(`Required file "${valuesYamlPath}" does not exist.`);
+        return fail(`Обязательный файл "${valuesYamlPath}" не существует.`);
     }
 
     let content = '';
     try {
         content = fs.readFileSync(valuesYamlPath, 'utf8');
     } catch (error) {
-        return fail(`Cannot read "${valuesYamlPath}".`);
+        return fail(`Не удалось прочитать "${valuesYamlPath}".`);
     }
 
     const api = extractYamlList(content, 'api');
@@ -416,13 +416,13 @@ function requireIngressPathSections(valuesYamlPath) {
     const assets = extractYamlList(content, 'assets');
 
     if (api.length === 0) {
-        return fail(`Missing or empty ingress.paths.api in "${valuesYamlPath}".`);
+        return fail(`Отсутствует или пуст ingress.paths.api в "${valuesYamlPath}".`);
     }
     if (pages.length === 0) {
-        return fail(`Missing or empty ingress.paths.pages in "${valuesYamlPath}".`);
+        return fail(`Отсутствует или пуст ingress.paths.pages в "${valuesYamlPath}".`);
     }
     if (assets.length === 0) {
-        return fail(`Missing or empty ingress.paths.assets in "${valuesYamlPath}".`);
+        return fail(`Отсутствует или пуст ingress.paths.assets в "${valuesYamlPath}".`);
     }
 
     return ok({
@@ -432,21 +432,21 @@ function requireIngressPathSections(valuesYamlPath) {
 
 function requireSourcePathDirectory(sourcePath) {
     if (!sourcePath || typeof sourcePath !== 'string') {
-        return fail('Source path is required.');
+        return fail('Требуется путь к исходникам.');
     }
     const resolved = path.resolve(sourcePath);
     if (!fs.existsSync(resolved)) {
-        return fail(`Source path does not exist: "${sourcePath}".`);
+        return fail(`Путь к исходникам не существует: "${sourcePath}".`);
     }
 
     let stat;
     try {
         stat = fs.statSync(resolved);
     } catch (error) {
-        return fail(`Cannot access source path: "${sourcePath}".`);
+        return fail(`Не удалось получить доступ к пути исходников: "${sourcePath}".`);
     }
     if (!stat.isDirectory()) {
-        return fail(`Source path is not a directory: "${sourcePath}".`);
+        return fail(`Путь к исходникам не является директорией: "${sourcePath}".`);
     }
 
     return ok({ sourcePath: resolved });
@@ -459,19 +459,19 @@ function hasNextConfig(sourcePath) {
 
 function requireNextProject(sourcePath) {
     if (!sourcePath) {
-        return fail('Source path is required.');
+        return fail('Требуется путь к исходникам.');
     }
 
     const pkgPath = path.join(sourcePath, 'package.json');
     if (!fs.existsSync(pkgPath)) {
-        return fail(`Cannot find package.json in "${sourcePath}".`);
+        return fail(`Не удалось найти package.json в "${sourcePath}".`);
     }
 
     let pkg;
     try {
         pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
     } catch (error) {
-        return fail(`Cannot parse package.json in "${sourcePath}".`);
+        return fail(`Не удалось разобрать package.json в "${sourcePath}".`);
     }
 
     const dependencies = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
@@ -479,7 +479,7 @@ function requireNextProject(sourcePath) {
     const nextConfigExists = hasNextConfig(sourcePath);
 
     if (!hasNextDependency && !nextConfigExists) {
-        return fail(`"${sourcePath}" does not look like a Next.js project.`);
+        return fail(`"${sourcePath}" не похож на проект Next.js.`);
     }
 
     return ok({
@@ -499,23 +499,23 @@ function requireNextProject(sourcePath) {
 
 function requireBuildCommandSupport(sourcePath) {
     if (!sourcePath) {
-        return fail('Source path is required.');
+        return fail('Требуется путь к исходникам.');
     }
 
     const pkgPath = path.join(sourcePath, 'package.json');
     if (!fs.existsSync(pkgPath)) {
-        return fail(`Cannot find package.json in "${sourcePath}".`);
+        return fail(`Не удалось найти package.json в "${sourcePath}".`);
     }
 
     let pkg;
     try {
         pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
     } catch (error) {
-        return fail(`Cannot parse package.json in "${sourcePath}".`);
+        return fail(`Не удалось разобрать package.json в "${sourcePath}".`);
     }
 
     if (!pkg.scripts || typeof pkg.scripts.build !== 'string') {
-        return fail(`Missing build script in "${pkgPath}".`);
+        return fail(`В "${pkgPath}" отсутствует скрипт build.`);
     }
 
     return ok({ sourceBuildScript: pkg.scripts.build });

@@ -13,7 +13,7 @@ const {
 function goToMainBranch() {
     const mainBranch = getMainBranch();
     if (execCommand(`git switch ${mainBranch}`)) {
-        logSuccess('🌿', 'Swap to branch %s.', mainBranch);
+        logSuccess('🌿', 'Переключение на ветку %s выполнено.', mainBranch);
         return true;
     }
     return false;
@@ -22,7 +22,7 @@ function goToMainBranch() {
 function goToDevBranch() {
     const devBranch = getDevelopBranch();
     if (execCommand(`git switch ${devBranch}`)) {
-        logSuccess('🌿', 'Swap to branch %s.', getCurrentBranch());
+        logSuccess('🌿', 'Переключение на ветку %s выполнено.', getCurrentBranch());
         return true;
     }
     return false;
@@ -34,7 +34,7 @@ function updateCurrentBranch() {
     const fetchSuccess = execCommand(`git fetch --all --prune --jobs=10`);
     
     if (pullSuccess && fetchSuccess) {
-        logSuccess('🔄', 'Pull and fetch from branch %s.', currentBranch);
+        logSuccess('🔄', 'Для ветки %s выполнены pull и fetch.', currentBranch);
         return true;
     }
     return false;
@@ -72,7 +72,7 @@ function gitLfsReset() {
     if (success) {
         execCommand('rm .gitattributes');
         execCommand('git restore .gitattributes');
-        logSuccess('📦', 'Reinstall git-lfs and clear files.');
+        logSuccess('📦', 'git-lfs переустановлен, файлы очищены.');
     }
     
     return success;
@@ -101,7 +101,7 @@ function gitCreateTagAndPush() {
                 name: 'create-tag',
                 run: (ctx) => {
                     if (!execCommand(`git tag v${ctx.version}`)) return false;
-                    logSuccess('🔖', 'Create tag v%s.', ctx.version);
+                    logSuccess('🔖', 'Создан тег v%s.', ctx.version);
                     return true;
                 }
             },
@@ -109,7 +109,7 @@ function gitCreateTagAndPush() {
                 name: 'push-tag',
                 run: (ctx) => {
                     if (!execCommand(`git push origin v${ctx.version}`)) return false;
-                    logSuccess('🚀', 'Push tag v%s.', ctx.version);
+                    logSuccess('🚀', 'Тег v%s отправлен.', ctx.version);
                     return true;
                 }
             }

@@ -371,17 +371,17 @@ function printSection(title, asIsList, toBeList) {
     const toBe = normalizeList(toBeList);
     const diff = buildGitLikeDiff(asIs, toBe, title);
 
-    console.log(`\n${title} paths diff (AS IS -> TO BE):`);
+    console.log(`\nСравнение путей ${title} (КАК ЕСТЬ -> КАК ДОЛЖНО БЫТЬ):`);
     console.log(`--- AS_IS/${title}`);
     console.log(`+++ TO_BE/${title}`);
     console.log(`@@ ${title} @@`);
     if (diff.removed.length === 0 && diff.added.length === 0) {
-        console.log('  (no changes)');
+        console.log('  (без изменений)');
     } else {
         diff.removed.forEach((item) => console.log(`${colors.yellow}-${item}${colors.reset}`));
         diff.added.forEach((item) => console.log(`${colors.red}+${item}${colors.reset}`));
     }
-    console.log(`${title} summary: added=${diff.added.length}, removed=${diff.removed.length}, unchanged=${diff.unchanged.length}`);
+    console.log(`${title} сводка: добавлено=${diff.added.length}, удалено=${diff.removed.length}, без изменений=${diff.unchanged.length}`);
 
     return diff;
 }
@@ -409,12 +409,12 @@ function chartVerify(sourcePath) {
                     if (api.length === 0 || pages.length === 0) {
                         const didBuild = runBuildInSourcePath(ctx.sourcePath, ctx.sourcePackageManager);
                         if (didBuild) {
-                            logSuccess('🛠️', 'Build completed in %s.', ctx.sourcePath);
+                            logSuccess('🛠️', 'Сборка успешно завершена в %s.', ctx.sourcePath);
                             const rebuilt = collectRoutesFromBuildArtifacts(ctx.sourcePath);
                             api = normalizeList(api.concat(rebuilt.api));
                             pages = normalizeList(pages.concat(rebuilt.pages));
                         } else {
-                            logError('⚠️', 'Build failed in %s. Falling back to filesystem routes.', ctx.sourcePath);
+                            logError('⚠️', 'Сборка в %s не удалась. Переходим к маршрутам из файловой системы.', ctx.sourcePath);
                         }
                     }
 
@@ -447,11 +447,11 @@ function chartVerify(sourcePath) {
                     ) > 0;
 
                     if (hasChanges) {
-                        logError('❌', '[chart verify] Differences detected.');
+                        logError('❌', '[chart verify] Обнаружены различия.');
                         return false;
                     }
 
-                    logSuccess('✅', '[chart verify] AS IS matches TO BE.');
+                    logSuccess('✅', '[chart verify] КАК ЕСТЬ совпадает с КАК ДОЛЖНО БЫТЬ.');
                     return true;
                 }
             }
@@ -471,7 +471,7 @@ function chartCreateTag(version) {
                 name: 'valid-semver',
                 run: () => {
                     if (!isSemver(version)) {
-                        return { ok: false, reason: `Version "${version}" is not a valid semver.` };
+                        return { ok: false, reason: `Версия "${version}" не соответствует semver.` };
                     }
                     return { ok: true, data: { version } };
                 }
@@ -488,10 +488,10 @@ function chartCreateTag(version) {
                 run: (ctx) => {
                     const tagName = `chart-${ctx.chartName}-${ctx.version}`;
                     if (!execCommand(`git tag "${tagName}"`)) {
-                        logError('❌', 'Cannot create tag %s.', tagName);
+                        logError('❌', 'Не удалось создать тег %s.', tagName);
                         return false;
                     }
-                    logSuccess('🔖', 'Created tag %s.', tagName);
+                    logSuccess('🔖', 'Создан тег %s.', tagName);
                     return true;
                 }
             },
@@ -500,10 +500,10 @@ function chartCreateTag(version) {
                 run: (ctx) => {
                     const tagName = `chart-${ctx.chartName}-${ctx.version}`;
                     if (!execCommand(`git push origin "${tagName}"`)) {
-                        logError('❌', 'Cannot push tag %s to origin.', tagName);
+                        logError('❌', 'Не удалось отправить тег %s в origin.', tagName);
                         return false;
                     }
-                    logSuccess('🚀', 'Pushed tag %s to origin.', tagName);
+                    logSuccess('🚀', 'Тег %s отправлен в origin.', tagName);
                     return true;
                 }
             }
@@ -691,11 +691,11 @@ function chartDeploy() {
                 run: (ctx) => {
                     const latestVersion = getLatestRemoteChartVersion(ctx.chartName);
                     if (!latestVersion) {
-                        logError('❌', 'Cannot find remote chart tag for %s.', ctx.chartName);
+                        logError('❌', 'Не удалось найти удаленный тег чарта для %s.', ctx.chartName);
                         return false;
                     }
                     ctx.latestChartVersion = latestVersion;
-                    logSuccess('🏷️', 'Latest remote chart version for %s is %s.', ctx.chartName, latestVersion);
+                    logSuccess('🏷️', 'Последняя удаленная версия чарта для %s: %s.', ctx.chartName, latestVersion);
                     return true;
                 }
             },
@@ -709,7 +709,7 @@ function chartDeploy() {
                     printDeployChanges(changes);
                     if (ctx.updatedFiles.length === 0) {
                         ctx.noUpdates = true;
-                        logSuccess('✅', 'All helmrelease.yaml files are already on latest chart version.');
+                        logSuccess('✅', 'Все файлы helmrelease.yaml уже используют последнюю версию чарта.');
                         return true;
                     }
 
@@ -734,67 +734,67 @@ function chartDeploy() {
                     }
                     const files = ctx.updatedFiles || [];
                     if (files.length === 0) {
-                        logSuccess('✅', 'No files were changed.');
+                        logSuccess('✅', 'Файлы не были изменены.');
                         return true;
                     }
 
                     const stagedBeforeAdd = splitGitNameOnly(execSilent('git diff --cached --name-only'));
                     const unstagedBeforeAdd = splitGitNameOnly(execSilent('git diff --name-only'));
                     if (stagedBeforeAdd === null || unstagedBeforeAdd === null) {
-                        logError('❌', 'Cannot verify changed files before commit.');
+                        logError('❌', 'Не удалось проверить измененные файлы перед коммитом.');
                         return false;
                     }
                     if (stagedBeforeAdd.length > 0) {
-                        logError('❌', 'Unexpected staged changes detected: %s', stagedBeforeAdd.join(', '));
+                        logError('❌', 'Обнаружены неожиданные изменения в индексе: %s', stagedBeforeAdd.join(', '));
                         return false;
                     }
 
                     const expectedSet = new Set(files);
                     const unexpectedChanges = unstagedBeforeAdd.filter((filePath) => !expectedSet.has(filePath));
                     if (unexpectedChanges.length > 0) {
-                        logError('❌', 'Unexpected file changes detected: %s', unexpectedChanges.join(', '));
+                        logError('❌', 'Обнаружены неожиданные изменения файлов: %s', unexpectedChanges.join(', '));
                         return false;
                     }
 
                     const missingExpectedChanges = files.filter((filePath) => !unstagedBeforeAdd.includes(filePath));
                     if (missingExpectedChanges.length > 0) {
-                        logError('❌', 'Expected updated files are missing in diff: %s', missingExpectedChanges.join(', '));
+                        logError('❌', 'В diff отсутствуют ожидаемые обновленные файлы: %s', missingExpectedChanges.join(', '));
                         return false;
                     }
 
                     const quoted = files.map((filePath) => `"${filePath}"`).join(' ');
                     if (!execCommand(`git add ${quoted}`)) {
-                        logError('❌', 'Cannot add updated helmrelease files.');
+                        logError('❌', 'Не удалось добавить обновленные файлы helmrelease.');
                         return false;
                     }
 
                     const stagedAfterAdd = splitGitNameOnly(execSilent('git diff --cached --name-only'));
                     if (stagedAfterAdd === null) {
-                        logError('❌', 'Cannot verify staged files after git add.');
+                        logError('❌', 'Не удалось проверить staged-файлы после git add.');
                         return false;
                     }
                     const unexpectedStaged = stagedAfterAdd.filter((filePath) => !expectedSet.has(filePath));
                     const missingStaged = files.filter((filePath) => !stagedAfterAdd.includes(filePath));
                     if (unexpectedStaged.length > 0 || missingStaged.length > 0) {
                         if (unexpectedStaged.length > 0) {
-                            logError('❌', 'Unexpected staged files detected: %s', unexpectedStaged.join(', '));
+                            logError('❌', 'Обнаружены неожиданные staged-файлы: %s', unexpectedStaged.join(', '));
                         }
                         if (missingStaged.length > 0) {
-                            logError('❌', 'Expected files are not staged: %s', missingStaged.join(', '));
+                            logError('❌', 'Ожидаемые файлы не добавлены в индекс: %s', missingStaged.join(', '));
                         }
                         return false;
                     }
 
-                    if (!execCommand('git commit -m "🚀 Deploy service."')) {
-                        logError('❌', 'Cannot create deploy commit.');
+                    if (!execCommand('git commit -m "🚀 Деплой сервиса."')) {
+                        logError('❌', 'Не удалось создать коммит деплоя.');
                         return false;
                     }
                     if (!execCommand('git push')) {
-                        logError('❌', 'Cannot push deploy commit.');
+                        logError('❌', 'Не удалось отправить коммит деплоя.');
                         return false;
                     }
 
-                    logSuccess('🚀', 'Deploy commit is pushed.');
+                    logSuccess('🚀', 'Коммит деплоя отправлен.');
                     return true;
                 }
             }

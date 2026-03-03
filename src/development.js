@@ -10,10 +10,10 @@ function dev() {
         case 'yarn':
             return execCommand('yarn dev');
         case 'bun':
-            logError('⚠️', 'Bun not implemented');
+            logError('⚠️', 'Bun пока не поддерживается');
             return false;
         default:
-            logError('⚠️', 'No package manager found');
+            logError('⚠️', 'Менеджер пакетов не найден');
             return false;
     }
 }
@@ -27,10 +27,10 @@ function test() {
         case 'yarn':
             return execCommand('NODE_ENV=test yarn dev');
         case 'bun':
-            logError('⚠️', 'Bun not implemented');
+            logError('⚠️', 'Bun пока не поддерживается');
             return false;
         default:
-            logError('⚠️', 'No package manager found');
+            logError('⚠️', 'Менеджер пакетов не найден');
             return false;
     }
 }
@@ -44,10 +44,10 @@ function deps() {
         case 'yarn':
             return execCommand('yarn install');
         case 'bun':
-            logError('⚠️', 'Bun not implemented');
+            logError('⚠️', 'Bun пока не поддерживается');
             return false;
         default:
-            logError('⚠️', 'No package manager found');
+            logError('⚠️', 'Менеджер пакетов не найден');
             return false;
     }
 }
@@ -63,7 +63,7 @@ function build() {
         case 'bun':
             return execCommand('bun run build');
         default:
-            logError('⚠️', 'No package manager found');
+            logError('⚠️', 'Менеджер пакетов не найден');
             return false;
     }
 }
@@ -77,10 +77,10 @@ function e2e() {
         case 'yarn':
             return execCommand('yarn test:e2e');
         case 'bun':
-            logError('⚠️', 'Bun not implemented');
+            logError('⚠️', 'Bun пока не поддерживается');
             return false;
         default:
-            logError('⚠️', 'No package manager found');
+            logError('⚠️', 'Менеджер пакетов не найден');
             return false;
     }
 }
@@ -94,10 +94,10 @@ function e2eui() {
         case 'yarn':
             return execCommand('yarn test:e2e --ui');
         case 'bun':
-            logError('⚠️', 'Bun not implemented');
+            logError('⚠️', 'Bun пока не поддерживается');
             return false;
         default:
-            logError('⚠️', 'No package manager found');
+            logError('⚠️', 'Менеджер пакетов не найден');
             return false;
     }
 }

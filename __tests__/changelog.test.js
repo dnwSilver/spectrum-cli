@@ -83,7 +83,7 @@ describe("changelog", () => {
   test("extractTaskFromBranch returns null when branch missing", async () => {
     utils.getCurrentBranch.mockReturnValue(null);
     expect(await changelog.extractTaskFromBranch()).toBeNull();
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Cannot get current branch name.");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "Не удалось получить имя текущей ветки.");
   });
 
   test("extractTaskFromBranch returns task from branch", async () => {
@@ -103,7 +103,7 @@ describe("changelog", () => {
     expect(await changelog.extractTaskFromBranch()).toBeNull();
     expect(utils.logError).toHaveBeenCalledWith(
       "❌",
-      "Invalid task format. Expected format: [a-zA-Z]+-[0-9]+"
+      "Неверный формат задачи. Ожидается формат: [a-zA-Z]+-[0-9]+"
     );
   });
 
@@ -139,7 +139,7 @@ describe("changelog", () => {
     mockQuestionAnswers([""]);
 
     expect(await changelog.getGitUser()).toBeNull();
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Name is required.");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "Имя обязательно.");
   });
 
   test("getGitUser fails on invalid email", async () => {
@@ -151,7 +151,7 @@ describe("changelog", () => {
     mockQuestionAnswers(["invalid-email"]);
 
     expect(await changelog.getGitUser()).toBeNull();
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Valid email is required.");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "Требуется корректный email.");
   });
 
   test("selectSection returns only section if one exists", async () => {
@@ -166,7 +166,7 @@ describe("changelog", () => {
   test("selectSection returns null for invalid selection", async () => {
     mockQuestionAnswers(["99"]);
     expect(await changelog.selectSection(["### 🪲 Fixed", "### 📦 Support"])).toBeNull();
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Invalid choice.");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "Неверный выбор.");
   });
 
   test("changelogChangeHeader success", () => {
@@ -194,7 +194,7 @@ describe("changelog", () => {
   test("changelogChangeHeader returns false on prettier missing", () => {
     utils.execSilent.mockReturnValue(null);
     expect(changelog.changelogChangeHeader()).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Prettier is not available. Install it or use npx.");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "Prettier недоступен. Установите его или используйте npx.");
   });
 
   test("changelogRemoveEmptyChapters success", () => {
@@ -251,7 +251,7 @@ describe("changelog", () => {
   test("changelogCommit success and failure", () => {
     utils.execCommand.mockReturnValueOnce(true).mockReturnValueOnce(true);
     expect(changelog.changelogCommit()).toBe(true);
-    expect(utils.logSuccess).toHaveBeenCalledWith("📝", "Commit updated changelog.");
+    expect(utils.logSuccess).toHaveBeenCalledWith("📝", "Коммит с обновленным changelog создан.");
 
     utils.execCommand.mockReturnValueOnce(true).mockReturnValueOnce(false);
     expect(changelog.changelogCommit()).toBe(false);
@@ -260,7 +260,7 @@ describe("changelog", () => {
   test("changelogAppend returns false on prettier check fail", async () => {
     utils.execCommand.mockImplementation((command) => command.includes("--check") ? false : true);
     expect(await changelog.changelogAppend("Message")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Preflight failed (%s): %s", "changelog append", "changelog-prettier-check", "CHANGELOG.md failed Prettier check.");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Предпроверка не пройдена (%s): %s", "changelog append", "changelog-prettier-check", "Файл CHANGELOG.md не прошел проверку Prettier.");
   });
 
   test("changelogAppend returns false when no section in changelog", async () => {
@@ -275,7 +275,7 @@ describe("changelog", () => {
     mockQuestionAnswers(["1"]);
 
     expect(await changelog.changelogAppend("Add feature")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Preflight failed (%s): %s", "changelog append", "prepare-entry", "Cannot find \"### 🆕 Added\" section in CHANGELOG.md.");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Предпроверка не пройдена (%s): %s", "changelog append", "prepare-entry", "Не удалось найти раздел \"### 🆕 Added\" в CHANGELOG.md.");
   });
 
   test("changelogAppend success and removes default text", async () => {
@@ -347,7 +347,7 @@ describe("changelog", () => {
     });
 
     expect(await changelog.changelogAppend("oops")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Preflight failed (%s): %s", "changelog append", "prepare-entry", "Error preparing changelog entry: read failed");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Предпроверка не пройдена (%s): %s", "changelog append", "prepare-entry", "Ошибка при подготовке записи changelog: read failed");
   });
 
   test("changelogAppend covers hasOtherEntries branch", async () => {
@@ -393,6 +393,6 @@ describe("changelog", () => {
       },
     });
     expect(result).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Error adding changelog entry: %s", "write failed");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "Ошибка при добавлении записи changelog: %s", "write failed");
   });
 });
