@@ -46,17 +46,17 @@ const upCmd = versionCmd
 upCmd
   .command("major")
   .description("Bump major version (x.0.0)")
-  .action(() => version.setVersionTypescript("major"));
+  .action(() => version.setVersion("major"));
 
 upCmd
   .command("minor")
   .description("Bump minor version (x.y.0)")
-  .action(() => version.setVersionTypescript("minor"));
+  .action(() => version.setVersion("minor"));
 
 upCmd
   .command("patch")
   .description("Bump patch version (x.y.z)")
-  .action(() => version.setVersionTypescript("patch"));
+  .action(() => version.setVersion("patch"));
 
 // Changelog commands
 const changelogCmd = program

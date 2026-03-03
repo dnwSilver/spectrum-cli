@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
-const { logSuccess, logError, execSilent, execCommand, getCurrentBranch } = require('./utils');
+const { logSuccess, logError, execSilent, execCommand, getCurrentBranch, getMainBranch } = require('./utils');
 
 const CHARTS_DIR = 'charts';
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
@@ -42,9 +42,10 @@ function isSemver(version) {
 }
 
 function chartCreateTag(version) {
+    const mainBranch = getMainBranch();
     const currentBranch = getCurrentBranch();
-    if (currentBranch !== 'main') {
-        logError('❌', 'Current branch is "%s". Switch to "main" first.', currentBranch || 'unknown');
+    if (currentBranch !== mainBranch) {
+        logError('❌', 'Current branch is "%s". Switch to "%s" first.', currentBranch || 'unknown', mainBranch);
         return false;
     }
 
@@ -78,14 +79,14 @@ function chartCreateTag(version) {
         return false;
     }
 
-    if (!execCommand(`git tag "${tagName}"`, null, null)) {
+    if (!execCommand(`git tag "${tagName}"`)) {
         logError('❌', 'Cannot create tag %s.', tagName);
         return false;
     }
 
     logSuccess('🔖', 'Created tag %s.', tagName);
 
-    if (!execCommand(`git push origin "${tagName}"`, null, null)) {
+    if (!execCommand(`git push origin "${tagName}"`)) {
         logError('❌', 'Cannot push tag %s to origin.', tagName);
         return false;
     }

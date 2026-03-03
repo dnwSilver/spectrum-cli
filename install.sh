@@ -128,7 +128,7 @@ verify_installation() {
 show_usage() {
     echo -e "${BLUE}📚 Quick Start:${NC}"
     echo -e "  spectrum --help           # Show help"
-    echo -e "  spectrum up version patch # Bump patch version"
+    echo -e "  spectrum version up patch # Bump patch version"
     echo -e "  spectrum release start    # Start release process"
     echo ""
     echo -e "${BLUE}📖 Documentation:${NC}"

@@ -13,7 +13,7 @@ function releaseCreate() {
         return false;
     }
     
-    if (execCommand(`git switch -c release/${currentVersion}`, null, null)) {
+    if (execCommand(`git switch -c release/${currentVersion}`)) {
         logSuccess('🌱', 'Create new release branch %s.', getCurrentBranch());
         return true;
     }
@@ -24,7 +24,7 @@ function releaseCreate() {
 function releasePush() {
     const currentBranch = getCurrentBranch();
     
-    if (execCommand(`git push origin ${currentBranch}`, null, null)) {
+    if (execCommand(`git push origin ${currentBranch}`)) {
         logSuccess('📤', 'Push release branch %s.', currentBranch);
         logSuccess('🌐', 'Go to https://gitlab.spectrumdata.tech/ and merge branch manually.');
         goToMainBranch();
@@ -43,10 +43,10 @@ function releaseClose() {
     goToDevBranch();
     updateCurrentBranch();
     
-    if (execCommand(`git merge ${mainBranch}`, null, null)) {
+    if (execCommand(`git merge ${mainBranch}`)) {
         logSuccess('🔀', 'Merge branch %s with %s.', getCurrentBranch(), mainBranch);
         
-        if (execCommand(`git push origin ${getCurrentBranch()} -o ci.skip`, null, null)) {
+        if (execCommand(`git push origin ${getCurrentBranch()} -o ci.skip`)) {
             logSuccess('📤', 'Push branch %s.', getCurrentBranch());
             return true;
         }

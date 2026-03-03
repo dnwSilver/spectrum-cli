@@ -39,7 +39,7 @@ jobs:
         run: node index.js release --help
         
       - name: Test version help  
-        run: node index.js up version --help
+        run: node index.js version up --help
         
       - name: Create test project
         run: |
@@ -84,3 +84,4 @@ jobs:
           node -c src/changelog.js
           node -c src/development.js
           node -c src/release.js
+          node -c src/chart.js

@@ -5,7 +5,8 @@ const {
     logError,
     execSilent,
     execCommand,
-    getCurrentBranch
+    getCurrentBranch,
+    getMainBranch
 } = require('../src/utils');
 
 jest.mock('fs');
@@ -14,7 +15,8 @@ jest.mock('../src/utils', () => ({
     logError: jest.fn(),
     execSilent: jest.fn(),
     execCommand: jest.fn(),
-    getCurrentBranch: jest.fn()
+    getCurrentBranch: jest.fn(),
+    getMainBranch: jest.fn()
 }));
 
 const chart = require('../src/chart');
@@ -81,18 +83,21 @@ describe('Chart', () => {
 
     describe('chartCreateTag', () => {
         test('should fail when current branch is not main', () => {
+            getMainBranch.mockReturnValue('main');
             getCurrentBranch.mockReturnValue('dev');
             expect(chart.chartCreateTag('1.2.3')).toBe(false);
             expect(logError).toHaveBeenCalled();
         });
 
         test('should fail when version is not semver', () => {
+            getMainBranch.mockReturnValue('main');
             getCurrentBranch.mockReturnValue('main');
             expect(chart.chartCreateTag('1.2')).toBe(false);
             expect(logError).toHaveBeenCalledWith('❌', 'Version "%s" is not a valid semver.', '1.2');
         });
 
         test('should fail when no chart files found', () => {
+            getMainBranch.mockReturnValue('main');
             getCurrentBranch.mockReturnValue('main');
             fs.existsSync.mockImplementation((filePath) => filePath !== 'charts');
 
@@ -101,6 +106,7 @@ describe('Chart', () => {
         });
 
         test('should fail when multiple chart files found', () => {
+            getMainBranch.mockReturnValue('main');
             getCurrentBranch.mockReturnValue('main');
             fs.existsSync.mockImplementation((filePath) => (
                 filePath === 'charts' ||
@@ -117,6 +123,7 @@ describe('Chart', () => {
         });
 
         test('should fail when tag already exists', () => {
+            getMainBranch.mockReturnValue('main');
             getCurrentBranch.mockReturnValue('main');
             fs.existsSync.mockImplementation((filePath) => (
                 filePath === 'charts' ||
@@ -133,6 +140,7 @@ describe('Chart', () => {
         });
 
         test('should fail when git tag creation fails', () => {
+            getMainBranch.mockReturnValue('main');
             getCurrentBranch.mockReturnValue('main');
             fs.existsSync.mockImplementation((filePath) => (
                 filePath === 'charts' ||
@@ -146,11 +154,12 @@ describe('Chart', () => {
             execCommand.mockReturnValue(false);
 
             expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(execCommand).toHaveBeenCalledWith('git tag "chart-site-a-1.2.3"', null, null);
+            expect(execCommand).toHaveBeenCalledWith('git tag "chart-site-a-1.2.3"');
             expect(logError).toHaveBeenCalledWith('❌', 'Cannot create tag %s.', 'chart-site-a-1.2.3');
         });
 
         test('should fail when git push fails', () => {
+            getMainBranch.mockReturnValue('main');
             getCurrentBranch.mockReturnValue('main');
             fs.existsSync.mockImplementation((filePath) => (
                 filePath === 'charts' ||
@@ -164,12 +173,13 @@ describe('Chart', () => {
             execCommand.mockReturnValueOnce(true).mockReturnValueOnce(false);
 
             expect(chart.chartCreateTag('1.2.3')).toBe(false);
-            expect(execCommand).toHaveBeenNthCalledWith(1, 'git tag "chart-site-a-1.2.3"', null, null);
-            expect(execCommand).toHaveBeenNthCalledWith(2, 'git push origin "chart-site-a-1.2.3"', null, null);
+            expect(execCommand).toHaveBeenNthCalledWith(1, 'git tag "chart-site-a-1.2.3"');
+            expect(execCommand).toHaveBeenNthCalledWith(2, 'git push origin "chart-site-a-1.2.3"');
             expect(logError).toHaveBeenCalledWith('❌', 'Cannot push tag %s to origin.', 'chart-site-a-1.2.3');
         });
 
         test('should create and push tag successfully', () => {
+            getMainBranch.mockReturnValue('main');
             getCurrentBranch.mockReturnValue('main');
             fs.existsSync.mockImplementation((filePath) => (
                 filePath === 'charts' ||
@@ -183,8 +193,8 @@ describe('Chart', () => {
             execCommand.mockReturnValue(true);
 
             expect(chart.chartCreateTag('1.2.3')).toBe(true);
-            expect(execCommand).toHaveBeenNthCalledWith(1, 'git tag "chart-site-a-1.2.3"', null, null);
-            expect(execCommand).toHaveBeenNthCalledWith(2, 'git push origin "chart-site-a-1.2.3"', null, null);
+            expect(execCommand).toHaveBeenNthCalledWith(1, 'git tag "chart-site-a-1.2.3"');
+            expect(execCommand).toHaveBeenNthCalledWith(2, 'git push origin "chart-site-a-1.2.3"');
             expect(logSuccess).toHaveBeenCalledWith('🔖', 'Created tag %s.', 'chart-site-a-1.2.3');
             expect(logSuccess).toHaveBeenCalledWith('🚀', 'Pushed tag %s to origin.', 'chart-site-a-1.2.3');
         });

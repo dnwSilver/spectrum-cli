@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
-const { execCommand, logSuccess, logError } = require('./utils');
+const { logSuccess, logError } = require('./utils');
 
 function upVersion(oldVersion, upType) {
     const [major, minor, patch] = oldVersion.split('.').map(Number);
@@ -16,16 +16,7 @@ function upVersion(oldVersion, upType) {
     }
 }
 
-function getVersionTypescript() {
-    try {
-        const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-        return packageJson.version;
-    } catch (error) {
-        return null;
-    }
-}
-
-function setVersionTypescript(versionType) {
+function setVersion(versionType) {
     try {
         const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
         const oldVersion = packageJson.version;
@@ -45,6 +36,5 @@ function setVersionTypescript(versionType) {
 
 module.exports = {
     upVersion,
-    getVersionTypescript,
-    setVersionTypescript
+    setVersion
 };

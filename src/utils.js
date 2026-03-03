@@ -47,14 +47,11 @@ function execSilent(command) {
     }
 }
 
-function execCommand(command, successMessage, errorMessage) {
+function execCommand(command) {
     try {
         execSync(command, { stdio: 'pipe' });
         return true;
     } catch (error) {
-        if (errorMessage) {
-            console.error(errorMessage);
-        }
         return false;
     }
 }

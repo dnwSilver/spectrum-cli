@@ -24,7 +24,7 @@ function ensurePrettierAvailable() {
 function checkChangelogWithPrettier() {
     const runner = ensurePrettierAvailable();
     if (!runner) return false;
-    const ok = execCommand(`${runner} --check CHANGELOG.md`, null, null);
+    const ok = execCommand(`${runner} --check CHANGELOG.md`);
     if (!ok) {
         logError('❌', 'CHANGELOG.md failed Prettier check. Fix formatting before proceeding.');
         return false;
@@ -49,7 +49,7 @@ function changelogChangeHeader() {
         );
 
         fs.writeFileSync('CHANGELOG.md', updatedChangelog);
-        logSuccess('🔄', 'Update header %s.', '🚀 [' + currentVersion + ']');
+        logSuccess('🔄', 'Update header 🚀 [%s].', currentVersion);
         return true;
     } catch (error) {
         return false;
@@ -99,8 +99,8 @@ function changelogAddUnreleasedBlock() {
 }
 
 function changelogCommit() {
-    const addSuccess = execCommand('git add CHANGELOG.md', null, null);
-    const commitSuccess = execCommand('git commit --message "📝 Update changelog." --no-verify', null, null);
+    const addSuccess = execCommand('git add CHANGELOG.md');
+    const commitSuccess = execCommand('git commit --message "📝 Update changelog." --no-verify');
 
     if (addSuccess && commitSuccess) {
         logSuccess('📝', 'Commit updated changelog.');

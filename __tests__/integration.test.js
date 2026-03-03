@@ -85,8 +85,8 @@ _Список правок для обеспечения технической 
         });
 
         test('should get version from package.json', () => {
-            const version = require('../src/version');
-            expect(version.getVersionTypescript()).toBe('1.0.0');
+            const utils = require('../src/utils');
+            expect(utils.getVersion()).toBe('1.0.0');
         });
     });
 
@@ -148,7 +148,9 @@ describe('Basic Functionality Tests', () => {
 
         const version = require('../src/version');
         expect(typeof version.upVersion).toBe('function');
-        expect(typeof version.setVersionTypescript).toBe('function');
+        expect(typeof version.setVersion).toBe('function');
+
+        expect(typeof utils.getVersion).toBe('function');
 
         const changelog = require('../src/changelog');
         expect(typeof changelog.changelogAppend).toBe('function');

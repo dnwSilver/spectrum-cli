@@ -98,14 +98,6 @@ describe('Utils', () => {
             const result = utils.execCommand('failing command');
             expect(result).toBe(false);
         });
-
-        test('should log error message if provided', () => {
-            execSync.mockImplementation(() => {
-                throw new Error('Command failed');
-            });
-            utils.execCommand('failing command', null, 'Custom error');
-            expect(console.error).toHaveBeenCalledWith('Custom error');
-        });
     });
 
     describe('getCurrentBranch', () => {
