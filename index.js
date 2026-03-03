@@ -90,6 +90,11 @@ chartCmd
   .description("Create and push chart tag (chart-<name>-<version>)")
   .action((version) => runAction(() => chart.chartCreateTag(version)));
 
+chartCmd
+  .command("verify <source_path>")
+  .description("Verify chart ingress paths against Next.js source")
+  .action((sourcePath) => runAction(() => chart.chartVerify(sourcePath)));
+
 // Override help to show custom format with aliases
 program.configureHelp({
   formatHelp: (cmd, helper) => {

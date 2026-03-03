@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
+const path = require('path');
 const { execSilent, execCommand, getCurrentBranch, getMainBranch, getDevelopBranch, getVersion } = require('./utils');
 
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
@@ -161,6 +162,249 @@ function requireSingleChart() {
     return ok({ chartFilePath, chartName });
 }
 
+function findValuesYamlFiles(baseDir = 'charts') {
+    if (!fs.existsSync(baseDir)) {
+        return [];
+    }
+
+    const stack = [baseDir];
+    const files = [];
+
+    while (stack.length > 0) {
+        const current = stack.pop();
+        let entries = [];
+        try {
+            entries = fs.readdirSync(current, { withFileTypes: true });
+        } catch (error) {
+            return [];
+        }
+
+        for (const entry of entries) {
+            const fullPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+                stack.push(fullPath);
+                continue;
+            }
+
+            if (entry.isFile() && entry.name === 'values.yaml') {
+                files.push(fullPath);
+            }
+        }
+    }
+
+    return files.sort();
+}
+
+function requireSingleValuesYaml() {
+    const valuesFiles = findValuesYamlFiles('charts');
+    if (valuesFiles.length === 0) {
+        return fail('Cannot find values.yaml under charts/**/values.yaml.');
+    }
+    if (valuesFiles.length > 1) {
+        return fail(`Found multiple values.yaml files: ${valuesFiles.join(', ')}.`);
+    }
+    return ok({ valuesYamlPath: valuesFiles[0] });
+}
+
+function extractYamlList(content, sectionName) {
+    const lines = String(content || '').split('\n');
+    let inIngress = false;
+    let inPaths = false;
+    let inSection = false;
+    let ingressIndent = 0;
+    let pathsIndent = 0;
+    let sectionIndent = 0;
+    const values = [];
+
+    for (const rawLine of lines) {
+        const line = rawLine.replace(/\r$/, '');
+        const indent = line.match(/^\s*/)[0].length;
+        const trimmed = line.trim();
+
+        if (!trimmed || trimmed.startsWith('#')) {
+            continue;
+        }
+
+        if (/^ingress:\s*(#.*)?$/.test(trimmed)) {
+            inIngress = true;
+            inPaths = false;
+            inSection = false;
+            ingressIndent = indent;
+            continue;
+        }
+
+        if (inIngress && indent <= ingressIndent && !/^ingress:\s*(#.*)?$/.test(trimmed)) {
+            inIngress = false;
+            inPaths = false;
+            inSection = false;
+        }
+
+        if (!inIngress) {
+            continue;
+        }
+
+        if (/^paths:\s*(#.*)?$/.test(trimmed)) {
+            inPaths = true;
+            inSection = false;
+            pathsIndent = indent;
+            continue;
+        }
+
+        if (inPaths && indent <= pathsIndent && !/^paths:\s*(#.*)?$/.test(trimmed)) {
+            inPaths = false;
+            inSection = false;
+        }
+
+        if (!inPaths) {
+            continue;
+        }
+
+        const sectionRegex = new RegExp(`^${sectionName}:\\s*(#.*)?$`);
+        if (sectionRegex.test(trimmed)) {
+            inSection = true;
+            sectionIndent = indent;
+            continue;
+        }
+
+        if (inSection && indent <= sectionIndent && !sectionRegex.test(trimmed)) {
+            inSection = false;
+        }
+
+        if (!inSection) {
+            continue;
+        }
+
+        const itemMatch = line.match(/^\s*-\s+(.+?)(?:\s+#.*)?$/);
+        if (itemMatch) {
+            values.push(itemMatch[1].trim());
+        }
+    }
+
+    return values;
+}
+
+function requireIngressPathSections(valuesYamlPath) {
+    if (!valuesYamlPath || !fs.existsSync(valuesYamlPath)) {
+        return fail(`Required file "${valuesYamlPath}" does not exist.`);
+    }
+
+    let content = '';
+    try {
+        content = fs.readFileSync(valuesYamlPath, 'utf8');
+    } catch (error) {
+        return fail(`Cannot read "${valuesYamlPath}".`);
+    }
+
+    const api = extractYamlList(content, 'api');
+    const pages = extractYamlList(content, 'pages');
+    const assets = extractYamlList(content, 'assets');
+
+    if (api.length === 0) {
+        return fail(`Missing or empty ingress.paths.api in "${valuesYamlPath}".`);
+    }
+    if (pages.length === 0) {
+        return fail(`Missing or empty ingress.paths.pages in "${valuesYamlPath}".`);
+    }
+    if (assets.length === 0) {
+        return fail(`Missing or empty ingress.paths.assets in "${valuesYamlPath}".`);
+    }
+
+    return ok({
+        valuesIngressPaths: { api, pages, assets }
+    });
+}
+
+function requireSourcePathDirectory(sourcePath) {
+    if (!sourcePath || typeof sourcePath !== 'string') {
+        return fail('Source path is required.');
+    }
+    const resolved = path.resolve(sourcePath);
+    if (!fs.existsSync(resolved)) {
+        return fail(`Source path does not exist: "${sourcePath}".`);
+    }
+
+    let stat;
+    try {
+        stat = fs.statSync(resolved);
+    } catch (error) {
+        return fail(`Cannot access source path: "${sourcePath}".`);
+    }
+    if (!stat.isDirectory()) {
+        return fail(`Source path is not a directory: "${sourcePath}".`);
+    }
+
+    return ok({ sourcePath: resolved });
+}
+
+function hasNextConfig(sourcePath) {
+    const files = ['next.config.js', 'next.config.mjs', 'next.config.ts', 'next.config.cjs'];
+    return files.some((fileName) => fs.existsSync(path.join(sourcePath, fileName)));
+}
+
+function requireNextProject(sourcePath) {
+    if (!sourcePath) {
+        return fail('Source path is required.');
+    }
+
+    const pkgPath = path.join(sourcePath, 'package.json');
+    if (!fs.existsSync(pkgPath)) {
+        return fail(`Cannot find package.json in "${sourcePath}".`);
+    }
+
+    let pkg;
+    try {
+        pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    } catch (error) {
+        return fail(`Cannot parse package.json in "${sourcePath}".`);
+    }
+
+    const dependencies = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
+    const hasNextDependency = typeof dependencies.next === 'string';
+    const nextConfigExists = hasNextConfig(sourcePath);
+
+    if (!hasNextDependency && !nextConfigExists) {
+        return fail(`"${sourcePath}" does not look like a Next.js project.`);
+    }
+
+    return ok({
+        sourcePackageJsonPath: pkgPath,
+        sourcePackageManager: fs.existsSync(path.join(sourcePath, 'yarn.lock'))
+            ? 'yarn'
+            : fs.existsSync(path.join(sourcePath, 'bun.lockb'))
+                ? 'bun'
+                : 'npm',
+        sourceHasLockfile: Boolean(
+            fs.existsSync(path.join(sourcePath, 'package-lock.json')) ||
+            fs.existsSync(path.join(sourcePath, 'yarn.lock')) ||
+            fs.existsSync(path.join(sourcePath, 'bun.lockb'))
+        )
+    });
+}
+
+function requireBuildCommandSupport(sourcePath) {
+    if (!sourcePath) {
+        return fail('Source path is required.');
+    }
+
+    const pkgPath = path.join(sourcePath, 'package.json');
+    if (!fs.existsSync(pkgPath)) {
+        return fail(`Cannot find package.json in "${sourcePath}".`);
+    }
+
+    let pkg;
+    try {
+        pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    } catch (error) {
+        return fail(`Cannot parse package.json in "${sourcePath}".`);
+    }
+
+    if (!pkg.scripts || typeof pkg.scripts.build !== 'string') {
+        return fail(`Missing build script in "${pkgPath}".`);
+    }
+
+    return ok({ sourceBuildScript: pkg.scripts.build });
+}
+
 module.exports = {
     SEMVER_PATTERN,
     getPrettierRunner,
@@ -174,5 +418,12 @@ module.exports = {
     requireTagMissing,
     requirePrettierAvailable,
     requireChangelogFormatted,
-    requireSingleChart
+    requireSingleChart,
+    findValuesYamlFiles,
+    extractYamlList,
+    requireSingleValuesYaml,
+    requireIngressPathSections,
+    requireSourcePathDirectory,
+    requireNextProject,
+    requireBuildCommandSupport
 };

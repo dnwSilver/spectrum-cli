@@ -112,4 +112,98 @@ describe('Chart', () => {
             });
         });
     });
+
+    describe('normalizeList', () => {
+        test('should trim and deduplicate preserving order', () => {
+            expect(chart.normalizeList([' /a ', '/b', '/a', '', null])).toEqual(['/a', '/b']);
+        });
+    });
+
+    describe('normalizeToBeList', () => {
+        test('should append $ to each pattern', () => {
+            expect(chart.normalizeToBeList(['/api/users', '/api/orders$', ' /page '])).toEqual([
+                '/api/users$',
+                '/api/orders$',
+                '/page$'
+            ]);
+        });
+    });
+
+    describe('buildGitLikeDiff', () => {
+        test('should compute added and removed values', () => {
+            const diff = chart.buildGitLikeDiff(['/a', '/b'], ['/b', '/c'], 'api');
+            expect(diff.removed).toEqual(['/a']);
+            expect(diff.added).toEqual(['/c']);
+            expect(diff.unchanged).toEqual(['/b']);
+            expect(diff.text).toContain('--- AS_IS/api');
+            expect(diff.text).toContain('+++ TO_BE/api');
+            expect(diff.text).toContain('-/a');
+            expect(diff.text).toContain('+/c');
+        });
+    });
+
+    describe('collectRoutesFromFilesystem', () => {
+        test('should collect api and pages routes', () => {
+            fs.existsSync.mockImplementation((filePath) => (
+                filePath === '/src/app' ||
+                filePath === '/src/app/api' ||
+                filePath === '/src/pages' ||
+                filePath === '/src/pages/api'
+            ));
+
+            fs.readdirSync.mockImplementation((dirPath) => {
+                if (dirPath === '/src/app') {
+                    return [
+                        { name: 'api', isDirectory: () => true, isFile: () => false },
+                        { name: 'blog', isDirectory: () => true, isFile: () => false },
+                        { name: 'page.tsx', isDirectory: () => false, isFile: () => true }
+                    ];
+                }
+                if (dirPath === '/src/app/api') {
+                    return [
+                        { name: 'users', isDirectory: () => true, isFile: () => false },
+                        { name: 'route.ts', isDirectory: () => false, isFile: () => true }
+                    ];
+                }
+                if (dirPath === '/src/app/api/users') {
+                    return [
+                        { name: 'route.ts', isDirectory: () => false, isFile: () => true }
+                    ];
+                }
+                if (dirPath === '/src/app/blog') {
+                    return [
+                        { name: 'page.tsx', isDirectory: () => false, isFile: () => true }
+                    ];
+                }
+                if (dirPath === '/src/pages') {
+                    return [
+                        { name: 'api', isDirectory: () => true, isFile: () => false },
+                        { name: 'index.tsx', isDirectory: () => false, isFile: () => true },
+                        { name: 'about.tsx', isDirectory: () => false, isFile: () => true },
+                        { name: '_app.tsx', isDirectory: () => false, isFile: () => true }
+                    ];
+                }
+                if (dirPath === '/src/pages/api') {
+                    return [
+                        { name: 'health.ts', isDirectory: () => false, isFile: () => true }
+                    ];
+                }
+                return [];
+            });
+
+            const routes = chart.collectRoutesFromFilesystem('/src');
+            expect(routes.api).toEqual(expect.arrayContaining(['/api/users', '/api', '/api/health']));
+            expect(routes.api).toHaveLength(3);
+            expect(routes.pages).toEqual(expect.arrayContaining(['/blog', '/', '/about']));
+            expect(routes.pages).toHaveLength(3);
+        });
+    });
+
+    describe('chartVerify', () => {
+        test('should call shared executor', async () => {
+            runCommand.mockResolvedValue(true);
+            await expect(chart.chartVerify('/tmp/source')).resolves.toBe(true);
+            expect(runCommand).toHaveBeenCalled();
+        });
+    });
 });

@@ -115,6 +115,17 @@ spectrum-cli/
 | `spectrum changelog append`   | Добавить запись в changelog  |
 | `spectrum chart create`       | Создать и запушить chart тег |
 
+### 🛡️ Preflight-проверки по командам
+
+- `spectrum release start`: `git-repo` (внутри git-репозитория), `clean-working-tree` (нет незакоммиченных изменений), `main-and-dev-branches` (есть `origin/main` и `origin/develop`), `package-version` (версия в `package.json` существует и валидный semver), `changelog-exists` (есть `CHANGELOG.md`), `changelog-prettier-check` (`prettier --check CHANGELOG.md`).
+- `spectrum release close`: `git-repo`, `clean-working-tree`, `main-and-dev-branches`.
+- `spectrum release deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `package-version`, `tag-missing` (тега `v<version>` нет локально и на `origin`).
+- `spectrum version up major`: `package-json-exists` (есть `package.json`), `package-version`, `clean-working-tree`.
+- `spectrum version up minor`: `package-json-exists`, `package-version`, `clean-working-tree`.
+- `spectrum version up patch`: `package-json-exists`, `package-version`, `clean-working-tree`.
+- `spectrum changelog append <message>`: `changelog-exists`, `prettier-available` (доступен `prettier` или `npx --yes prettier`), `changelog-prettier-check`.
+- `spectrum chart create <version>`: `git-repo`, `clean-working-tree`, `on-main-branch`, `valid-semver` (переданный `<version>` — semver), `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), `tag-missing` (тега `chart-<name>-<version>` нет локально и на `origin`).
+
 ## 🔄 Workflow релиза
 
 ### `spectrum release start`

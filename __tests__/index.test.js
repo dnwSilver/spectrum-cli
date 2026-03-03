@@ -3,7 +3,7 @@ const mockRelease = { releaseStart: jest.fn(), releaseClose: jest.fn() };
 const mockGit = { gitCreateTagAndPush: jest.fn() };
 const mockVersion = { setVersion: jest.fn() };
 const mockChangelog = { changelogAppend: jest.fn() };
-const mockChart = { chartCreateTag: jest.fn() };
+const mockChart = { chartCreateTag: jest.fn(), chartVerify: jest.fn() };
 
 const mockState = {
   root: null,
@@ -139,6 +139,15 @@ describe("index CLI wiring", () => {
     create._action("1.2.3");
 
     expect(mockChart.chartCreateTag).toHaveBeenCalledWith("1.2.3");
+  });
+
+  test("chart verify command calls chart verify handler", () => {
+    const chartCmd = mockState.root._commands.find((c) => c._name === "chart");
+    const verify = chartCmd._commands.find((c) => c._name === "verify");
+
+    verify._action("/tmp/source");
+
+    expect(mockChart.chartVerify).toHaveBeenCalledWith("/tmp/source");
   });
 
   test("changelog append command handles success", async () => {

@@ -61,4 +61,17 @@ describe("preflight", () => {
       data: { chartFilePath: "charts/app/Chart.yaml", chartName: "app" },
     });
   });
+
+  test("extractYamlList keeps hash in regex value", () => {
+    const yaml = [
+      "ingress:",
+      "  paths:",
+      "    assets:",
+      "      - /_next/image(\\?[^#]*)?$",
+    ].join("\n");
+
+    expect(preflight.extractYamlList(yaml, "assets")).toEqual([
+      "/_next/image(\\?[^#]*)?$",
+    ]);
+  });
 });
