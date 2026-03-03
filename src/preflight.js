@@ -13,6 +13,10 @@ function fail(reason) {
     return { ok: false, reason };
 }
 
+function toPosixPath(filePath) {
+    return String(filePath || '').replace(/\\/g, '/');
+}
+
 function getPrettierRunner() {
     const npxVersion = execSilent('npx --yes prettier --version');
     if (npxVersion) return 'npx --yes prettier';
@@ -259,7 +263,7 @@ function findValuesYamlFiles(baseDir = 'charts') {
             }
 
             if (entry.isFile() && entry.name === 'values.yaml') {
-                files.push(fullPath);
+                files.push(toPosixPath(fullPath));
             }
         }
     }
@@ -295,7 +299,7 @@ function findHelmReleaseFiles(baseDir = '.') {
             }
 
             if (entry.isFile() && entry.name.toLowerCase() === 'helmrelease.yaml') {
-                files.push(fullPath);
+                files.push(toPosixPath(fullPath));
             }
         }
     }

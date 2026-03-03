@@ -14,6 +14,10 @@ jest.mock("../src/utils", () => ({
 const utils = require("../src/utils");
 const preflight = require("../src/preflight");
 
+function normalizePath(p) {
+  return String(p).replace(/\\/g, "/");
+}
+
 describe("preflight", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -113,31 +117,35 @@ describe("preflight", () => {
   });
 
   test("findHelmReleaseFiles and requireHelmReleaseFiles", () => {
-    fs.existsSync.mockImplementation((p) => (
-      p === "." ||
-      p === "apps" ||
-      p === "apps/api" ||
-      p === "apps/api/helmrelease.yaml" ||
-      p === "apps/web" ||
-      p === "apps/web/helmrelease.yaml"
-    ));
+    fs.existsSync.mockImplementation((p) => {
+      const np = normalizePath(p);
+      return (
+        np === "." ||
+        np === "apps" ||
+        np === "apps/api" ||
+        np === "apps/api/helmrelease.yaml" ||
+        np === "apps/web" ||
+        np === "apps/web/helmrelease.yaml"
+      );
+    });
     fs.readdirSync.mockImplementation((dirPath) => {
-      if (dirPath === ".") {
+      const nd = normalizePath(dirPath);
+      if (nd === ".") {
         return [
           { name: "apps", isDirectory: () => true, isFile: () => false },
           { name: ".git", isDirectory: () => true, isFile: () => false },
         ];
       }
-      if (dirPath === "apps") {
+      if (nd === "apps") {
         return [
           { name: "api", isDirectory: () => true, isFile: () => false },
           { name: "web", isDirectory: () => true, isFile: () => false },
         ];
       }
-      if (dirPath === "apps/api") {
+      if (nd === "apps/api") {
         return [{ name: "helmrelease.yaml", isDirectory: () => false, isFile: () => true }];
       }
-      if (dirPath === "apps/web") {
+      if (nd === "apps/web") {
         return [{ name: "helmrelease.yaml", isDirectory: () => false, isFile: () => true }];
       }
       return [];
@@ -237,24 +245,32 @@ describe("preflight", () => {
   });
 
   test("findValuesYamlFiles and requireSingleValuesYaml", () => {
-    fs.existsSync.mockImplementation((p) => p === "charts" || p === "charts/app" || p === "charts/app/values.yaml");
+    fs.existsSync.mockImplementation((p) => {
+      const np = normalizePath(p);
+      return np === "charts" || np === "charts/app" || np === "charts/app/values.yaml";
+    });
     fs.readdirSync.mockImplementation((p) => {
-      if (p === "charts") return [{ name: "app", isDirectory: () => true, isFile: () => false }];
-      if (p === "charts/app") return [{ name: "values.yaml", isDirectory: () => false, isFile: () => true }];
+      const np = normalizePath(p);
+      if (np === "charts") return [{ name: "app", isDirectory: () => true, isFile: () => false }];
+      if (np === "charts/app") return [{ name: "values.yaml", isDirectory: () => false, isFile: () => true }];
       return [];
     });
     expect(preflight.findValuesYamlFiles("charts")).toEqual(["charts/app/values.yaml"]);
     expect(preflight.requireSingleValuesYaml().ok).toBe(true);
 
     fs.readdirSync.mockImplementation((p) => {
-      if (p === "charts") return [
+      const np = normalizePath(p);
+      if (np === "charts") return [
         { name: "a", isDirectory: () => true, isFile: () => false },
         { name: "b", isDirectory: () => true, isFile: () => false },
       ];
-      if (p === "charts/a" || p === "charts/b") return [{ name: "values.yaml", isDirectory: () => false, isFile: () => true }];
+      if (np === "charts/a" || np === "charts/b") return [{ name: "values.yaml", isDirectory: () => false, isFile: () => true }];
       return [];
     });
-    fs.existsSync.mockImplementation((p) => ["charts", "charts/a", "charts/b", "charts/a/values.yaml", "charts/b/values.yaml"].includes(p));
+    fs.existsSync.mockImplementation((p) => {
+      const np = normalizePath(p);
+      return ["charts", "charts/a", "charts/b", "charts/a/values.yaml", "charts/b/values.yaml"].includes(np);
+    });
     expect(preflight.requireSingleValuesYaml().ok).toBe(false);
   });
 
@@ -292,22 +308,23 @@ describe("preflight", () => {
   });
 
   test("requireNextProject", () => {
-    fs.existsSync.mockImplementation((p) => (
-      p.endsWith("/package.json") || p.endsWith("/next.config.js") || p.endsWith("/yarn.lock")
-    ));
+    fs.existsSync.mockImplementation((p) => {
+      const np = normalizePath(p);
+      return np.endsWith("/package.json") || np.endsWith("/next.config.js") || np.endsWith("/yarn.lock");
+    });
     fs.readFileSync.mockReturnValue(JSON.stringify({ dependencies: { next: "14.0.0" } }));
     expect(preflight.requireNextProject("/src").ok).toBe(true);
 
     fs.readFileSync.mockReturnValue("bad json");
     expect(preflight.requireNextProject("/src").ok).toBe(false);
 
-    fs.existsSync.mockImplementation((p) => p.endsWith("/package.json"));
+    fs.existsSync.mockImplementation((p) => normalizePath(p).endsWith("/package.json"));
     fs.readFileSync.mockReturnValue(JSON.stringify({ dependencies: {} }));
     expect(preflight.requireNextProject("/src").ok).toBe(false);
   });
 
   test("requireBuildCommandSupport", () => {
-    fs.existsSync.mockImplementation((p) => p.endsWith("/package.json"));
+    fs.existsSync.mockImplementation((p) => normalizePath(p).endsWith("/package.json"));
     fs.readFileSync.mockReturnValue(JSON.stringify({ scripts: { build: "next build" } }));
     expect(preflight.requireBuildCommandSupport("/src").ok).toBe(true);
 

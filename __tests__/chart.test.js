@@ -26,6 +26,10 @@ jest.mock('../src/command-executor', () => ({
 
 const chart = require('../src/chart');
 
+function normalizePath(p) {
+    return String(p).replace(/\\/g, '/');
+}
+
 describe('Chart', () => {
     const originalLog = console.log;
     beforeEach(() => {
@@ -223,38 +227,42 @@ describe('Chart', () => {
 
     describe('collectRoutesFromFilesystem', () => {
         test('should collect api and pages routes', () => {
-            fs.existsSync.mockImplementation((filePath) => (
-                filePath === '/src/app' ||
-                filePath === '/src/app/api' ||
-                filePath === '/src/pages' ||
-                filePath === '/src/pages/api'
-            ));
+            fs.existsSync.mockImplementation((filePath) => {
+                const np = normalizePath(filePath);
+                return (
+                    np === '/src/app' ||
+                    np === '/src/app/api' ||
+                    np === '/src/pages' ||
+                    np === '/src/pages/api'
+                );
+            });
 
             fs.readdirSync.mockImplementation((dirPath) => {
-                if (dirPath === '/src/app') {
+                const nd = normalizePath(dirPath);
+                if (nd === '/src/app') {
                     return [
                         { name: 'api', isDirectory: () => true, isFile: () => false },
                         { name: 'blog', isDirectory: () => true, isFile: () => false },
                         { name: 'page.tsx', isDirectory: () => false, isFile: () => true }
                     ];
                 }
-                if (dirPath === '/src/app/api') {
+                if (nd === '/src/app/api') {
                     return [
                         { name: 'users', isDirectory: () => true, isFile: () => false },
                         { name: 'route.ts', isDirectory: () => false, isFile: () => true }
                     ];
                 }
-                if (dirPath === '/src/app/api/users') {
+                if (nd === '/src/app/api/users') {
                     return [
                         { name: 'route.ts', isDirectory: () => false, isFile: () => true }
                     ];
                 }
-                if (dirPath === '/src/app/blog') {
+                if (nd === '/src/app/blog') {
                     return [
                         { name: 'page.tsx', isDirectory: () => false, isFile: () => true }
                     ];
                 }
-                if (dirPath === '/src/pages') {
+                if (nd === '/src/pages') {
                     return [
                         { name: 'api', isDirectory: () => true, isFile: () => false },
                         { name: 'index.tsx', isDirectory: () => false, isFile: () => true },
@@ -262,7 +270,7 @@ describe('Chart', () => {
                         { name: '_app.tsx', isDirectory: () => false, isFile: () => true }
                     ];
                 }
-                if (dirPath === '/src/pages/api') {
+                if (nd === '/src/pages/api') {
                     return [
                         { name: 'health.ts', isDirectory: () => false, isFile: () => true }
                     ];
@@ -280,19 +288,23 @@ describe('Chart', () => {
 
     describe('collectRoutesFromBuildArtifacts', () => {
         test('should collect routes from manifests', () => {
-            fs.existsSync.mockImplementation((p) => (
-                p === '/src/.next/routes-manifest.json' ||
-                p === '/src/.next/server/app-path-routes-manifest.json' ||
-                p === '/src/.next/server/pages-manifest.json'
-            ));
+            fs.existsSync.mockImplementation((p) => {
+                const np = normalizePath(p);
+                return (
+                    np === '/src/.next/routes-manifest.json' ||
+                    np === '/src/.next/server/app-path-routes-manifest.json' ||
+                    np === '/src/.next/server/pages-manifest.json'
+                );
+            });
             fs.readFileSync.mockImplementation((p) => {
-                if (p.endsWith('app-path-routes-manifest.json')) {
+                const np = normalizePath(p);
+                if (np.endsWith('app-path-routes-manifest.json')) {
                     return JSON.stringify({ '/app/api/users': '/api/users', '/app/page': '/' });
                 }
-                if (p.endsWith('pages-manifest.json')) {
+                if (np.endsWith('pages-manifest.json')) {
                     return JSON.stringify({ '/api/health': 'x', '/': 'x', '/_app': 'x' });
                 }
-                if (p.endsWith('routes-manifest.json')) {
+                if (np.endsWith('routes-manifest.json')) {
                     return JSON.stringify({
                         staticRoutes: [{ page: '/about' }],
                         dynamicRoutes: [{ page: '/blog/[slug]' }],

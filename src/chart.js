@@ -668,7 +668,7 @@ function splitGitNameOnly(output) {
     }
     return String(output)
         .split('\n')
-        .map((line) => line.trim())
+        .map((line) => line.trim().replace(/\\/g, '/'))
         .filter(Boolean);
 }
 
@@ -733,6 +733,7 @@ function chartDeploy() {
                         return true;
                     }
                     const files = ctx.updatedFiles || [];
+                    const normalizedFiles = files.map((filePath) => String(filePath || '').replace(/\\/g, '/'));
                     if (files.length === 0) {
                         logSuccess('✅', 'Файлы не были изменены.');
                         return true;
@@ -749,20 +750,20 @@ function chartDeploy() {
                         return false;
                     }
 
-                    const expectedSet = new Set(files);
+                    const expectedSet = new Set(normalizedFiles);
                     const unexpectedChanges = unstagedBeforeAdd.filter((filePath) => !expectedSet.has(filePath));
                     if (unexpectedChanges.length > 0) {
                         logError('❌', 'Обнаружены неожиданные изменения файлов: %s', unexpectedChanges.join(', '));
                         return false;
                     }
 
-                    const missingExpectedChanges = files.filter((filePath) => !unstagedBeforeAdd.includes(filePath));
+                    const missingExpectedChanges = normalizedFiles.filter((filePath) => !unstagedBeforeAdd.includes(filePath));
                     if (missingExpectedChanges.length > 0) {
                         logError('❌', 'В diff отсутствуют ожидаемые обновленные файлы: %s', missingExpectedChanges.join(', '));
                         return false;
                     }
 
-                    const quoted = files.map((filePath) => `"${filePath}"`).join(' ');
+                    const quoted = normalizedFiles.map((filePath) => `"${filePath}"`).join(' ');
                     if (!execCommand(`git add ${quoted}`)) {
                         logError('❌', 'Не удалось добавить обновленные файлы helmrelease.');
                         return false;
@@ -774,7 +775,7 @@ function chartDeploy() {
                         return false;
                     }
                     const unexpectedStaged = stagedAfterAdd.filter((filePath) => !expectedSet.has(filePath));
-                    const missingStaged = files.filter((filePath) => !stagedAfterAdd.includes(filePath));
+                    const missingStaged = normalizedFiles.filter((filePath) => !stagedAfterAdd.includes(filePath));
                     if (unexpectedStaged.length > 0 || missingStaged.length > 0) {
                         if (unexpectedStaged.length > 0) {
                             logError('❌', 'Обнаружены неожиданные staged-файлы: %s', unexpectedStaged.join(', '));
