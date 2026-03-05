@@ -2,7 +2,7 @@
 const fs = require('fs');
 const { logSuccess, logError } = require('./utils');
 const { runCommand } = require('./command-executor');
-const { requireGitRepo, requireCleanWorkingTree, requireFileExists, requirePackageVersion } = require('./preflight');
+const { requireGitRepo, requireFileExists, requirePackageVersion } = require('./preflight');
 
 function upVersion(oldVersion, upType) {
     const [major, minor, patch] = oldVersion.split('.').map(Number);
@@ -41,7 +41,6 @@ function setVersion(versionType) {
             { name: 'git-repo', run: requireGitRepo },
             { name: 'package-json-exists', run: () => requireFileExists('package.json') },
             { name: 'package-version', run: requirePackageVersion },
-            { name: 'clean-working-tree', run: requireCleanWorkingTree }
         ],
         steps: [
             { name: 'update-package-version', run: () => updateVersionFile(versionType) }

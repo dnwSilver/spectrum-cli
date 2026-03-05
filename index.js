@@ -103,10 +103,6 @@ chartCmd
 // Переопределяем help, чтобы показать кастомный формат с алиасами
 program.configureHelp({
   formatHelp: (cmd, helper) => {
-    const termWidth = helper.padWidth(cmd, helper);
-    const helpWidth = helper.helpWidth || 80;
-    const itemIndentWidth = 2;
-    const itemSeparatorWidth = 2;
     const cmdUsage = helper.commandUsage(cmd);
     const cmdDescription = helper.commandDescription(cmd);
     const options = helper.visibleOptions(cmd);
