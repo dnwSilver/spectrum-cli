@@ -9,7 +9,8 @@ const {
     requireCleanWorkingTree,
     requireCurrentBranchUpToDateWithRemote,
     requireMainAndDevBranches,
-    requireOnReleaseBranch,
+    requireOnDevBranch,
+    requireOnMainBranch,
     requireReleaseBranchMissing,
     requirePackageVersion,
     requireFileExists,
@@ -64,7 +65,7 @@ function releaseClose() {
             { name: 'git-repo', run: requireGitRepo },
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
-            { name: 'on-release-branch', run: requireOnReleaseBranch },
+            { name: 'on-main-branch', run: requireOnMainBranch },
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches }
         ],
         steps: [
@@ -107,6 +108,7 @@ function releaseStart() {
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches },
             { name: 'package-version', run: requirePackageVersion },
+            { name: 'on-dev-branch', run: requireOnDevBranch },
             { name: 'changelog-exists', run: () => requireFileExists('CHANGELOG.md') },
             { name: 'unreleased-template-exists', run: () => requireFileExists(path.join(__dirname, 'UNRELEASED.md')) },
             { name: 'changelog-prettier-check', run: requireChangelogFormatted },

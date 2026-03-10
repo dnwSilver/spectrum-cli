@@ -72,6 +72,19 @@ function requireCurrentBranch(expectedBranch) {
     return ok({ currentBranch });
 }
 
+function requireOnDevBranch() {
+    const devBranch = getDevelopBranch();
+    const currentBranch = getCurrentBranch();
+    if (!currentBranch) {
+        return fail('Не удалось определить текущую ветку.');
+    }
+    if (currentBranch !== devBranch) {
+        return fail(`Текущая ветка "${currentBranch}", ожидалась "${devBranch}".`);
+    }
+    return ok({ devBranch, currentBranch });
+}
+
+
 function requireOnMainBranch() {
     const mainBranch = getMainBranch();
     const currentBranch = getCurrentBranch();
@@ -532,6 +545,7 @@ module.exports = {
     requireCleanWorkingTree,
     requireMainAndDevBranches,
     requireCurrentBranch,
+    requireOnDevBranch,
     requireOnMainBranch,
     requireRemoteOrigin,
     requireRemoteReachable,
