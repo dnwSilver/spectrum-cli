@@ -65,6 +65,7 @@ describe("changelog", () => {
 
     utils.getCurrentBranch.mockReturnValue("feature/SPEC-1");
     expect(changelog.detectSectionFromBranch()).toEqual([
+      "### 💥 Breaking change",
       "### 🆕 Added",
       "### 🛠 Changed",
       "### 📜 Deprecated",
@@ -159,7 +160,7 @@ describe("changelog", () => {
   });
 
   test("selectSection returns selected from default list", async () => {
-    mockQuestionAnswers(["2"]);
+    mockQuestionAnswers(["3"]);
     expect(await changelog.selectSection([])).toBe("### 🛠 Changed");
   });
 
@@ -275,7 +276,7 @@ describe("changelog", () => {
     mockQuestionAnswers(["1"]);
 
     expect(await changelog.changelogAppend("Add feature")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Предпроверка не пройдена (%s): %s", "changelog append", "prepare-entry", "Не удалось найти раздел \"### 🆕 Added\" в CHANGELOG.md.");
+    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Предпроверка не пройдена (%s): %s", "changelog append", "prepare-entry", "Не удалось найти раздел \"### 💥 Breaking change\" в CHANGELOG.md.");
   });
 
   test("changelogAppend success and removes default text", async () => {
@@ -299,7 +300,7 @@ describe("changelog", () => {
     ].join("\n");
     fs.readFileSync.mockReturnValue(content);
     fs.writeFileSync.mockImplementation(() => {});
-    mockQuestionAnswers(["1"]);
+    mockQuestionAnswers(["2"]);
 
     expect(await changelog.changelogAppend("Something happened")).toBe(true);
     expect(fs.writeFileSync).toHaveBeenCalledWith(
@@ -326,7 +327,7 @@ describe("changelog", () => {
     ].join("\n");
     fs.readFileSync.mockReturnValue(content);
     fs.writeFileSync.mockImplementation(() => {});
-    mockQuestionAnswers(["1"]);
+    mockQuestionAnswers(["2"]);
 
     expect(await changelog.changelogAppend("Another one")).toBe(true);
     const written = fs.writeFileSync.mock.calls[0][1];
@@ -369,7 +370,7 @@ describe("changelog", () => {
     });
     fs.readFileSync.mockReturnValue(["## [Unreleased]", "", "### 🆕 Added", "", "_MAGIC_"].join("\n"));
     fs.writeFileSync.mockImplementation(() => {});
-    mockQuestionAnswers(["1"]);
+    mockQuestionAnswers(["2"]);
 
     expect(await changelog.changelogAppend("Edge path")).toBe(true);
 

@@ -195,7 +195,7 @@ function detectSectionFromBranch() {
     const sections = {
         support: ['### 📦 Support', '### 🔐 Security'],
         bugfix: ['### 🪲 Fixed'],
-        feature: ['### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed']
+        feature: ['### 💥 Breaking change', '### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed']
     };
     
     if (branchLower.includes('support')) {
@@ -212,6 +212,7 @@ function detectSectionFromBranch() {
 async function selectSection(availableSections) {
     if (availableSections.length === 0) {
         availableSections = [
+            '### 💥 Breaking change',
             '### 🆕 Added',
             '### 🛠 Changed', 
             '### 📜 Deprecated',

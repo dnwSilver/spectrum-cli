@@ -21,10 +21,16 @@ jest.mock("../src/utils", () => ({
   getCurrentBranch: jest.fn(),
   getMainBranch: jest.fn(),
   getMergeRequestUrl: jest.fn(),
+  getPackageManager: jest.fn(),
   colors: {},
 }));
 jest.mock("../src/command-executor", () => ({
   runCommand: jest.fn(),
+}));
+
+jest.mock("../src/version", () => ({
+  upVersion: jest.fn(),
+  updateVersionFile: jest.fn(),
 }));
 
 const git = require("../src/git");
@@ -147,7 +153,7 @@ describe("release", () => {
   test("releaseStart lint-changelog step covers failed preflight", async () => {
     const preflight = require("../src/preflight");
     jest.spyOn(preflight, "requireChangelogFormatted").mockReturnValue({ ok: false, reason: "bad format" });
-    runCommand.mockImplementation(async (spec) => spec.steps[3].run({}));
+    runCommand.mockImplementation(async (spec) => spec.steps[5].run({}));
 
     await expect(release.releaseStart()).resolves.toBe(false);
     preflight.requireChangelogFormatted.mockRestore();

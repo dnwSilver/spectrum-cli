@@ -51,5 +51,6 @@ function setVersion(versionType) {
 
 module.exports = {
     upVersion,
+    updateVersionFile,
     setVersion
 };
