@@ -103,7 +103,7 @@ describe("token rotate", () => {
     fs.readFileSync.mockReturnValue(validConfig);
     fs.mkdirSync.mockImplementation(() => {});
     fs.writeFileSync.mockImplementation(() => {});
-    token.promptAdminPat = jest.fn().mockResolvedValue("admin-pat");
+    token.promptPrivateToken = jest.fn().mockResolvedValue("glpat-user-token");
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-08-17T00:00:00.000Z"));
   });
@@ -130,27 +130,15 @@ describe("token rotate", () => {
     expect(token.loadOrCreateConfig().ok).toBe(false);
   });
 
-  test("tokenRotate success rotates PAT and updates variables", async () => {
+  test("tokenRotate hangs provided token on groups and projects", async () => {
     const calls = [];
     global.fetch = jest.fn(async (url, options) => {
       calls.push({ method: options.method, url, body: options.body });
-      if (url.endsWith("/user")) {
-        return jsonResponse(200, { id: 42, username: "example-admin" });
-      }
       if (url.includes("/groups/example-group") && options.method === "GET" && !url.includes("/variables")) {
         return jsonResponse(200, { id: 1 });
       }
       if (url.includes("/projects/acme%2Fdemo-app") && options.method === "GET" && !url.includes("/variables")) {
         return jsonResponse(200, { id: 2 });
-      }
-      if (url.includes("/personal_access_tokens?") && options.method === "GET") {
-        return jsonResponse(200, [{ id: 9, name: "GITLAB_PRIVATE_TOKEN", active: true, revoked: false }]);
-      }
-      if (url.endsWith("/personal_access_tokens/9") && options.method === "DELETE") {
-        return emptyResponse(204);
-      }
-      if (url.endsWith("/users/42/personal_access_tokens") && options.method === "POST") {
-        return jsonResponse(201, { id: 10, token: "glpat-new-token" });
       }
       if (url.includes("/variables") && options.method === "GET") {
         return jsonResponse(200, [{ key: "GITLAB_PRIVATE_TOKEN" }]);
@@ -164,67 +152,40 @@ describe("token rotate", () => {
       return jsonResponse(404, { message: "not found" });
     });
 
-    const originalLog = console.log;
-    console.log = jest.fn();
-
     await expect(token.tokenRotate()).resolves.toBe(true);
 
-    const createPat = calls.find((call) => call.url.endsWith("/users/42/personal_access_tokens"));
-    expect(JSON.parse(createPat.body)).toEqual({
-      name: "GITLAB_PRIVATE_TOKEN",
-      scopes: token.TOKEN_SCOPES,
-      expires_at: "2027-02-17",
-    });
+    expect(calls.some((call) => call.url.includes("/personal_access_tokens"))).toBe(false);
+    expect(calls.some((call) => call.url.endsWith("/user"))).toBe(false);
 
     const createVar = calls.filter((call) => call.method === "POST" && call.url.includes("/variables"));
     expect(createVar).toHaveLength(2);
     expect(JSON.parse(createVar[0].body)).toEqual({
       key: "GITLAB_PRIVATE_TOKEN",
-      value: "glpat-new-token",
+      value: "glpat-user-token",
       masked_and_hidden: true,
       description: "PAT от бота example-bot, владелец Колосов. Истекает 2027-02-17.",
     });
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining("больше нельзя будет получить"));
-    expect(console.log).toHaveBeenCalledWith("glpat-new-token");
-
     const logged = utils.logSuccess.mock.calls.concat(utils.logError.mock.calls).map((args) => args.join(" "));
-    expect(logged.some((line) => line.includes("admin-pat"))).toBe(false);
-    expect(logged.some((line) => line.includes("glpat-new-token"))).toBe(false);
+    expect(logged.some((line) => line.includes("glpat-user-token"))).toBe(false);
     expect(logged.some((line) => line.includes("example-group"))).toBe(true);
     expect(logged.some((line) => line.includes("acme/demo-app"))).toBe(true);
-
-    console.log = originalLog;
   });
 
   test("tokenRotate stops when group is inaccessible", async () => {
-    global.fetch = jest.fn(async (url) => {
-      if (url.endsWith("/user")) {
-        return jsonResponse(200, { id: 42, username: "example-admin" });
-      }
-      return jsonResponse(404, { message: "not found" });
-    });
+    global.fetch = jest.fn(async () => jsonResponse(404, { message: "not found" }));
 
     await expect(token.tokenRotate()).resolves.toBe(false);
     expect(utils.logError).toHaveBeenCalled();
   });
 
-  test("tokenRotate creates PAT when none exists", async () => {
+  test("tokenRotate creates variable when it is missing", async () => {
     global.fetch = jest.fn(async (url, options) => {
-      if (url.endsWith("/user")) {
-        return jsonResponse(200, { id: 42, username: "example-admin" });
-      }
       if (options.method === "GET" && url.includes("/groups/")) {
         return jsonResponse(200, { id: 1 });
       }
       if (options.method === "GET" && url.includes("/projects/")) {
         return jsonResponse(200, { id: 2 });
-      }
-      if (url.includes("/personal_access_tokens?") && options.method === "GET") {
-        return jsonResponse(200, []);
-      }
-      if (url.endsWith("/users/42/personal_access_tokens")) {
-        return jsonResponse(201, { id: 10, token: "glpat-created" });
       }
       if (url.includes("/variables") && options.method === "GET") {
         return jsonResponse(200, []);
@@ -235,15 +196,14 @@ describe("token rotate", () => {
       return jsonResponse(404, {});
     });
 
-    const originalLog = console.log;
-    console.log = jest.fn();
     await expect(token.tokenRotate()).resolves.toBe(true);
-    expect(console.log).toHaveBeenCalledWith("glpat-created");
-    console.log = originalLog;
   });
 
-  test("askAdminPat fails when prompt is empty", async () => {
-    token.promptAdminPat = jest.fn().mockResolvedValue("");
-    await expect(token.askAdminPat()).resolves.toEqual({ ok: false, reason: "Admin PAT не указан." });
+  test("askPrivateToken fails when prompt is empty", async () => {
+    token.promptPrivateToken = jest.fn().mockResolvedValue("");
+    await expect(token.askPrivateToken({ tokenTtlMonths: 6, bot: "example-bot" })).resolves.toEqual({
+      ok: false,
+      reason: "GITLAB_PRIVATE_TOKEN не указан.",
+    });
   });
 });

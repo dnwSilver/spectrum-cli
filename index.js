@@ -107,7 +107,7 @@ const tokenCmd = program
 
 tokenCmd
   .command("rotate")
-  .description("Ротировать GITLAB_PRIVATE_TOKEN и обновить CI variables")
+  .description("Пролить GITLAB_PRIVATE_TOKEN в CI variables групп и проектов")
   .action(() => runAction(token.tokenRotate));
 
 // Переопределяем help, чтобы показать кастомный формат с алиасами

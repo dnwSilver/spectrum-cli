@@ -3,11 +3,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
-const { logSuccess, logError, colors } = require('./utils');
+const { logSuccess, logError } = require('./utils');
 const { runCommand } = require('./command-executor');
 
 const TOKEN_NAME = 'GITLAB_PRIVATE_TOKEN';
-const TOKEN_SCOPES = ['api', 'read_repository', 'write_repository', 'read_registry'];
 
 function getConfigPath() {
     return path.join(os.homedir(), '.config', 'spectrum-cli', 'config.yaml');
@@ -57,12 +56,12 @@ function parseConfig(content) {
             continue;
         }
 
-        if (isTopLevel && /^groups:\s*$/.test(trimmed)) {
+        if (isTopLevel && /^groups:\s*(?:\[\s*\])?\s*$/.test(trimmed)) {
             section = 'groups';
             continue;
         }
 
-        if (isTopLevel && /^projects:\s*$/.test(trimmed)) {
+        if (isTopLevel && /^projects:\s*(?:\[\s*\])?\s*$/.test(trimmed)) {
             section = 'projects';
             continue;
         }
@@ -124,11 +123,11 @@ function parseTargets(urls, kind) {
     return { ok: true, targets };
 }
 
-async function promptAdminPat() {
+async function promptPrivateToken() {
     return new Promise((resolve) => {
         const stdin = process.stdin;
         const stdout = process.stdout;
-        stdout.write('🔑 Введите admin PAT: ');
+        stdout.write('🔑 Введите GITLAB_PRIVATE_TOKEN: ');
 
         if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') {
             const rl = readline.createInterface({ input: stdin, output: stdout });
@@ -166,9 +165,9 @@ async function promptAdminPat() {
     });
 }
 
-async function gitlabRequest(origin, adminPat, method, apiPath, body) {
+async function gitlabRequest(origin, privateToken, method, apiPath, body) {
     const url = `${origin}/api/v4${apiPath}`;
-    const headers = { 'PRIVATE-TOKEN': adminPat };
+    const headers = { 'PRIVATE-TOKEN': privateToken };
     const options = { method, headers };
     if (body !== undefined) {
         headers['Content-Type'] = 'application/json';
@@ -194,13 +193,13 @@ async function gitlabRequest(origin, adminPat, method, apiPath, body) {
     };
 }
 
-async function gitlabGetAll(origin, adminPat, apiPath) {
+async function gitlabGetAll(origin, privateToken, apiPath) {
     const items = [];
     let page = 1;
 
     while (true) {
         const separator = apiPath.includes('?') ? '&' : '?';
-        const result = await gitlabRequest(origin, adminPat, 'GET', `${apiPath}${separator}per_page=100&page=${page}`);
+        const result = await gitlabRequest(origin, privateToken, 'GET', `${apiPath}${separator}per_page=100&page=${page}`);
         if (!result.ok) {
             return result;
         }
@@ -267,30 +266,29 @@ function loadOrCreateConfig() {
             configPath,
             bot: parsed.bot,
             tokenTtlMonths: parsed.tokenTtlMonths,
+            origin: targets[0].origin,
             targets
         }
     };
 }
 
-async function askAdminPat() {
-    logSuccess('🔑', 'Запрашиваю admin PAT. Значение останется только в памяти.');
-    const adminPat = await module.exports.promptAdminPat();
-    if (!adminPat) {
-        return { ok: false, reason: 'Admin PAT не указан.' };
+async function askPrivateToken(ctx) {
+    logSuccess('🔑', 'Запрашиваю %s. Значение останется только в памяти.', TOKEN_NAME);
+    const privateToken = await module.exports.promptPrivateToken();
+    if (!privateToken) {
+        return { ok: false, reason: `${TOKEN_NAME} не указан.` };
     }
-    logSuccess('🔑', 'Admin PAT принят в память.');
-    return { ok: true, data: { adminPat } };
-}
 
-async function resolveCurrentUser(ctx) {
-    const origin = ctx.targets[0].origin;
-    logSuccess('👤', 'Проверяю admin PAT через GET /user на %s', origin);
-    const result = await gitlabRequest(origin, ctx.adminPat, 'GET', '/user');
-    if (!result.ok || !result.data || !result.data.id) {
-        return { ok: false, reason: `Не удалось получить текущего пользователя (HTTP ${result.status}).` };
-    }
-    logSuccess('👤', 'Текущий пользователь: %s (id=%s)', result.data.username || 'unknown', String(result.data.id));
-    return { ok: true, data: { origin, userId: result.data.id, username: result.data.username } };
+    const expiresAt = addMonths(new Date(), ctx.tokenTtlMonths);
+    logSuccess('🔑', '%s принят в память. Description будет с датой %s.', TOKEN_NAME, expiresAt);
+    return {
+        ok: true,
+        data: {
+            privateToken,
+            expiresAt,
+            variableDescription: buildDescription(ctx.bot, expiresAt)
+        }
+    };
 }
 
 async function checkTargetsAccess(ctx) {
@@ -299,7 +297,7 @@ async function checkTargetsAccess(ctx) {
         const target = ctx.targets[index];
         const endpoint = target.kind === 'группы' ? 'groups' : 'projects';
         logSuccess('🔍', '[%s/%s] Проверяю доступ к %s %s', String(index + 1), String(total), target.kind, target.url);
-        const result = await gitlabRequest(ctx.origin, ctx.adminPat, 'GET', `/${endpoint}/${target.encodedPath}`);
+        const result = await gitlabRequest(ctx.origin, ctx.privateToken, 'GET', `/${endpoint}/${target.encodedPath}`);
         if (!result.ok) {
             return { ok: false, reason: `${target.kind === 'группы' ? 'Группа' : 'Проект'} недоступен: ${target.url} (HTTP ${result.status}).` };
         }
@@ -308,54 +306,12 @@ async function checkTargetsAccess(ctx) {
     return { ok: true };
 }
 
-async function rotatePat(ctx) {
-    const expiresAt = addMonths(new Date(), ctx.tokenTtlMonths);
-    logSuccess('🔎', 'Ищу активные PAT с именем %s', TOKEN_NAME);
-    const listed = await gitlabGetAll(ctx.origin, ctx.adminPat, `/personal_access_tokens?user_id=${ctx.userId}&search=${encodeURIComponent(TOKEN_NAME)}`);
-    if (!listed.ok) {
-        logError('❌', 'Не удалось получить список PAT (HTTP %s).', String(listed.status));
-        return false;
-    }
-
-    const existing = (listed.data || []).filter((token) => token.name === TOKEN_NAME && token.active && !token.revoked);
-    if (existing.length === 0) {
-        logSuccess('🔎', 'Активный PAT %s не найден, будет создан новый.', TOKEN_NAME);
-    }
-
-    for (const token of existing) {
-        logSuccess('🗑', 'Удаляю старый PAT %s (id=%s)', TOKEN_NAME, String(token.id));
-        const revoked = await gitlabRequest(ctx.origin, ctx.adminPat, 'DELETE', `/personal_access_tokens/${token.id}`);
-        if (!revoked.ok && revoked.status !== 204) {
-            logError('❌', 'Не удалось удалить PAT id=%s (HTTP %s).', String(token.id), String(revoked.status));
-            return false;
-        }
-        logSuccess('🗑', 'PAT id=%s удален.', String(token.id));
-    }
-
-    logSuccess('🆕', 'Создаю PAT %s, истекает %s', TOKEN_NAME, expiresAt);
-    const created = await gitlabRequest(ctx.origin, ctx.adminPat, 'POST', `/users/${ctx.userId}/personal_access_tokens`, {
-        name: TOKEN_NAME,
-        scopes: TOKEN_SCOPES,
-        expires_at: expiresAt
-    });
-    if (!created.ok || !created.data || !created.data.token) {
-        logError('❌', 'Не удалось создать PAT (HTTP %s).', String(created.status));
-        return false;
-    }
-
-    logSuccess('🆕', 'PAT %s создан (id=%s), истекает %s', TOKEN_NAME, String(created.data.id), expiresAt);
-    ctx.newToken = created.data.token;
-    ctx.expiresAt = expiresAt;
-    ctx.variableDescription = buildDescription(ctx.bot, expiresAt);
-    return true;
-}
-
 async function updateTargetVariable(ctx, target, index, total) {
     const endpoint = target.kind === 'группы' ? 'groups' : 'projects';
     const label = target.kind === 'группы' ? 'группе' : 'проекте';
     logSuccess('📦', '[%s/%s] Обновляю CI variable %s в %s %s', String(index + 1), String(total), TOKEN_NAME, label, target.path);
 
-    const listed = await gitlabGetAll(ctx.origin, ctx.adminPat, `/${endpoint}/${target.encodedPath}/variables`);
+    const listed = await gitlabGetAll(ctx.origin, ctx.privateToken, `/${endpoint}/${target.encodedPath}/variables`);
     if (!listed.ok) {
         logError('❌', 'Не удалось получить CI variables для %s (HTTP %s).', target.path, String(listed.status));
         return false;
@@ -364,7 +320,7 @@ async function updateTargetVariable(ctx, target, index, total) {
     const exists = (listed.data || []).some((variable) => variable.key === TOKEN_NAME);
     if (exists) {
         logSuccess('🗑', '[%s/%s] Удаляю старую CI variable %s в %s %s', String(index + 1), String(total), TOKEN_NAME, label, target.path);
-        const deleted = await gitlabRequest(ctx.origin, ctx.adminPat, 'DELETE', `/${endpoint}/${target.encodedPath}/variables/${TOKEN_NAME}`);
+        const deleted = await gitlabRequest(ctx.origin, ctx.privateToken, 'DELETE', `/${endpoint}/${target.encodedPath}/variables/${TOKEN_NAME}`);
         if (!deleted.ok && deleted.status !== 204) {
             logError('❌', 'Не удалось удалить CI variable в %s (HTTP %s).', target.path, String(deleted.status));
             return false;
@@ -375,9 +331,9 @@ async function updateTargetVariable(ctx, target, index, total) {
     }
 
     logSuccess('📝', '[%s/%s] Создаю CI variable %s в %s %s', String(index + 1), String(total), TOKEN_NAME, label, target.path);
-    const created = await gitlabRequest(ctx.origin, ctx.adminPat, 'POST', `/${endpoint}/${target.encodedPath}/variables`, {
+    const created = await gitlabRequest(ctx.origin, ctx.privateToken, 'POST', `/${endpoint}/${target.encodedPath}/variables`, {
         key: TOKEN_NAME,
-        value: ctx.newToken,
+        value: ctx.privateToken,
         masked_and_hidden: true,
         description: ctx.variableDescription
     });
@@ -403,32 +359,22 @@ async function updateCiVariables(ctx) {
     return true;
 }
 
-function printNewToken(ctx) {
-    console.log(` ${colors.yellow}⚠️  Новый ${TOKEN_NAME} больше нельзя будет получить. Сохраните его сейчас:${colors.reset}`);
-    console.log(ctx.newToken);
-    return true;
-}
-
 function tokenRotate() {
     return runCommand({
         name: 'token rotate',
         checks: [
             { name: 'load-config', run: loadOrCreateConfig },
-            { name: 'ask-admin-pat', run: askAdminPat },
-            { name: 'resolve-user', run: resolveCurrentUser },
+            { name: 'ask-private-token', run: askPrivateToken },
             { name: 'check-access', run: checkTargetsAccess }
         ],
         steps: [
-            { name: 'rotate-pat', run: rotatePat },
-            { name: 'update-ci-variables', run: updateCiVariables },
-            { name: 'print-token', run: printNewToken }
+            { name: 'update-ci-variables', run: updateCiVariables }
         ]
     });
 }
 
 module.exports = {
     TOKEN_NAME,
-    TOKEN_SCOPES,
     getConfigPath,
     defaultConfigContent,
     parseConfig,
@@ -436,13 +382,10 @@ module.exports = {
     addMonths,
     buildDescription,
     validateConfig,
-    promptAdminPat,
+    promptPrivateToken,
     loadOrCreateConfig,
-    askAdminPat,
-    resolveCurrentUser,
+    askPrivateToken,
     checkTargetsAccess,
-    rotatePat,
     updateCiVariables,
-    printNewToken,
     tokenRotate
 };
