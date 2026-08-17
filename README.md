@@ -139,7 +139,7 @@ spectrum-cli/
 - `spectrum chart create <version>`: `git-repo`, `clean-working-tree`, `on-main-branch`, `valid-semver` (переданный `<version>` — semver), `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), `tag-missing` (тега `chart-<name>-<version>` нет локально и на `origin`).
 - `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
 - `spectrum chart verify <source_path>`: `git-repo`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
-- `spectrum token rotate`: `load-config` (есть валидный `~/.config/spectrum-cli/config.yaml`), `ask-private-token` (`GITLAB_PRIVATE_TOKEN` только в памяти), `check-access` (все группы и проекты из конфига доступны).
+- `spectrum token rotate`: `load-config` (есть валидный `~/.config/spectrum-cli/config.yaml`), `ask-tokens` (owner PAT и `GITLAB_PRIVATE_TOKEN` только в памяти), `check-access` (все группы и проекты доступны owner PAT).
 
 ## 🔄 Workflow релиза
 
@@ -210,14 +210,17 @@ projects: []
 ```
 
 - `bot` и `token_ttl_months` читаются только из конфига.
-- `GITLAB_PRIVATE_TOKEN` запрашивается скрытым вводом и живет только в памяти на время команды. Им же ходим в API.
+- Скрытым вводом запрашиваются два токена. Оба живут только в памяти.
+- Owner PAT: ходит в API, проверяет доступ, читает/удаляет/создает CI variables. Для групп нужен Owner, для проектов — Maintainer+.
+- `GITLAB_PRIVATE_TOKEN`: только значение, которое пишется в CI variable.
 - Для каждой группы и проекта CI variable `GITLAB_PRIVATE_TOKEN` удаляется (если есть) и создается заново как masked and hidden.
 - Description переменной: `PAT от бота <bot>, владелец Колосов. Истекает YYYY-MM-DD.` Дата = сегодня + `token_ttl_months`.
 
 1. Загружает или создает конфиг
-2. Запрашивает `GITLAB_PRIVATE_TOKEN`
-3. Проверяет доступ ко всем группам и проектам
-4. Обновляет CI variables во всех целях
+2. Запрашивает owner PAT
+3. Запрашивает `GITLAB_PRIVATE_TOKEN`
+4. Проверяет доступ ко всем группам и проектам owner PAT
+5. Обновляет CI variables во всех целях
 
 ## 📝 Работа с Changelog
 

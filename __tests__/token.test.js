@@ -103,7 +103,10 @@ describe("token rotate", () => {
     fs.readFileSync.mockReturnValue(validConfig);
     fs.mkdirSync.mockImplementation(() => {});
     fs.writeFileSync.mockImplementation(() => {});
-    token.promptPrivateToken = jest.fn().mockResolvedValue("glpat-user-token");
+    token.promptHidden = jest
+      .fn()
+      .mockResolvedValueOnce("glpat-owner-token")
+      .mockResolvedValueOnce("glpat-ci-token");
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-08-17T00:00:00.000Z"));
   });
@@ -161,13 +164,14 @@ describe("token rotate", () => {
     expect(createVar).toHaveLength(2);
     expect(JSON.parse(createVar[0].body)).toEqual({
       key: "GITLAB_PRIVATE_TOKEN",
-      value: "glpat-user-token",
+      value: "glpat-ci-token",
       masked_and_hidden: true,
       description: "PAT от бота example-bot, владелец Колосов. Истекает 2027-02-17.",
     });
 
     const logged = utils.logSuccess.mock.calls.concat(utils.logError.mock.calls).map((args) => args.join(" "));
-    expect(logged.some((line) => line.includes("glpat-user-token"))).toBe(false);
+    expect(logged.some((line) => line.includes("glpat-owner-token"))).toBe(false);
+    expect(logged.some((line) => line.includes("glpat-ci-token"))).toBe(false);
     expect(logged.some((line) => line.includes("example-group"))).toBe(true);
     expect(logged.some((line) => line.includes("acme/demo-app"))).toBe(true);
   });
@@ -199,9 +203,17 @@ describe("token rotate", () => {
     await expect(token.tokenRotate()).resolves.toBe(true);
   });
 
-  test("askPrivateToken fails when prompt is empty", async () => {
-    token.promptPrivateToken = jest.fn().mockResolvedValue("");
-    await expect(token.askPrivateToken({ tokenTtlMonths: 6, bot: "example-bot" })).resolves.toEqual({
+  test("askTokens fails when owner PAT is empty", async () => {
+    token.promptHidden = jest.fn().mockResolvedValue("");
+    await expect(token.askTokens({ tokenTtlMonths: 6, bot: "example-bot" })).resolves.toEqual({
+      ok: false,
+      reason: "Owner PAT не указан.",
+    });
+  });
+
+  test("askTokens fails when CI token is empty", async () => {
+    token.promptHidden = jest.fn().mockResolvedValueOnce("glpat-owner-token").mockResolvedValueOnce("");
+    await expect(token.askTokens({ tokenTtlMonths: 6, bot: "example-bot" })).resolves.toEqual({
       ok: false,
       reason: "GITLAB_PRIVATE_TOKEN не указан.",
     });

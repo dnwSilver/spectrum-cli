@@ -123,11 +123,11 @@ function parseTargets(urls, kind) {
     return { ok: true, targets };
 }
 
-async function promptPrivateToken() {
+async function promptHidden(message) {
     return new Promise((resolve) => {
         const stdin = process.stdin;
         const stdout = process.stdout;
-        stdout.write('🔑 Введите GITLAB_PRIVATE_TOKEN: ');
+        stdout.write(message);
 
         if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') {
             const rl = readline.createInterface({ input: stdin, output: stdout });
@@ -165,9 +165,9 @@ async function promptPrivateToken() {
     });
 }
 
-async function gitlabRequest(origin, privateToken, method, apiPath, body) {
+async function gitlabRequest(origin, accessToken, method, apiPath, body) {
     const url = `${origin}/api/v4${apiPath}`;
-    const headers = { 'PRIVATE-TOKEN': privateToken };
+    const headers = { 'PRIVATE-TOKEN': accessToken };
     const options = { method, headers };
     if (body !== undefined) {
         headers['Content-Type'] = 'application/json';
@@ -193,13 +193,13 @@ async function gitlabRequest(origin, privateToken, method, apiPath, body) {
     };
 }
 
-async function gitlabGetAll(origin, privateToken, apiPath) {
+async function gitlabGetAll(origin, accessToken, apiPath) {
     const items = [];
     let page = 1;
 
     while (true) {
         const separator = apiPath.includes('?') ? '&' : '?';
-        const result = await gitlabRequest(origin, privateToken, 'GET', `${apiPath}${separator}per_page=100&page=${page}`);
+        const result = await gitlabRequest(origin, accessToken, 'GET', `${apiPath}${separator}per_page=100&page=${page}`);
         if (!result.ok) {
             return result;
         }
@@ -272,10 +272,17 @@ function loadOrCreateConfig() {
     };
 }
 
-async function askPrivateToken(ctx) {
-    logSuccess('🔑', 'Запрашиваю %s. Значение останется только в памяти.', TOKEN_NAME);
-    const privateToken = await module.exports.promptPrivateToken();
-    if (!privateToken) {
+async function askTokens(ctx) {
+    logSuccess('🔑', 'Запрашиваю owner PAT для работы с CI variables. Значение останется только в памяти.');
+    const ownerToken = await module.exports.promptHidden('🔑 Введите owner PAT: ');
+    if (!ownerToken) {
+        return { ok: false, reason: 'Owner PAT не указан.' };
+    }
+    logSuccess('🔑', 'Owner PAT принят в память.');
+
+    logSuccess('🔑', 'Запрашиваю %s для записи в CI variables. Значение останется только в памяти.', TOKEN_NAME);
+    const ciToken = await module.exports.promptHidden(`🔑 Введите ${TOKEN_NAME}: `);
+    if (!ciToken) {
         return { ok: false, reason: `${TOKEN_NAME} не указан.` };
     }
 
@@ -284,7 +291,8 @@ async function askPrivateToken(ctx) {
     return {
         ok: true,
         data: {
-            privateToken,
+            ownerToken,
+            ciToken,
             expiresAt,
             variableDescription: buildDescription(ctx.bot, expiresAt)
         }
@@ -297,7 +305,7 @@ async function checkTargetsAccess(ctx) {
         const target = ctx.targets[index];
         const endpoint = target.kind === 'группы' ? 'groups' : 'projects';
         logSuccess('🔍', '[%s/%s] Проверяю доступ к %s %s', String(index + 1), String(total), target.kind, target.url);
-        const result = await gitlabRequest(ctx.origin, ctx.privateToken, 'GET', `/${endpoint}/${target.encodedPath}`);
+        const result = await gitlabRequest(ctx.origin, ctx.ownerToken, 'GET', `/${endpoint}/${target.encodedPath}`);
         if (!result.ok) {
             return { ok: false, reason: `${target.kind === 'группы' ? 'Группа' : 'Проект'} недоступен: ${target.url} (HTTP ${result.status}).` };
         }
@@ -311,7 +319,7 @@ async function updateTargetVariable(ctx, target, index, total) {
     const label = target.kind === 'группы' ? 'группе' : 'проекте';
     logSuccess('📦', '[%s/%s] Обновляю CI variable %s в %s %s', String(index + 1), String(total), TOKEN_NAME, label, target.path);
 
-    const listed = await gitlabGetAll(ctx.origin, ctx.privateToken, `/${endpoint}/${target.encodedPath}/variables`);
+    const listed = await gitlabGetAll(ctx.origin, ctx.ownerToken, `/${endpoint}/${target.encodedPath}/variables`);
     if (!listed.ok) {
         logError('❌', 'Не удалось получить CI variables для %s (HTTP %s).', target.path, String(listed.status));
         return false;
@@ -320,7 +328,7 @@ async function updateTargetVariable(ctx, target, index, total) {
     const exists = (listed.data || []).some((variable) => variable.key === TOKEN_NAME);
     if (exists) {
         logSuccess('🗑', '[%s/%s] Удаляю старую CI variable %s в %s %s', String(index + 1), String(total), TOKEN_NAME, label, target.path);
-        const deleted = await gitlabRequest(ctx.origin, ctx.privateToken, 'DELETE', `/${endpoint}/${target.encodedPath}/variables/${TOKEN_NAME}`);
+        const deleted = await gitlabRequest(ctx.origin, ctx.ownerToken, 'DELETE', `/${endpoint}/${target.encodedPath}/variables/${TOKEN_NAME}`);
         if (!deleted.ok && deleted.status !== 204) {
             logError('❌', 'Не удалось удалить CI variable в %s (HTTP %s).', target.path, String(deleted.status));
             return false;
@@ -331,9 +339,9 @@ async function updateTargetVariable(ctx, target, index, total) {
     }
 
     logSuccess('📝', '[%s/%s] Создаю CI variable %s в %s %s', String(index + 1), String(total), TOKEN_NAME, label, target.path);
-    const created = await gitlabRequest(ctx.origin, ctx.privateToken, 'POST', `/${endpoint}/${target.encodedPath}/variables`, {
+    const created = await gitlabRequest(ctx.origin, ctx.ownerToken, 'POST', `/${endpoint}/${target.encodedPath}/variables`, {
         key: TOKEN_NAME,
-        value: ctx.privateToken,
+        value: ctx.ciToken,
         masked_and_hidden: true,
         description: ctx.variableDescription
     });
@@ -364,7 +372,7 @@ function tokenRotate() {
         name: 'token rotate',
         checks: [
             { name: 'load-config', run: loadOrCreateConfig },
-            { name: 'ask-private-token', run: askPrivateToken },
+            { name: 'ask-tokens', run: askTokens },
             { name: 'check-access', run: checkTargetsAccess }
         ],
         steps: [
@@ -382,9 +390,9 @@ module.exports = {
     addMonths,
     buildDescription,
     validateConfig,
-    promptPrivateToken,
+    promptHidden,
     loadOrCreateConfig,
-    askPrivateToken,
+    askTokens,
     checkTargetsAccess,
     updateCiVariables,
     tokenRotate
