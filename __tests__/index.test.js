@@ -4,6 +4,7 @@ const mockGit = { gitCreateTagAndPush: jest.fn() };
 const mockVersion = { setVersion: jest.fn() };
 const mockChangelog = { changelogAppend: jest.fn() };
 const mockChart = { chartCreateTag: jest.fn(), chartVerify: jest.fn(), chartDeploy: jest.fn() };
+const mockToken = { tokenRotate: jest.fn() };
 
 const mockState = {
   root: null,
@@ -81,6 +82,7 @@ jest.mock("../src/git", () => mockGit);
 jest.mock("../src/version", () => mockVersion);
 jest.mock("../src/changelog", () => mockChangelog);
 jest.mock("../src/chart", () => mockChart);
+jest.mock("../src/token", () => mockToken);
 jest.mock("../package.json", () => ({ version: "9.9.9" }), { virtual: true });
 
 describe("index CLI wiring", () => {
@@ -148,6 +150,15 @@ describe("index CLI wiring", () => {
     verify._action("/tmp/source");
 
     expect(mockChart.chartVerify).toHaveBeenCalledWith("/tmp/source");
+  });
+
+  test("token rotate command calls token rotate handler", () => {
+    const tokenCmd = mockState.root._commands.find((c) => c._name === "token");
+    const rotate = tokenCmd._commands.find((c) => c._name === "rotate");
+
+    rotate._action();
+
+    expect(mockToken.tokenRotate).toHaveBeenCalled();
   });
 
   test("chart deploy command calls chart deploy handler", () => {

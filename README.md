@@ -53,6 +53,9 @@ spectrum chart verify ~/repo  # Сравнить ingress paths AS IS vs TO BE д
 
 # 📝 Управление changelog
 spectrum changelog append "Сообщение"  # Добавить запись в CHANGELOG.md
+
+# 🔑 GitLab токены
+spectrum token rotate  # Ротировать GITLAB_PRIVATE_TOKEN и обновить CI variables
 ```
 
 ### Справка по командам:
@@ -69,6 +72,9 @@ spectrum changelog --help
 
 # Справка по chart
 spectrum chart --help
+
+# Справка по токенам
+spectrum token --help
 ```
 
 ## ✨ Особенности
@@ -96,6 +102,7 @@ spectrum-cli/
 │   ├── version.js     # 📦 Управление версиями SemVer
 │   ├── changelog.js   # 📋 Работа с CHANGELOG.md
 │   ├── chart.js       # 📈 Создание и push chart тегов
+│   ├── token.js       # 🔑 Ротация GitLab PAT и CI variables
 │   ├── development.js # ⚡ Dev команды (внутренние)
 │   └── release.js     # 🚀 Release процесс
 ├── package.json       # 📦 Конфигурация проекта
@@ -118,6 +125,7 @@ spectrum-cli/
 | `spectrum chart create`     | Создать и запушить chart тег        |
 | `spectrum chart deploy`     | Обновить chart версию в helmrelease |
 | `spectrum chart verify`     | Проверить ingress paths chart       |
+| `spectrum token rotate`     | Ротировать GITLAB_PRIVATE_TOKEN     |
 
 ### 🛡️ Preflight-проверки по командам
 
@@ -131,6 +139,7 @@ spectrum-cli/
 - `spectrum chart create <version>`: `git-repo`, `clean-working-tree`, `on-main-branch`, `valid-semver` (переданный `<version>` — semver), `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), `tag-missing` (тега `chart-<name>-<version>` нет локально и на `origin`).
 - `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
 - `spectrum chart verify <source_path>`: `git-repo`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
+- `spectrum token rotate`: `load-config` (есть валидный `~/.config/spectrum-cli/config.yaml`), `ask-admin-pat` (admin PAT только в памяти), `resolve-user` (`GET /user`), `check-access` (все группы и проекты из конфига доступны).
 
 ## 🔄 Workflow релиза
 
@@ -184,6 +193,39 @@ spectrum-cli/
 3. Для `assets` использует фиксированный набор regex-путей
 4. Печатает diff только по изменениям: лишние пути (`-`) и недостающие (`+`) с цветовой подсветкой
 5. Завершает команду с ошибкой, если есть расхождения
+
+### `spectrum token rotate`
+
+Ротация PAT `GITLAB_PRIVATE_TOKEN` на текущем пользователе admin PAT и пролив значения в CI/CD variables групп и проектов.
+
+**Конфиг:** `~/.config/spectrum-cli/config.yaml`
+
+Если файла нет, команда создаст его:
+
+```yaml
+bot: group349_bot2
+token_ttl_months: 6
+groups:
+  - https://gitlab.spectrumdata.tech/spectrum-frontend
+projects:
+  - https://gitlab.spectrumdata.tech/bso/agent-site
+```
+
+- `bot` и `token_ttl_months` читаются только из конфига.
+- Admin PAT запрашивается скрытым вводом и живет только в памяти на время команды.
+- Если PAT `GITLAB_PRIVATE_TOKEN` уже есть, он удаляется и создается заново. Если нет — создается новый.
+- Срок жизни PAT: сегодня + `token_ttl_months`.
+- Права PAT: `api`, `read_repository`, `write_repository`, `read_registry`.
+- Для каждой группы и проекта CI variable `GITLAB_PRIVATE_TOKEN` удаляется (если есть) и создается заново как masked and hidden.
+- Description переменной: `PAT от бота <bot>, владелец Колосов. Истекает YYYY-MM-DD.`
+- В конце новый PAT печатается один раз. Повторно получить его нельзя.
+
+1. Загружает или создает конфиг
+2. Запрашивает admin PAT
+3. Проверяет доступ ко всем группам и проектам
+4. Удаляет старый PAT `GITLAB_PRIVATE_TOKEN` и создает новый
+5. Обновляет CI variables во всех целях
+6. Печатает новый PAT и предупреждение
 
 ## 📝 Работа с Changelog
 

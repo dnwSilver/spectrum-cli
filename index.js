@@ -7,6 +7,7 @@ const version = require("./src/version");
 const release = require("./src/release");
 const changelog = require("./src/changelog");
 const chart = require("./src/chart");
+const token = require("./src/token");
 const { version: pkgVersion } = require("./package.json");
 
 async function runAction(action, ...args) {
@@ -99,6 +100,15 @@ chartCmd
   .command("deploy")
   .description("Задеплоить последнюю версию chart в файлы helmrelease")
   .action(() => runAction(chart.chartDeploy));
+
+const tokenCmd = program
+  .command("token")
+  .description("Команды управления GitLab токенами");
+
+tokenCmd
+  .command("rotate")
+  .description("Ротировать GITLAB_PRIVATE_TOKEN и обновить CI variables")
+  .action(() => runAction(token.tokenRotate));
 
 // Переопределяем help, чтобы показать кастомный формат с алиасами
 program.configureHelp({
