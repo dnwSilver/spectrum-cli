@@ -53,7 +53,7 @@ git --version
 cd /path/to/your/project
 
 # Увеличить patch версию
-./index.js up version patch
+./index.js version up patch
 
 # Запустить полный цикл релиза
 ./index.js release start
@@ -67,17 +67,22 @@ cd /path/to/your/project
 Для корректной работы Spectrum CLI ваш проект должен содержать:
 
 1. **package.json** - с полем `version`
-2. **CHANGELOG.md** - в формате Keep a Changelog
+2. **CHANGELOG.md** - в формате Keep a Changelog без постоянного блока `Unreleased`
 3. **Git репозиторий** - с настроенными remote
 4. **Ветки** - `main`/`master` и `develop`/`dev`
 5. **Helm chart** - файл `charts/<chart-name>/Chart.yaml` с полем `name` (для `chart create`)
+
+Рабочие ветки именуются `<type>/<YOUTRACK-ID>` или
+`<type>/<YOUTRACK-ID>-<slug>`, например `feature/AR-123` и
+`hotfix/ABBVJSOP-1-timeout`.
 
 ### Пример минимальной структуры:
 
 ```
 my-project/
 ├── package.json      # {"version": "1.0.0", ...}
-├── CHANGELOG.md      # ## [Unreleased]
+├── CHANGELOG.md      # История собранных релизов
+├── .changelog/       # <name>.<type>.md для следующего релиза
 └── .git/             # git init
 ```
 

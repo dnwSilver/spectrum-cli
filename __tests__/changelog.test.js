@@ -7,9 +7,8 @@ jest.mock("readline");
 jest.mock("../src/utils", () => ({
   logSuccess: jest.fn(),
   logError: jest.fn(),
-  execCommand: jest.fn(),
   execSilent: jest.fn(),
-  getVersion: jest.fn(),
+  execCommand: jest.fn(),
   getCurrentBranch: jest.fn(),
   colors: {
     yellow: "<y>",
@@ -20,23 +19,26 @@ jest.mock("../src/utils", () => ({
 
 const utils = require("../src/utils");
 const changelog = require("../src/changelog");
+const { getFragmentType } = require("../src/changelog-config");
 
-describe("changelog", () => {
+describe("changelog fragments", () => {
   const originalLog = console.log;
 
   beforeEach(() => {
     jest.clearAllMocks();
     console.log = jest.fn();
-    fs.existsSync.mockReturnValue(true);
+    fs.existsSync.mockImplementation((filePath) => filePath === "CHANGELOG.md");
+    fs.mkdirSync.mockImplementation(() => {});
+    fs.writeFileSync.mockImplementation(() => {});
+    fs.unlinkSync.mockImplementation(() => {});
+    utils.getCurrentBranch.mockReturnValue("feature/SPEC-8-new-ui");
     utils.execSilent.mockImplementation((command) => {
       if (command === "npx --yes prettier --version") return "3.0.0";
-      if (command === "prettier --version") return null;
+      if (command === "git config user.name") return "Alex";
+      if (command === "git config user.email") return "alex@example.com";
       return null;
     });
-    utils.execCommand.mockImplementation((command) => {
-      if (command.includes("--check CHANGELOG.md")) return true;
-      return true;
-    });
+    utils.execCommand.mockReturnValue(true);
   });
 
   afterAll(() => {
@@ -44,26 +46,28 @@ describe("changelog", () => {
   });
 
   function mockQuestionAnswers(answers) {
-    let i = 0;
+    let index = 0;
     readline.createInterface.mockImplementation(() => ({
-      question: (_q, cb) => cb(answers[i++]),
+      question: (_question, callback) => callback(answers[index++]),
       close: jest.fn(),
     }));
   }
 
-  test("formatMessage appends dot when needed", () => {
-    expect(changelog.formatMessage("Hello")).toBe("Hello.");
-    expect(changelog.formatMessage("Hello.")).toBe("Hello.");
+  test("formats messages without changing terminal punctuation", () => {
+    expect(changelog.formatMessage("  Добавлена команда  ")).toBe("Добавлена команда.");
+    expect(changelog.formatMessage("Исправлено!")).toBe("Исправлено!");
+    expect(changelog.formatMessage("Почему?")).toBe("Почему?");
+    expect(changelog.formatMessage("  ")).toBe("");
   });
 
-  test("detectSectionFromBranch returns mapped sections", () => {
-    utils.getCurrentBranch.mockReturnValue("support/SPEC-1");
+  test("maps branch kinds to allowed sections", () => {
+    utils.getCurrentBranch.mockReturnValue("support/SPEC-1-docs");
     expect(changelog.detectSectionFromBranch()).toEqual(["### 📦 Support", "### 🔐 Security"]);
 
-    utils.getCurrentBranch.mockReturnValue("bugfix/SPEC-1");
+    utils.getCurrentBranch.mockReturnValue("bugfix/SPEC-2-crash");
     expect(changelog.detectSectionFromBranch()).toEqual(["### 🪲 Fixed"]);
 
-    utils.getCurrentBranch.mockReturnValue("feature/SPEC-1");
+    utils.getCurrentBranch.mockReturnValue("feature/SPEC-3-api");
     expect(changelog.detectSectionFromBranch()).toEqual([
       "### 💥 Breaking change",
       "### 🆕 Added",
@@ -72,328 +76,237 @@ describe("changelog", () => {
       "### 🗑 Removed",
     ]);
 
-    utils.getCurrentBranch.mockReturnValue("random/SPEC-1");
+    utils.getCurrentBranch.mockReturnValue("custom/SPEC-4-task");
     expect(changelog.detectSectionFromBranch()).toEqual([]);
   });
 
-  test("detectSectionFromBranch returns empty when branch missing", () => {
+  test("extracts task IDs immediately after the GitFlow prefix", async () => {
+    utils.getCurrentBranch.mockReturnValue("feature/SPEC-123-title");
+    await expect(changelog.extractTaskFromBranch()).resolves.toBe("SPEC-123");
+
+    utils.getCurrentBranch.mockReturnValue("bugfix/ABBVJSOP-1");
+    await expect(changelog.extractTaskFromBranch()).resolves.toBe("ABBVJSOP-1");
+
+    utils.getCurrentBranch.mockReturnValue("feature/SPEC-124-New-UI");
+    await expect(changelog.extractTaskFromBranch()).resolves.toBe("SPEC-124");
+
     utils.getCurrentBranch.mockReturnValue(null);
-    expect(changelog.detectSectionFromBranch()).toEqual([]);
+    await expect(changelog.extractTaskFromBranch()).resolves.toBeNull();
   });
 
-  test("extractTaskFromBranch returns null when branch missing", async () => {
-    utils.getCurrentBranch.mockReturnValue(null);
-    expect(await changelog.extractTaskFromBranch()).toBeNull();
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Не удалось получить имя текущей ветки.");
+  test.each([
+    "feature/spec-123-title",
+    "feature/no-task",
+    "AR-123-fix",
+    "feature/fix-AR-123",
+  ])("rejects a branch outside the GitFlow YouTrack contract: %s", async (branch) => {
+    utils.getCurrentBranch.mockReturnValue(branch);
+    await expect(changelog.extractTaskFromBranch()).resolves.toBeNull();
   });
 
-  test("extractTaskFromBranch returns task from branch", async () => {
-    utils.getCurrentBranch.mockReturnValue("feature/SPEC-123-description");
-    expect(await changelog.extractTaskFromBranch()).toBe("SPEC-123");
-  });
+  test("uses configured git identity or asks for missing values", async () => {
+    await expect(changelog.getGitUser()).resolves.toBe("[Alex](alex@example.com)");
 
-  test("extractTaskFromBranch asks user and validates task", async () => {
-    utils.getCurrentBranch.mockReturnValue("feature/no-ticket");
-    mockQuestionAnswers(["SPEC-456"]);
-    expect(await changelog.extractTaskFromBranch()).toBe("SPEC-456");
-  });
-
-  test("extractTaskFromBranch returns null for invalid entered task", async () => {
-    utils.getCurrentBranch.mockReturnValue("feature/no-ticket");
-    mockQuestionAnswers(["invalid"]);
-    expect(await changelog.extractTaskFromBranch()).toBeNull();
-    expect(utils.logError).toHaveBeenCalledWith(
-      "❌",
-      "Неверный формат задачи. Ожидается формат: [a-zA-Z]+-[0-9]+"
-    );
-  });
-
-  test("getGitUser returns configured user", async () => {
-    utils.execSilent.mockImplementation((command) => {
-      if (command === "npx --yes prettier --version") return "3.0.0";
-      if (command === "git config user.name") return "Alex";
-      if (command === "git config user.email") return "a@b.com";
-      return null;
-    });
-
-    expect(await changelog.getGitUser()).toBe("[Alex](a@b.com)");
-  });
-
-  test("getGitUser asks for missing values and validates", async () => {
-    utils.execSilent.mockImplementation((command) => {
-      if (command === "npx --yes prettier --version") return "3.0.0";
-      if (command === "git config user.name") return "";
-      if (command === "git config user.email") return "";
-      return null;
-    });
-    mockQuestionAnswers(["Alex", "alex@example.com"]);
-
-    expect(await changelog.getGitUser()).toBe("[Alex](alex@example.com)");
-  });
-
-  test("getGitUser fails on empty name", async () => {
-    utils.execSilent.mockImplementation((command) => {
-      if (command === "git config user.name") return "";
-      if (command === "git config user.email") return "ok@example.com";
-      return "3.0.0";
-    });
-    mockQuestionAnswers([""]);
-
-    expect(await changelog.getGitUser()).toBeNull();
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Имя обязательно.");
-  });
-
-  test("getGitUser fails on invalid email", async () => {
-    utils.execSilent.mockImplementation((command) => {
-      if (command === "git config user.name") return "Alex";
-      if (command === "git config user.email") return "";
-      return "3.0.0";
-    });
-    mockQuestionAnswers(["invalid-email"]);
-
-    expect(await changelog.getGitUser()).toBeNull();
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Требуется корректный email.");
-  });
-
-  test("selectSection returns only section if one exists", async () => {
-    expect(await changelog.selectSection(["### 🪲 Fixed"])).toBe("### 🪲 Fixed");
-  });
-
-  test("selectSection returns selected from default list", async () => {
-    mockQuestionAnswers(["3"]);
-    expect(await changelog.selectSection([])).toBe("### 🛠 Changed");
-  });
-
-  test("selectSection returns null for invalid selection", async () => {
-    mockQuestionAnswers(["99"]);
-    expect(await changelog.selectSection(["### 🪲 Fixed", "### 📦 Support"])).toBeNull();
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Неверный выбор.");
-  });
-
-  test("changelogChangeHeader success", () => {
-    utils.getVersion.mockReturnValue("1.2.3");
-    fs.readFileSync.mockReturnValue("## [Unreleased]\n");
-    fs.writeFileSync.mockImplementation(() => {});
-
-    expect(changelog.changelogChangeHeader()).toBe(true);
-    expect(fs.writeFileSync).toHaveBeenCalledWith("CHANGELOG.md", "## 🚀 [1.2.3]\n");
-  });
-
-  test("changelogChangeHeader returns false on missing version", () => {
-    utils.getVersion.mockReturnValue(null);
-    expect(changelog.changelogChangeHeader()).toBe(false);
-  });
-
-  test("changelogChangeHeader catches read error", () => {
-    utils.getVersion.mockReturnValue("1.2.3");
-    fs.readFileSync.mockImplementation(() => {
-      throw new Error("read");
-    });
-    expect(changelog.changelogChangeHeader()).toBe(false);
-  });
-
-  test("changelogChangeHeader returns false on prettier missing", () => {
     utils.execSilent.mockReturnValue(null);
-    expect(changelog.changelogChangeHeader()).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Prettier недоступен. Установите его или используйте npx.");
+    mockQuestionAnswers(["Sam", "sam@example.com"]);
+    await expect(changelog.getGitUser()).resolves.toBe("[Sam](sam@example.com)");
+
+    mockQuestionAnswers(["", "unused@example.com"]);
+    await expect(changelog.getGitUser()).resolves.toBeNull();
   });
 
-  test("changelogRemoveEmptyChapters success", () => {
-    fs.readFileSync.mockReturnValue("### A\n\n_x_\n\n### B\n\n_y_\n\n");
-    fs.writeFileSync.mockImplementation(() => {});
+  test("selects the only section and validates interactive choices", async () => {
+    await expect(changelog.selectSection(["### 🪲 Fixed"])).resolves.toBe("### 🪲 Fixed");
 
-    expect(changelog.changelogRemoveEmptyChapters()).toBe(true);
-    expect(fs.writeFileSync).toHaveBeenCalledWith("CHANGELOG.md", "");
+    mockQuestionAnswers(["2"]);
+    await expect(changelog.selectSection(["### 🆕 Added", "### 🛠 Changed"])).resolves.toBe("### 🛠 Changed");
+
+    mockQuestionAnswers(["9"]);
+    await expect(changelog.selectSection(["### 🆕 Added", "### 🛠 Changed"])).resolves.toBeNull();
   });
 
-  test("changelogRemoveEmptyChapters catches read errors", () => {
-    fs.readFileSync.mockImplementation(() => {
-      throw new Error("boom");
-    });
-    expect(changelog.changelogRemoveEmptyChapters()).toBe(false);
-  });
-
-  test("changelogRemoveEmptyChapters returns false on prettier check fail", () => {
-    utils.execCommand.mockImplementation((command) => (command.includes("--check") ? false : true));
-    expect(changelog.changelogRemoveEmptyChapters()).toBe(false);
-  });
-
-  test("changelogAddUnreleasedBlock success", () => {
-    utils.getVersion.mockReturnValue("1.2.3");
-    fs.readFileSync
-      .mockReturnValueOnce("## [Unreleased]\n")
-      .mockReturnValueOnce("## 🚀 [1.2.3]\n");
-
-    expect(changelog.changelogAddUnreleasedBlock()).toBe(true);
-    expect(fs.writeFileSync).toHaveBeenCalledWith(
-      "CHANGELOG.md",
-      "## [Unreleased]\n\n## 🚀 [1.2.3]\n"
+  test("builds portable fragment names and rejects lookalike extensions", () => {
+    expect(changelog.sanitizeFragmentSlug("feature/SPEC-8-New UI", "SPEC-8")).toBe("feature-new-ui");
+    expect(changelog.createFragmentPath("SPEC-8", "added", "feature/SPEC-8-New UI")).toBe(
+      ".changelog/SPEC-8-feature-new-ui.added.md"
     );
+    expect(getFragmentType(".changelog/SPEC-8-feature.added.md")).toBe("added");
+    expect(getFragmentType(".changelog/SPEC-8-featureXaddedYmd")).toBeNull();
   });
 
-  test("changelogAddUnreleasedBlock returns false on missing version", () => {
-    utils.getVersion.mockReturnValue(null);
-    expect(changelog.changelogAddUnreleasedBlock()).toBe(false);
-  });
-
-  test("changelogAddUnreleasedBlock returns false on prettier check fail", () => {
-    utils.execCommand.mockImplementation((command) => (command.includes("--check") ? false : true));
-    expect(changelog.changelogAddUnreleasedBlock()).toBe(false);
-  });
-
-  test("changelogAddUnreleasedBlock catches read errors", () => {
-    utils.getVersion.mockReturnValue("1.2.3");
-    fs.readFileSync.mockImplementation(() => {
-      throw new Error("read");
-    });
-    expect(changelog.changelogAddUnreleasedBlock()).toBe(false);
-  });
-
-  test("changelogCommit success and failure", () => {
-    utils.execCommand.mockReturnValueOnce(true).mockReturnValueOnce(true);
-    expect(changelog.changelogCommit()).toBe(true);
-    expect(utils.logSuccess).toHaveBeenCalledWith("📝", "Коммит с обновленным changelog создан.");
-
-    utils.execCommand.mockReturnValueOnce(true).mockReturnValueOnce(false);
-    expect(changelog.changelogCommit()).toBe(false);
-  });
-
-  test("changelogAppend returns false on prettier check fail", async () => {
-    utils.execCommand.mockImplementation((command) => command.includes("--check") ? false : true);
-    expect(await changelog.changelogAppend("Message")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Предпроверка не пройдена (%s): %s", "changelog append", "changelog-prettier-check", "Файл CHANGELOG.md не прошел проверку Prettier.");
-  });
-
-  test("changelogAppend returns false when no section in changelog", async () => {
-    utils.getCurrentBranch.mockReturnValue("feature/SPEC-7");
-    utils.execSilent.mockImplementation((command) => {
-      if (command === "npx --yes prettier --version") return "3.0.0";
-      if (command === "git config user.name") return "Alex";
-      if (command === "git config user.email") return "alex@example.com";
-      return null;
-    });
-    fs.readFileSync.mockReturnValue("## [Unreleased]\n");
-    mockQuestionAnswers(["1"]);
-
-    expect(await changelog.changelogAppend("Add feature")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Предпроверка не пройдена (%s): %s", "changelog append", "prepare-entry", "Не удалось найти раздел \"### 💥 Breaking change\" в CHANGELOG.md.");
-  });
-
-  test("changelogAppend success and removes default text", async () => {
-    utils.getCurrentBranch.mockReturnValue("feature/SPEC-8");
-    utils.execSilent.mockImplementation((command) => {
-      if (command === "npx --yes prettier --version") return "3.0.0";
-      if (command === "git config user.name") return "Alex";
-      if (command === "git config user.email") return "alex@example.com";
-      return null;
-    });
-    const content = [
-      "## [Unreleased]",
-      "",
-      "### 🆕 Added",
-      "",
-      "_Список новой функциональности._",
-      "",
-      "### 🛠 Changed",
-      "",
-      "_Список изменившейся функциональности._",
-    ].join("\n");
-    fs.readFileSync.mockReturnValue(content);
-    fs.writeFileSync.mockImplementation(() => {});
+  test("creates a fragment instead of editing CHANGELOG.md", async () => {
     mockQuestionAnswers(["2"]);
 
-    expect(await changelog.changelogAppend("Something happened")).toBe(true);
+    await expect(changelog.changelogAppend("Добавлен новый экран")).resolves.toBe(true);
+
+    expect(fs.mkdirSync).toHaveBeenCalledWith(".changelog", { recursive: true });
     expect(fs.writeFileSync).toHaveBeenCalledWith(
-      "CHANGELOG.md",
-      expect.stringContaining("- SPEC-8 Something happened. [Alex](alex@example.com)")
+      ".changelog/SPEC-8-feature-new-ui.added.md",
+      "- SPEC-8 Добавлен новый экран. [Alex](alex@example.com)\n"
     );
+    expect(fs.writeFileSync).not.toHaveBeenCalledWith("CHANGELOG.md", expect.any(String));
   });
 
-  test("changelogAppend keeps default text when section already has entries", async () => {
-    utils.getCurrentBranch.mockReturnValue("feature/SPEC-9");
-    utils.execSilent.mockImplementation((command) => {
-      if (command === "npx --yes prettier --version") return "3.0.0";
-      if (command === "git config user.name") return "Alex";
-      if (command === "git config user.email") return "alex@example.com";
-      return null;
-    });
-    const content = [
-      "## [Unreleased]",
-      "",
-      "### 🆕 Added",
-      "",
-      "_Список новой функциональности._",
-      "- SPEC-1 Existing. [User](mail@example.com)",
-    ].join("\n");
-    fs.readFileSync.mockReturnValue(content);
-    fs.writeFileSync.mockImplementation(() => {});
-    mockQuestionAnswers(["2"]);
-
-    expect(await changelog.changelogAppend("Another one")).toBe(true);
-    const written = fs.writeFileSync.mock.calls[0][1];
-    expect(written).not.toContain("_Список новой функциональности._");
-    expect(written).toContain("- SPEC-1 Existing. [User](mail@example.com)");
-  });
-
-  test("changelogAppend handles thrown error", async () => {
-    utils.getCurrentBranch.mockReturnValue("bugfix/SPEC-11");
-    utils.execSilent.mockImplementation((command) => {
-      if (command === "npx --yes prettier --version") return "3.0.0";
-      if (command === "git config user.name") return "Alex";
-      if (command === "git config user.email") return "alex@example.com";
-      return null;
-    });
-    fs.readFileSync.mockImplementation(() => {
-      throw new Error("read failed");
-    });
-
-    expect(await changelog.changelogAppend("oops")).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "[%s] Предпроверка не пройдена (%s): %s", "changelog append", "prepare-entry", "Ошибка при подготовке записи changelog: read failed");
-  });
-
-  test("changelogAppend covers hasOtherEntries branch", async () => {
-    const originalStartsWith = String.prototype.startsWith;
-    String.prototype.startsWith = function startsWithMock(prefix, ...rest) {
-      if (this.toString() === "_MAGIC_") {
-        if (prefix === "_") return true;
-        if (prefix === "- ") return true;
-      }
-      return originalStartsWith.call(this, prefix, ...rest);
+  test("appends unique entries to an existing fragment", () => {
+    const fragmentPath = ".changelog/SPEC-8-feature-new-ui.added.md";
+    fs.existsSync.mockImplementation((filePath) => filePath === "CHANGELOG.md" || filePath === fragmentPath);
+    fs.readFileSync.mockReturnValue("- SPEC-8 Первая запись. [Alex](alex@example.com)\n");
+    const context = {
+      fragmentState: {
+        fragmentPath,
+        entry: "- SPEC-8 Вторая запись. [Alex](alex@example.com)",
+        selectedSection: "### 🆕 Added",
+      },
     };
 
-    utils.getCurrentBranch.mockReturnValue("feature/SPEC-15");
-    utils.execSilent.mockImplementation((command) => {
-      if (command === "npx --yes prettier --version") return "3.0.0";
-      if (command === "git config user.name") return "Alex";
-      if (command === "git config user.email") return "alex@example.com";
-      return null;
-    });
-    fs.readFileSync.mockReturnValue(["## [Unreleased]", "", "### 🆕 Added", "", "_MAGIC_"].join("\n"));
-    fs.writeFileSync.mockImplementation(() => {});
-    mockQuestionAnswers(["2"]);
+    expect(changelog.appendPreparedChangelogEntry(context)).toBe(true);
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      fragmentPath,
+      "- SPEC-8 Первая запись. [Alex](alex@example.com)\n- SPEC-8 Вторая запись. [Alex](alex@example.com)\n"
+    );
 
-    expect(await changelog.changelogAppend("Edge path")).toBe(true);
-
-    String.prototype.startsWith = originalStartsWith;
+    fs.writeFileSync.mockClear();
+    context.fragmentState.entry = "- SPEC-8 Первая запись. [Alex](alex@example.com)";
+    expect(changelog.appendPreparedChangelogEntry(context)).toBe(true);
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      fragmentPath,
+      "- SPEC-8 Первая запись. [Alex](alex@example.com)\n"
+    );
   });
 
-  test("appendPreparedChangelogEntry returns false when append state is missing", () => {
-    expect(changelog.appendPreparedChangelogEntry({})).toBe(false);
-  });
+  test("rejects malformed existing fragments and write failures", () => {
+    const fragmentPath = ".changelog/SPEC-8-feature-new-ui.added.md";
+    fs.existsSync.mockReturnValue(true);
+    fs.readFileSync.mockReturnValue("invalid line\n");
+    const context = {
+      fragmentState: {
+        fragmentPath,
+        entry: "- SPEC-8 Entry. [Alex](alex@example.com)",
+        selectedSection: "### 🆕 Added",
+      },
+    };
 
-  test("appendPreparedChangelogEntry logs error on write failure", () => {
+    expect(changelog.appendPreparedChangelogEntry(context)).toBe(false);
+
+    fs.readFileSync.mockReturnValue("");
     fs.writeFileSync.mockImplementation(() => {
       throw new Error("write failed");
     });
-    const result = changelog.appendPreparedChangelogEntry({
-      appendState: {
-        lines: ["## [Unreleased]", "", "### 🆕 Added", ""],
-        selectedSection: "### 🆕 Added",
-        entry: "- SPEC-1 Test. [A](a@b.com)",
-        sectionIndex: 2,
-      },
+    expect(changelog.appendPreparedChangelogEntry(context)).toBe(false);
+    expect(utils.logError).toHaveBeenCalledWith("❌", "Ошибка при записи changelog fragment: %s", "write failed");
+  });
+
+  test("validates CHANGELOG.md and fragments with changelog check", async () => {
+    fs.existsSync.mockImplementation((filePath) => ["CHANGELOG.md", ".changelog"].includes(filePath));
+    fs.readdirSync.mockReturnValue([
+      { name: "SPEC-8-feature.added.md", isFile: () => true },
+    ]);
+    fs.readFileSync.mockReturnValue("- SPEC-8 Добавлен экран. [Alex](alex@example.com)\n");
+
+    await expect(changelog.changelogCheck()).resolves.toBe(true);
+    expect(utils.execCommand).toHaveBeenCalledWith("npx --yes prettier --check CHANGELOG.md");
+
+    fs.readFileSync.mockReturnValue("invalid\n");
+    await expect(changelog.changelogCheck()).resolves.toBe(false);
+  });
+
+  test("removes a legacy Unreleased block", () => {
+    const input = [
+      "# Changelog",
+      "",
+      "Intro.",
+      "",
+      "## [Unreleased]",
+      "",
+      "### 🆕 Added",
+      "",
+      "_Placeholder._",
+      "",
+      "## 🚀 [1.0.0] - 2026-01-01",
+      "",
+      "### 🪲 Fixed",
+      "",
+      "- Old fix.",
+      "",
+    ].join("\n");
+
+    expect(changelog.stripLegacyUnreleasedBlock(input)).toBe([
+      "# Changelog",
+      "",
+      "Intro.",
+      "",
+      "## 🚀 [1.0.0] - 2026-01-01",
+      "",
+      "### 🪲 Fixed",
+      "",
+      "- Old fix.",
+      "",
+    ].join("\n"));
+  });
+
+  test("renders fragments in stable section order", () => {
+    const fragments = [
+      { type: "fixed", entries: ["- SPEC-2 Исправлено."] },
+      { type: "added", entries: ["- SPEC-1 Добавлено."] },
+      { type: "fixed", entries: ["- SPEC-3 Ещё исправлено."] },
+    ];
+
+    expect(changelog.renderReleaseBlock("1.2.0", fragments, "2026-08-25")).toBe([
+      "## 🚀 [1.2.0] - 2026-08-25",
+      "",
+      "### 🆕 Added",
+      "",
+      "- SPEC-1 Добавлено.",
+      "",
+      "### 🪲 Fixed",
+      "",
+      "- SPEC-2 Исправлено.",
+      "- SPEC-3 Ещё исправлено.",
+      "",
+    ].join("\n"));
+  });
+
+  test("inserts a release before older releases and rejects duplicate versions", () => {
+    const changelogText = "# Changelog\n\nIntro.\n\n## 🚀 [1.0.0] - 2026-01-01\n\n- Old.\n";
+    const releaseBlock = "## 🚀 [1.1.0] - 2026-08-25\n\n### 🆕 Added\n\n- New.\n";
+    const result = changelog.insertReleaseBlock(changelogText, releaseBlock, "1.1.0");
+
+    expect(result.indexOf("[1.1.0]")).toBeLessThan(result.indexOf("[1.0.0]"));
+    expect(() => changelog.insertReleaseBlock(result, releaseBlock, "1.1.0")).toThrow(
+      "Версия 1.1.0 уже присутствует"
+    );
+  });
+
+  test("builds the release changelog and removes consumed fragments", () => {
+    const fragments = [
+      { filePath: ".changelog/a.added.md", type: "added", entries: ["- Added."] },
+      { filePath: ".changelog/b.fixed.md", type: "fixed", entries: ["- Fixed."] },
+    ];
+    fs.readFileSync.mockReturnValue("# Changelog\n\n## 🚀 [1.0.0] - 2026-01-01\n\n- Old.\n");
+    const context = { newVersion: "1.1.0", changelogFragments: fragments };
+
+    expect(changelog.changelogBuildRelease(context, "2026-08-25")).toBe(true);
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      "CHANGELOG.md",
+      expect.stringContaining("## 🚀 [1.1.0] - 2026-08-25")
+    );
+    expect(changelog.changelogRemoveFragments(context)).toBe(true);
+    expect(fs.unlinkSync).toHaveBeenNthCalledWith(1, ".changelog/a.added.md");
+    expect(fs.unlinkSync).toHaveBeenNthCalledWith(2, ".changelog/b.fixed.md");
+  });
+
+  test("returns false when release context is incomplete or file operations fail", () => {
+    expect(changelog.changelogBuildRelease({})).toBe(false);
+    expect(changelog.changelogRemoveFragments({})).toBe(false);
+
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error("read failed");
     });
-    expect(result).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Ошибка при добавлении записи changelog: %s", "write failed");
+    expect(changelog.changelogBuildRelease({ newVersion: "1.0.0", changelogFragments: [{}] })).toBe(false);
+
+    fs.unlinkSync.mockImplementation(() => {
+      throw new Error("remove failed");
+    });
+    expect(changelog.changelogRemoveFragments({ changelogFragments: [{ filePath: "a" }] })).toBe(false);
   });
 });

@@ -2,7 +2,7 @@
 const mockRelease = { releaseStart: jest.fn(), releaseClose: jest.fn() };
 const mockGit = { gitCreateTagAndPush: jest.fn() };
 const mockVersion = { setVersion: jest.fn() };
-const mockChangelog = { changelogAppend: jest.fn() };
+const mockChangelog = { changelogAppend: jest.fn(), changelogCheck: jest.fn() };
 const mockChart = { chartCreateTag: jest.fn(), chartVerify: jest.fn(), chartDeploy: jest.fn() };
 const mockToken = { tokenRotate: jest.fn() };
 
@@ -52,6 +52,11 @@ class MockCommand {
 
   aliases() {
     return this._aliases;
+  }
+
+  requiredOption(definition, description) {
+    this._options.push({ definition, description, required: true });
+    return this;
   }
 
   action(fn) {
@@ -112,11 +117,12 @@ describe("index CLI wiring", () => {
     const close = releaseCmd._commands.find((c) => c._name === "close");
     const deploy = releaseCmd._commands.find((c) => c._name === "deploy");
 
+    expect(start._options).toEqual([]);
     start._action();
     close._action();
     deploy._action();
 
-    expect(mockRelease.releaseStart).toHaveBeenCalled();
+    expect(mockRelease.releaseStart).toHaveBeenCalledWith();
     expect(mockRelease.releaseClose).toHaveBeenCalled();
     expect(mockGit.gitCreateTagAndPush).toHaveBeenCalled();
   });
@@ -190,6 +196,17 @@ describe("index CLI wiring", () => {
 
     expect(console.error).toHaveBeenCalledWith("❌ Ошибка: boom");
     expect(process.exit).toHaveBeenCalledWith(1);
+  });
+
+  test("changelog check command calls fragment validation", async () => {
+    mockChangelog.changelogCheck.mockResolvedValue(true);
+    const changelogCmd = mockState.root._commands.find((c) => c._name === "changelog");
+    const check = changelogCmd._commands.find((c) => c._name === "check");
+
+    await check._action();
+
+    expect(mockChangelog.changelogCheck).toHaveBeenCalled();
+    expect(process.exit).not.toHaveBeenCalled();
   });
 
   test("custom help formatter renders sections", () => {

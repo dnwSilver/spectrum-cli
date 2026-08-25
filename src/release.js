@@ -1,11 +1,9 @@
 #!/usr/bin/env node
-const fs = require('fs');
 const { goToDevBranch, goToMainBranch, updateCurrentBranch } = require('./git');
-const { changelogChangeHeader, changelogRemoveEmptyChapters, changelogAddUnreleasedBlock } = require('./changelog');
-const path = require('path');
+const { changelogBuildRelease, changelogRemoveFragments } = require('./changelog');
 const { getVersion, logSuccess, logError, execCommand, getCurrentBranch, getMainBranch, getMergeRequestUrl, getPackageManager } = require('./utils');
 const { runCommand } = require('./command-executor');
-const { upVersion, updateVersionFile } = require('./version');
+const { compareVersions, upVersion, updateVersionFileExact } = require('./version');
 const {
     requireGitRepo,
     requireCleanWorkingTree,
@@ -14,22 +12,28 @@ const {
     requireOnDevBranch,
     requireOnMainBranch,
     requireReleaseBranchMissing,
-    requirePackageVersion,
+    requireReleaseVersionAvailable,
+    requireStablePackageVersion,
+    requireLatestStableVersion,
+    requireStableTagAtHead,
     requireFileExists,
-    requireChangelogFormatted
+    requireChangelogFormatted,
+    requireChangelogFragments
 } = require('./preflight');
+const { CHANGELOG_FILE } = require('./changelog-config');
 
-function releaseCreate() {
-    if (!goToDevBranch()) return false;
-    if (!updateCurrentBranch()) return false;
+function getReleaseBranchName(version) {
+    return `release/${version}`;
+}
 
-    const currentVersion = getVersion();
-    if (!currentVersion) {
-        logError('❌', 'Не удалось получить версию из package.json');
+function releaseCreate(context) {
+    const branchName = context.releaseBranch;
+    if (!branchName) {
+        logError('❌', 'Не удалось определить имя release-ветки.');
         return false;
     }
 
-    if (!execCommand(`git switch -c release/${currentVersion}`)) {
+    if (!execCommand(`git switch -c ${branchName}`)) {
         return false;
     }
 
@@ -60,41 +64,37 @@ function releaseCheckChangelogLint() {
     return true;
 }
 
-function detectBumpType() {
-    const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
-    const lines = changelog.split('\n');
-
-    let inUnreleased = false;
-    let currentSection = null;
-    const sectionsWithEntries = new Set();
-
-    for (const line of lines) {
-        if (line.startsWith('## [Unreleased]')) {
-            inUnreleased = true;
-            continue;
-        }
-        if (inUnreleased && line.startsWith('## ')) {
-            break;
-        }
-        if (inUnreleased && line.startsWith('### ')) {
-            currentSection = line.trim();
-            continue;
-        }
-        if (inUnreleased && currentSection && line.startsWith('- ')) {
-            sectionsWithEntries.add(currentSection);
-        }
-    }
-
-    if (sectionsWithEntries.has('### 💥 Breaking change')) {
+function detectBumpType(fragments) {
+    const bumpTypes = new Set((fragments || []).map((fragment) => fragment.bump));
+    if (bumpTypes.has('major')) {
         return 'major';
     }
-    if (sectionsWithEntries.has('### 🆕 Added')) {
+    if (bumpTypes.has('minor')) {
         return 'minor';
     }
     return 'patch';
 }
 
-function runInstall() {
+function resolveReleaseVersion(stableVersion, fragments) {
+    const bumpType = detectBumpType(fragments);
+    const newVersion = upVersion(stableVersion, bumpType);
+    if (!newVersion) return null;
+    return { bumpType, newVersion };
+}
+
+function resolveNextDevelopmentVersion(stableVersion, currentVersion) {
+    const nextPatchVersion = upVersion(stableVersion, 'patch');
+    if (!nextPatchVersion) return null;
+    if (!currentVersion) return nextPatchVersion;
+    return compareVersions(currentVersion, nextPatchVersion) > 0
+        ? currentVersion
+        : nextPatchVersion;
+}
+
+function runInstall(context = {}) {
+    if (context.developmentVersionChanged === false) {
+        return true;
+    }
     const pm = getPackageManager() || 'npm';
     if (!execCommand(`${pm} install`)) {
         logError('❌', 'Не удалось выполнить %s install.', pm);
@@ -104,15 +104,19 @@ function runInstall() {
     return true;
 }
 
+function updateReleaseVersion(context) {
+    return updateVersionFileExact(context.newVersion);
+}
+
 function releaseCommit() {
     const lockFiles = { npm: 'package-lock.json', yarn: 'yarn.lock', bun: 'bun.lockb' };
     const pm = getPackageManager();
-    const filesToAdd = ['CHANGELOG.md', 'package.json'];
+    const filesToAdd = [CHANGELOG_FILE, '.changelog', 'package.json'];
     if (pm && lockFiles[pm]) {
         filesToAdd.push(lockFiles[pm]);
     }
 
-    const addSuccess = execCommand(`git add ${filesToAdd.join(' ')}`);
+    const addSuccess = execCommand(`git add --all -- ${filesToAdd.join(' ')}`);
     const commitSuccess = execCommand('git commit --message "📝 Обновить changelog и версию." --no-verify');
 
     if (addSuccess && commitSuccess) {
@@ -120,6 +124,48 @@ function releaseCommit() {
         return true;
     }
     return false;
+}
+
+function prepareNextDevelopmentVersion(context) {
+    const currentVersion = getVersion();
+    let nextDevelopmentVersion;
+    try {
+        nextDevelopmentVersion = resolveNextDevelopmentVersion(context.stableVersion, currentVersion);
+    } catch (error) {
+        logError('❌', 'Не удалось сравнить dev-версию с новой стабильной версией: %s', error.message);
+        return false;
+    }
+
+    if (!nextDevelopmentVersion) {
+        logError('❌', 'Не удалось вычислить следующую dev-версию.');
+        return false;
+    }
+
+    context.nextDevelopmentVersion = nextDevelopmentVersion;
+    context.developmentVersionChanged = currentVersion !== nextDevelopmentVersion;
+    if (!context.developmentVersionChanged) {
+        logSuccess('🔖', 'Dev-версия %s уже опережает стабильную линию.', currentVersion);
+        return true;
+    }
+    return updateVersionFileExact(nextDevelopmentVersion);
+}
+
+function commitNextDevelopmentVersion(context) {
+    if (!context.developmentVersionChanged) return true;
+
+    const lockFiles = { npm: 'package-lock.json', yarn: 'yarn.lock', bun: 'bun.lockb' };
+    const pm = getPackageManager();
+    const filesToAdd = ['package.json'];
+    if (pm && lockFiles[pm]) {
+        filesToAdd.push(lockFiles[pm]);
+    }
+
+    if (!execCommand(`git add -- ${filesToAdd.join(' ')}`)) return false;
+    if (!execCommand(`git commit --message "🔖 Открыть разработку версии ${context.nextDevelopmentVersion}." --no-verify`)) {
+        return false;
+    }
+    logSuccess('📝', 'Dev переведен на версию %s.', context.nextDevelopmentVersion);
+    return true;
 }
 
 function releaseClose() {
@@ -130,7 +176,9 @@ function releaseClose() {
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'on-main-branch', run: requireOnMainBranch },
-            { name: 'main-and-dev-branches', run: requireMainAndDevBranches }
+            { name: 'main-and-dev-branches', run: requireMainAndDevBranches },
+            { name: 'package-version', run: requireStablePackageVersion },
+            { name: 'stable-tag-at-head', run: (ctx) => requireStableTagAtHead(ctx.version) }
         ],
         steps: [
             { name: 'switch-main', run: () => goToMainBranch() },
@@ -148,11 +196,14 @@ function releaseClose() {
                     return true;
                 }
             },
+            { name: 'open-next-development-version', run: prepareNextDevelopmentVersion },
+            { name: 'update-lock-file', run: runInstall },
+            { name: 'commit-next-development-version', run: commitNextDevelopmentVersion },
             {
                 name: 'push-dev',
                 run: () => {
                     const currentBranch = getCurrentBranch();
-                    if (!execCommand(`git push origin ${currentBranch} -o ci.skip`)) {
+                    if (!execCommand(`git push origin ${currentBranch}`)) {
                         return false;
                     }
                     logSuccess('📤', 'Ветка %s отправлена.', currentBranch);
@@ -171,28 +222,48 @@ function releaseStart() {
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches },
-            { name: 'package-version', run: requirePackageVersion },
+            { name: 'package-version', run: requireStablePackageVersion },
             { name: 'on-dev-branch', run: requireOnDevBranch },
-            { name: 'changelog-exists', run: () => requireFileExists('CHANGELOG.md') },
-            { name: 'unreleased-template-exists', run: () => requireFileExists(path.join(__dirname, 'UNRELEASED.md')) },
+            { name: 'stable-version', run: requireLatestStableVersion },
+            { name: 'changelog-exists', run: () => requireFileExists(CHANGELOG_FILE) },
             { name: 'changelog-prettier-check', run: requireChangelogFormatted },
+            { name: 'changelog-fragments', run: requireChangelogFragments },
             {
                 name: 'detect-bump-type',
                 run: (ctx) => {
-                    const bumpType = detectBumpType();
-                    const newVersion = upVersion(ctx.version, bumpType);
-                    const branchCheck = requireReleaseBranchMissing(`release/${newVersion}`);
+                    const resolved = resolveReleaseVersion(ctx.stableVersion, ctx.changelogFragments);
+                    if (!resolved) {
+                        return { ok: false, reason: 'Не удалось вычислить release-версию от последнего стабильного тега.' };
+                    }
+
+                    const nextDevelopmentVersion = upVersion(ctx.stableVersion, 'patch');
+                    if (compareVersions(ctx.version, nextDevelopmentVersion) < 0) {
+                        return {
+                            ok: false,
+                            reason: `Dev-версия ${ctx.version} устарела: после ${ctx.stableVersion} ожидается минимум ${nextDevelopmentVersion}.`
+                        };
+                    }
+                    if (compareVersions(ctx.version, resolved.newVersion) > 0) {
+                        return {
+                            ok: false,
+                            reason: `Вычисленная версия ${resolved.newVersion} ниже текущей dev-версии ${ctx.version}.`
+                        };
+                    }
+
+                    const releaseBranch = getReleaseBranchName(resolved.newVersion);
+                    const branchCheck = requireReleaseBranchMissing(releaseBranch);
                     if (!branchCheck.ok) return branchCheck;
-                    return { ok: true, data: { bumpType, newVersion } };
+                    const versionCheck = requireReleaseVersionAvailable(resolved.newVersion);
+                    if (!versionCheck.ok) return versionCheck;
+                    return { ok: true, data: { ...resolved, releaseBranch } };
                 }
             }
         ],
         steps: [
-            { name: 'bump-version', run: (ctx) => updateVersionFile(ctx.bumpType) },
+            { name: 'set-release-version', run: updateReleaseVersion },
             { name: 'run-install', run: runInstall },
-            { name: 'change-header', run: changelogChangeHeader },
-            { name: 'remove-empty-chapters', run: changelogRemoveEmptyChapters },
-            { name: 'add-unreleased-block', run: changelogAddUnreleasedBlock },
+            { name: 'build-release-changelog', run: changelogBuildRelease },
+            { name: 'remove-changelog-fragments', run: changelogRemoveFragments },
             { name: 'lint-changelog', run: releaseCheckChangelogLint },
             { name: 'create-release-branch', run: releaseCreate },
             { name: 'commit-release', run: releaseCommit },
@@ -202,9 +273,14 @@ function releaseStart() {
 }
 
 module.exports = {
+    getReleaseBranchName,
     releaseCreate,
     releasePush,
     releaseClose,
     releaseStart,
-    detectBumpType
+    detectBumpType,
+    resolveReleaseVersion,
+    resolveNextDevelopmentVersion,
+    prepareNextDevelopmentVersion,
+    commitNextDevelopmentVersion
 };

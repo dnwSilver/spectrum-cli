@@ -1,0 +1,4 @@
+- Команда `spectrum changelog append` создает независимый fragment в `.changelog/` вместо изменения общего `CHANGELOG.md`; для проверки добавлена команда `spectrum changelog check`, а `spectrum release start` собирает и удаляет fragments автоматически.
+- `spectrum release start` вычисляет target от последнего стабильного тега и создает `release/X.Y.Z` без привязки релиза к отдельной задаче, не повышая повторно зарезервированный next-patch в dev.
+- `spectrum release close` после стабильного тега открывает следующий patch в dev, обновляет lock-файл и не понижает уже более высокую dev-версию.
+- Changelog task ID принимается только из веток `<type>/<YOUTRACK-ID>` или `<type>/<YOUTRACK-ID>-<slug>`.

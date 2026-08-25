@@ -24,6 +24,26 @@ describe("version", () => {
     expect(version.upVersion("1.2.3", "minor")).toBe("1.3.0");
     expect(version.upVersion("1.2.3", "patch")).toBe("1.2.4");
     expect(version.upVersion("1.2.3", "unknown")).toBe("1.2.4");
+    expect(version.upVersion("1.2.3-alpha.1", "patch")).toBeNull();
+  });
+
+  test("compares stable SemVer cores", () => {
+    expect(version.compareVersions("1.2.3", "1.2.3")).toBe(0);
+    expect(version.compareVersions("1.3.0", "1.2.9")).toBeGreaterThan(0);
+    expect(version.compareVersions("1.2.9", "2.0.0")).toBeLessThan(0);
+    expect(() => version.compareVersions("1.2.3-alpha.1", "1.2.3")).toThrow();
+  });
+
+  test("writes an exact stable version", () => {
+    fs.readFileSync.mockReturnValue(JSON.stringify({ version: "1.2.3", name: "x" }));
+    fs.writeFileSync.mockImplementation(() => {});
+
+    expect(version.updateVersionFileExact("1.4.0")).toBe(true);
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      "package.json",
+      JSON.stringify({ version: "1.4.0", name: "x" }, null, 2) + "\n"
+    );
+    expect(version.updateVersionFileExact("1.4.0-rc.1")).toBe(false);
   });
 
   test("setVersion delegates to executor", async () => {

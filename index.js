@@ -39,12 +39,12 @@ releaseCmd
 
 releaseCmd
   .command("close")
-  .description("Закрыть релиз и влить в dev")
+  .description("Свести стабильный релиз в dev и открыть следующий patch")
   .action(() => runAction(release.releaseClose));
 
 releaseCmd
   .command("deploy")
-  .description("Деплой релиза (создать и отправить тег)")
+  .description("Создать и отправить только стабильный тег vX.Y.Z")
   .action(() => runAction(git.gitCreateTagAndPush));
 
 // Команды обновления версии
@@ -74,12 +74,17 @@ upCmd
 // Команды changelog
 const changelogCmd = program
   .command("changelog")
-  .description("Команды управления changelog");
+  .description("Команды управления changelog fragments");
 
 changelogCmd
   .command("append <message>")
-  .description("Добавить запись в changelog с номером задачи из ветки")
+  .description("Создать changelog fragment с номером задачи из ветки")
   .action((message) => runAction(() => changelog.changelogAppend(message)));
+
+changelogCmd
+  .command("check")
+  .description("Проверить CHANGELOG.md и changelog fragments")
+  .action(() => runAction(changelog.changelogCheck));
 
 // Команды chart
 const chartCmd = program

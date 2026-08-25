@@ -25,23 +25,13 @@ describe('Spectrum CLI Integration Tests', () => {
         // Create minimal CHANGELOG.md
         const changelog = `# Changelog
 
-## [Unreleased]
+All notable changes to this project will be documented in this file.
+
+## 🚀 [1.0.0] - 2026-01-01
 
 ### 🆕 Added
 
-_Список новой функциональности._
-
-### 🛠 Changed
-
-_Список изменившейся функциональности._
-
-### 🪲 Fixed
-
-_Список исправлений багов._
-
-### 📦 Support
-
-_Список правок для обеспечения технической поддержки._
+- Initial release.
 `;
         fs.writeFileSync('CHANGELOG.md', changelog);
         
@@ -100,7 +90,7 @@ _Список правок для обеспечения технической 
         test('should detect section from branch type', () => {
             // Create mock branches and test section detection logic directly
             const testCases = [
-                { branch: 'feature/TEST-123-new', expected: ['### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed'] },
+                { branch: 'feature/TEST-123-new', expected: ['### 💥 Breaking change', '### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed'] },
                 { branch: 'bugfix/BUG-456-fix', expected: ['### 🪲 Fixed'] },  
                 { branch: 'support/DOC-789-update', expected: ['### 📦 Support', '### 🔐 Security'] },
                 { branch: 'custom/OTHER-999-unknown', expected: [] }
@@ -115,7 +105,7 @@ _Список правок для обеспечения технической 
                 } else if (branchLower.includes('bugfix') || branchLower.includes('fix')) {
                     result = ['### 🪲 Fixed'];
                 } else if (branchLower.includes('feature') || branchLower.includes('feat')) {
-                    result = ['### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed'];
+                    result = ['### 💥 Breaking change', '### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed'];
                 }
                 
                 expect(result).toEqual(expected);
@@ -154,6 +144,7 @@ describe('Basic Functionality Tests', () => {
 
         const changelog = require('../src/changelog');
         expect(typeof changelog.changelogAppend).toBe('function');
+        expect(typeof changelog.changelogCheck).toBe('function');
         expect(typeof changelog.formatMessage).toBe('function');
 
         const git = require('../src/git');

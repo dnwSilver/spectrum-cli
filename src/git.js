@@ -6,7 +6,7 @@ const {
     requireCleanWorkingTree,
     requireOnMainBranch,
     requireCurrentBranchUpToDateWithRemote,
-    requirePackageVersion,
+    requireStablePackageVersion,
     requireTagMissing
 } = require('./preflight');
 
@@ -86,7 +86,7 @@ function gitCreateTagAndPush() {
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'on-main-branch', run: requireOnMainBranch },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
-            { name: 'package-version', run: requirePackageVersion },
+            { name: 'package-version', run: requireStablePackageVersion },
             {
                 name: 'tag-missing',
                 run: (ctx) => requireTagMissing(`v${ctx.version}`)

@@ -2,8 +2,15 @@
 const fs = require('fs');
 const path = require('path');
 const { execSilent, execCommand, getCurrentBranch, getMainBranch, getDevelopBranch, getVersion } = require('./utils');
+const {
+    CHANGELOG_DIR,
+    FRAGMENT_TYPES,
+    getFragmentType
+} = require('./changelog-config');
 
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+const STABLE_SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const YOUTRACK_TASK_PATTERN = /^[A-Z]+-[0-9]+$/;
 
 function ok(data) {
     return { ok: true, data };
@@ -164,6 +171,89 @@ function requirePackageVersion() {
     return ok({ version });
 }
 
+function requireStablePackageVersion() {
+    const version = getVersion();
+    if (!version) {
+        return fail('Не удалось прочитать версию из package.json.');
+    }
+    if (!STABLE_SEMVER_PATTERN.test(version)) {
+        return fail(`Версия "${version}" должна быть стабильным SemVer X.Y.Z без prerelease.`);
+    }
+    return ok({ version });
+}
+
+function compareStableVersions(left, right) {
+    const leftParts = String(left).split('.').map(Number);
+    const rightParts = String(right).split('.').map(Number);
+    for (let index = 0; index < 3; index += 1) {
+        if (leftParts[index] !== rightParts[index]) {
+            return leftParts[index] - rightParts[index];
+        }
+    }
+    return 0;
+}
+
+function requireLatestStableVersion() {
+    const tagRefs = execSilent('git ls-remote --tags origin "refs/tags/v*"');
+    if (tagRefs === null) {
+        return fail('Не удалось получить стабильные теги из origin.');
+    }
+
+    const versions = new Set();
+    for (const line of tagRefs.split('\n')) {
+        const match = line.trim().match(/^[0-9a-f]+\s+refs\/tags\/v(\d+\.\d+\.\d+)(?:\^\{\})?$/i);
+        if (match && STABLE_SEMVER_PATTERN.test(match[1])) {
+            versions.add(match[1]);
+        }
+    }
+
+    if (versions.size === 0) {
+        return fail('В origin не найден стабильный тег vX.Y.Z.');
+    }
+
+    const stableVersion = [...versions].sort(compareStableVersions).at(-1);
+    return ok({ stableVersion });
+}
+
+function requireStableTagAtHead(version) {
+    if (!STABLE_SEMVER_PATTERN.test(String(version || ''))) {
+        return fail('Для закрытия релиза требуется стабильная версия X.Y.Z.');
+    }
+
+    const head = execSilent('git rev-parse HEAD');
+    const tagRefs = execSilent(`git ls-remote --tags origin "refs/tags/v${version}" "refs/tags/v${version}^{}"`);
+    if (!head || tagRefs === null) {
+        return fail(`Не удалось проверить стабильный тег "v${version}".`);
+    }
+
+    let tagCommit = null;
+    for (const line of tagRefs.split('\n')) {
+        const [sha, ref] = line.trim().split(/\s+/);
+        if (ref === `refs/tags/v${version}^{}`) {
+            tagCommit = sha;
+            break;
+        }
+        if (ref === `refs/tags/v${version}`) {
+            tagCommit = sha;
+        }
+    }
+
+    if (!tagCommit) {
+        return fail(`Стабильный тег "v${version}" отсутствует в origin.`);
+    }
+    if (tagCommit !== head) {
+        return fail(`Стабильный тег "v${version}" указывает не на текущий commit main/master.`);
+    }
+    return ok({ stableVersion: version });
+}
+
+function requireYouTrackTask(task) {
+    if (!YOUTRACK_TASK_PATTERN.test(String(task || ''))) {
+        return fail('Номер задачи должен соответствовать формату YOUTRACK-ID, например AR-123.');
+    }
+    return ok({ task });
+}
+
 function requireTagMissing(tagName) {
     const localTag = execSilent(`git tag -l "${tagName}"`);
     if (localTag && localTag.trim()) {
@@ -201,6 +291,23 @@ function requireReleaseBranchMissing(branchName) {
     return ok();
 }
 
+function requireReleaseVersionAvailable(version) {
+    if (!STABLE_SEMVER_PATTERN.test(String(version || ''))) {
+        return fail('Целевая release-версия должна соответствовать X.Y.Z.');
+    }
+
+    const localBranches = execSilent(`git branch --list "release/${version}" "hotfix/*-${version}"`);
+    if (localBranches && localBranches.trim()) {
+        return fail(`Версия "${version}" уже используется локальной release/hotfix-веткой.`);
+    }
+
+    const remoteBranches = execSilent(`git ls-remote --heads origin "refs/heads/release/${version}" "refs/heads/hotfix/*-${version}"`);
+    if (remoteBranches && remoteBranches.trim()) {
+        return fail(`Версия "${version}" уже используется release/hotfix-веткой в origin.`);
+    }
+    return ok();
+}
+
 function requirePrettierAvailable() {
     const runner = getPrettierRunner();
     if (!runner) {
@@ -218,6 +325,68 @@ function requireChangelogFormatted() {
         return fail('Файл CHANGELOG.md не прошел проверку Prettier.');
     }
     return ok({ prettierRunner: runner });
+}
+
+function findChangelogFragmentFiles(baseDir = CHANGELOG_DIR) {
+    if (!fs.existsSync(baseDir)) {
+        return [];
+    }
+
+    try {
+        return fs.readdirSync(baseDir, { withFileTypes: true })
+            .filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
+            .map((entry) => toPosixPath(path.join(baseDir, entry.name)))
+            .sort();
+    } catch (error) {
+        return [];
+    }
+}
+
+function requireChangelogFragments() {
+    if (!fs.existsSync(CHANGELOG_DIR)) {
+        return fail(`Директория changelog fragments "${CHANGELOG_DIR}" не существует.`);
+    }
+
+    const fragmentFiles = findChangelogFragmentFiles();
+    if (fragmentFiles.length === 0) {
+        return fail(`В директории "${CHANGELOG_DIR}" нет changelog fragments.`);
+    }
+
+    const changelogFragments = [];
+    for (const filePath of fragmentFiles) {
+        const type = getFragmentType(filePath);
+        if (!type) {
+            return fail(`Неверное имя changelog fragment "${filePath}". Ожидается "<name>.<type>.md".`);
+        }
+
+        let content;
+        try {
+            content = fs.readFileSync(filePath, 'utf8');
+        } catch (error) {
+            return fail(`Не удалось прочитать changelog fragment "${filePath}".`);
+        }
+
+        const entries = content
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean);
+        if (entries.length === 0) {
+            return fail(`Changelog fragment "${filePath}" пуст.`);
+        }
+        if (entries.some((line) => !line.startsWith('- '))) {
+            return fail(`Каждая непустая строка "${filePath}" должна начинаться с "- ".`);
+        }
+
+        changelogFragments.push({
+            filePath,
+            type,
+            section: FRAGMENT_TYPES[type].section,
+            bump: FRAGMENT_TYPES[type].bump,
+            entries
+        });
+    }
+
+    return ok({ changelogFragments });
 }
 
 function requireSingleChart() {
@@ -540,6 +709,8 @@ function requireBuildCommandSupport(sourcePath) {
 
 module.exports = {
     SEMVER_PATTERN,
+    STABLE_SEMVER_PATTERN,
+    YOUTRACK_TASK_PATTERN,
     getPrettierRunner,
     requireGitRepo,
     requireCleanWorkingTree,
@@ -552,11 +723,18 @@ module.exports = {
     requireCurrentBranchUpToDateWithRemote,
     requireFileExists,
     requirePackageVersion,
+    requireStablePackageVersion,
+    requireLatestStableVersion,
+    requireStableTagAtHead,
+    requireYouTrackTask,
     requireTagMissing,
     requireOnReleaseBranch,
     requireReleaseBranchMissing,
+    requireReleaseVersionAvailable,
     requirePrettierAvailable,
     requireChangelogFormatted,
+    findChangelogFragmentFiles,
+    requireChangelogFragments,
     requireSingleChart,
     findValuesYamlFiles,
     findHelmReleaseFiles,

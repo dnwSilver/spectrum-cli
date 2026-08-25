@@ -25,71 +25,79 @@
 
 ## 🔄 Процесс релиза
 
-### 1. Подготовка версии
+### 1. Подготовка изменений
 
 ```bash
-# Убедитесь что вы на актуальной ветке
-git checkout main
-git pull origin main
+# На рабочей ветке создайте changelog fragment
+spectrum changelog append "Добавлена новая команда"
 
-# Увеличьте версию (используя сам Spectrum CLI!)
-spectrum version up patch   # для patch: 1.0.0 → 1.0.1
-spectrum version up minor   # для minor: 1.0.0 → 1.1.0
-spectrum version up major   # для major: 1.0.0 → 2.0.0
+# Проверьте CHANGELOG.md и fragments
+spectrum changelog check
+
+# Закоммитьте fragment вместе с изменением
+git add .changelog
+git commit -m "📝 Добавить changelog fragment."
 ```
 
-### 2. Обновление CHANGELOG.md
+Файл имеет имя `.changelog/<name>.<type>.md`. Тип задает раздел и минимальное повышение SemVer:
 
-Вручную обновите `CHANGELOG.md`:
+- `breaking` → major;
+- `added` → minor;
+- `changed`, `deprecated`, `removed`, `fixed`, `security`, `support` → patch.
 
-```markdown
-## [Unreleased]
+Каждая непустая строка fragment начинается с `- `. Общий `CHANGELOG.md` в feature-ветках вручную не изменяется.
 
-### 🆕 Added
-_Новая функциональность для следующего релиза_
-
-## 🚀 [1.0.3] - 2024-09-19
-
-### 🆕 Added
-- Добавлена новая команда XYZ
-- Улучшена производительность
-
-### 🛠 Changed  
-- Изменен формат вывода команды ABC
-
-### 🪲 Fixed
-- Исправлена ошибка с обработкой файлов
-```
-
-### 3. Коммит изменений
+### 2. Запуск release-процесса
 
 ```bash
-# Добавить изменения
-git add package.json CHANGELOG.md
-
-# Коммит с сообщением
-git commit -m "🔖 Release v1.0.3
-
-- Updated version to 1.0.3
-- Updated CHANGELOG.md"
-
-# Отправить в репозиторий
-git push origin main
+git switch develop
+git pull --ff-only
+spectrum release start
 ```
 
-### 4. Создание тега и релиза
+Команда автоматически:
+
+1. Проверяет чистое рабочее дерево, актуальность ветки, `CHANGELOG.md` и все fragments.
+2. Выбирает максимальное требуемое повышение SemVer и применяет его к последнему стабильному `vX.Y.Z`, а не к зарезервированной dev-версии.
+3. Устанавливает точную target-версию в `package.json` и обновляет lock-файл.
+4. Собирает релизный блок `CHANGELOG.md` из fragments.
+5. Удаляет использованные fragments.
+6. Создает коммит и ветку `release/X.Y.Z`. Release-ветка не привязана к отдельной задаче YouTrack.
+7. Пушит ветку и выводит ссылку на Merge Request в `main`.
+
+### 3. Merge release-ветки
+
+Проверьте Merge Request и смержите `release/X.Y.Z` в `main`. Каждый push
+в main/master должен выпустить registry-only `X.Y.Z-rc.N`; retry того же SHA
+переиспользует номер. Проверьте RC до создания stable-тега.
+
+### 4. Создание стабильного тега и релиза
 
 ```bash
-# Создать тег
-git tag v1.0.3
-
-# Отправить тег (запустит автоматический релиз)
-git push origin v1.0.3
+git switch main
+git pull --ff-only
+spectrum release deploy
 ```
 
-### 5. Автоматический процесс
+Команда создает только `vX.Y.Z`. RC Git-тегов нет. Stable pipeline должен найти
+максимальный RC с OCI revision текущего commit, проверить обязательные образы и
+продвинуть их точные digest в `X.Y.Z` без пересборки.
 
-После `git push origin v1.0.3` автоматически запускается:
+### 5. Закрытие релиза
+
+```bash
+# Только после успешного stable pipeline
+spectrum release close
+```
+
+`release close` мержит main/master в dev, устанавливает следующий patch от
+нового stable, обновляет lock-файл, создает коммит нового dev-цикла и пушит dev.
+Если dev уже выше после параллельной разработки или hotfix reconciliation, его
+версия не понижается.
+
+### 6. Автоматический процесс
+
+После push тега `vX.Y.Z` автоматически запускается:
 
 1. **GitHub Actions** выполняет:
    - ✅ Тестирование кода
@@ -173,7 +181,7 @@ gh release delete v1.0.3
 
 1. **Всегда тестировать** перед релизом
 2. **Следовать SemVer** при выборе версии  
-3. **Обновлять CHANGELOG.md** перед каждым релизом
+3. **Добавлять fragment** в каждую ветку с пользовательским, интеграционным или операционным изменением
 4. **Тестировать релиз** после публикации
 5. **Мониторить** download статистику
 6. **Быстро реагировать** на issues после релиза

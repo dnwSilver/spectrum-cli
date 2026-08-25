@@ -47,6 +47,57 @@ describe("preflight", () => {
     expect(preflight.requirePackageVersion().ok).toBe(false);
   });
 
+  test("requires a stable package version for release commands", () => {
+    utils.getVersion.mockReturnValue("1.2.3");
+    expect(preflight.requireStablePackageVersion()).toEqual({ ok: true, data: { version: "1.2.3" } });
+
+    utils.getVersion.mockReturnValue("1.2.3-rc.1");
+    expect(preflight.requireStablePackageVersion().ok).toBe(false);
+  });
+
+  test("selects the highest stable remote tag and ignores prereleases", () => {
+    utils.execSilent.mockReturnValue([
+      "aaa refs/tags/v1.2.9",
+      "bbb refs/tags/v1.10.0",
+      "ccc refs/tags/v1.10.0^{}",
+      "ddd refs/tags/v2.0.0-rc.1",
+      "eee refs/tags/not-a-version",
+    ].join("\n"));
+
+    expect(preflight.requireLatestStableVersion()).toEqual({
+      ok: true,
+      data: { stableVersion: "1.10.0" },
+    });
+
+    utils.execSilent.mockReturnValue("");
+    expect(preflight.requireLatestStableVersion().ok).toBe(false);
+  });
+
+  test("requires the stable remote tag to point at HEAD", () => {
+    utils.execSilent
+      .mockReturnValueOnce("abc123")
+      .mockReturnValueOnce("tag-object refs/tags/v1.2.3\nabc123 refs/tags/v1.2.3^{}");
+    expect(preflight.requireStableTagAtHead("1.2.3")).toEqual({
+      ok: true,
+      data: { stableVersion: "1.2.3" },
+    });
+
+    utils.execSilent
+      .mockReturnValueOnce("different")
+      .mockReturnValueOnce("abc123 refs/tags/v1.2.3");
+    expect(preflight.requireStableTagAtHead("1.2.3").ok).toBe(false);
+  });
+
+  test("validates YouTrack task IDs", () => {
+    expect(preflight.requireYouTrackTask("AR-123")).toEqual({
+      ok: true,
+      data: { task: "AR-123" },
+    });
+    expect(preflight.requireYouTrackTask("ABBVJSOP-1").ok).toBe(true);
+    expect(preflight.requireYouTrackTask("ar-123").ok).toBe(false);
+    expect(preflight.requireYouTrackTask("AR123").ok).toBe(false);
+  });
+
   test("requireTagMissing", () => {
     utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("");
     expect(preflight.requireTagMissing("v1.2.3").ok).toBe(true);
@@ -228,6 +279,26 @@ describe("preflight", () => {
     expect(preflight.requireReleaseBranchMissing("release/1.2.3").ok).toBe(false);
   });
 
+  test("rejects release versions already reserved by release or hotfix branches", () => {
+    utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("");
+    expect(preflight.requireReleaseVersionAvailable("1.2.3").ok).toBe(true);
+    expect(utils.execSilent).toHaveBeenNthCalledWith(
+      1,
+      'git branch --list "release/1.2.3" "hotfix/*-1.2.3"'
+    );
+    expect(utils.execSilent).toHaveBeenNthCalledWith(
+      2,
+      'git ls-remote --heads origin "refs/heads/release/1.2.3" "refs/heads/hotfix/*-1.2.3"'
+    );
+
+    utils.execSilent.mockReturnValueOnce("release/1.2.3");
+    expect(preflight.requireReleaseVersionAvailable("1.2.3").ok).toBe(false);
+
+    utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("sha refs/heads/hotfix/AR-124-1.2.3");
+    expect(preflight.requireReleaseVersionAvailable("1.2.3").ok).toBe(false);
+    expect(preflight.requireReleaseVersionAvailable("1.2.3-rc.1").ok).toBe(false);
+  });
+
   test("requirePrettierAvailable and requireChangelogFormatted", () => {
     utils.execSilent.mockImplementation((cmd) => {
       if (cmd === "npx --yes prettier --version") return "3.0.0";
@@ -242,6 +313,79 @@ describe("preflight", () => {
 
     utils.execSilent.mockReturnValue(null);
     expect(preflight.requirePrettierAvailable().ok).toBe(false);
+  });
+
+  test("findChangelogFragmentFiles returns sorted visible files", () => {
+    fs.existsSync.mockImplementation((filePath) => normalizePath(filePath) === ".changelog");
+    fs.readdirSync.mockReturnValue([
+      { name: "b.fixed.md", isFile: () => true },
+      { name: ".gitkeep", isFile: () => true },
+      { name: "nested", isFile: () => false },
+      { name: "a.added.md", isFile: () => true },
+    ]);
+
+    expect(preflight.findChangelogFragmentFiles()).toEqual([
+      ".changelog/a.added.md",
+      ".changelog/b.fixed.md",
+    ]);
+  });
+
+  test("requireChangelogFragments parses type, bump, and entries", () => {
+    fs.existsSync.mockImplementation((filePath) => normalizePath(filePath) === ".changelog");
+    fs.readdirSync.mockReturnValue([
+      { name: "SPEC-2-fix.fixed.md", isFile: () => true },
+      { name: "SPEC-1-api.added.md", isFile: () => true },
+    ]);
+    fs.readFileSync.mockImplementation((filePath) => {
+      if (normalizePath(filePath).endsWith("added.md")) return "- SPEC-1 Добавлен API.\n";
+      return "- SPEC-2 Исправлена ошибка.\n- SPEC-3 Исправлен крайний случай.\n";
+    });
+
+    expect(preflight.requireChangelogFragments()).toEqual({
+      ok: true,
+      data: {
+        changelogFragments: [
+          {
+            filePath: ".changelog/SPEC-1-api.added.md",
+            type: "added",
+            section: "### 🆕 Added",
+            bump: "minor",
+            entries: ["- SPEC-1 Добавлен API."],
+          },
+          {
+            filePath: ".changelog/SPEC-2-fix.fixed.md",
+            type: "fixed",
+            section: "### 🪲 Fixed",
+            bump: "patch",
+            entries: ["- SPEC-2 Исправлена ошибка.", "- SPEC-3 Исправлен крайний случай."],
+          },
+        ],
+      },
+    });
+  });
+
+  test("requireChangelogFragments rejects missing, empty, and malformed fragments", () => {
+    fs.existsSync.mockReturnValue(false);
+    expect(preflight.requireChangelogFragments().ok).toBe(false);
+
+    fs.existsSync.mockReturnValue(true);
+    fs.readdirSync.mockReturnValue([]);
+    expect(preflight.requireChangelogFragments().ok).toBe(false);
+
+    fs.readdirSync.mockReturnValue([{ name: "SPEC-1-added.md", isFile: () => true }]);
+    expect(preflight.requireChangelogFragments().reason).toContain("Неверное имя");
+
+    fs.readdirSync.mockReturnValue([{ name: "SPEC-1.added.md", isFile: () => true }]);
+    fs.readFileSync.mockReturnValue("\n");
+    expect(preflight.requireChangelogFragments().reason).toContain("пуст");
+
+    fs.readFileSync.mockReturnValue("SPEC-1 missing bullet\n");
+    expect(preflight.requireChangelogFragments().reason).toContain("должна начинаться");
+
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error("read failed");
+    });
+    expect(preflight.requireChangelogFragments().reason).toContain("Не удалось прочитать");
   });
 
   test("findValuesYamlFiles and requireSingleValuesYaml", () => {

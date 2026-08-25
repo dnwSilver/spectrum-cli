@@ -81,6 +81,7 @@ jobs:
           node -c src/utils.js
           node -c src/git.js
           node -c src/version.js
+          node -c src/changelog-config.js
           node -c src/changelog.js
           node -c src/development.js
           node -c src/release.js
