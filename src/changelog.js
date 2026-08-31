@@ -158,7 +158,7 @@ function sanitizeFragmentSlug(branchName, task) {
 
 function createFragmentPath(task, type, branchName = getCurrentBranch()) {
     const slug = sanitizeFragmentSlug(branchName, task);
-    return path.join(CHANGELOG_DIR, `${task}-${slug}.${type}.md`);
+    return path.posix.join(CHANGELOG_DIR, `${task}-${slug}.${type}.md`);
 }
 
 function displayFragment(fragmentPath, entry) {
