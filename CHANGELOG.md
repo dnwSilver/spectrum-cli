@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 🚀 [3.0.0] - 2026-08-31
+
+### 💥 Breaking change
+
+- Команда `spectrum changelog append` создает независимый fragment в `.changelog/` вместо изменения общего `CHANGELOG.md`; для проверки добавлена команда `spectrum changelog check`, а `spectrum release start` собирает и удаляет fragments автоматически.
+- Источник правды о версии — git-теги `vX.Y.Z`: CLI больше не читает и не изменяет `package.json`, lock-файлы, не создает и не проверяет `release/*`-ветки; команда `spectrum version up` удалена.
+- `spectrum release start` вычисляет target от максимального стабильного тега, достижимого из stable-ветки, схлопывает fragments в `CHANGELOG.md` одним коммитом в dev и атомарно пушит release commit напрямую в dev и main/master без MR.
+- `spectrum release start` блокирует новый релиз, пока `CHANGELOG.md` содержит одну или несколько версий новее последнего стабильного тега, не позволяя повторному запуску понизить версию.
+- `spectrum release deploy` и `spectrum release close` читают версию релиза из верхнего заголовка `## 🚀 [X.Y.Z]` файла `CHANGELOG.md`.
+- Changelog task ID принимается только из веток `<type>/<YOUTRACK-ID>` или `<type>/<YOUTRACK-ID>-<slug>`.
+
+### 🆕 Added
+
+- Команда `spectrum chart create` требует запись о версии в `CHANGELOG.md` чарта и запрещает версию не больше последней опубликованной (обход через `--force`).
+- Флаг `--wait` команды `spectrum chart create` дожидается публикации версии чарта в Helm-registry GitLab.
+- Команда `spectrum chart deploy` проверяет наличие версии чарта в Helm-registry перед обновлением helmrelease-файлов (требуется `GITLAB_PRIVATE_TOKEN`).
+- Флаг `--instances` команды `spectrum chart deploy` ограничивает деплой выбранными инстансами; в сообщение коммита добавлены версия чарта и список инстансов.
+
 ## 🚀 [2.1.2] - 2026-08-17
 
 ### 🛠 Changed
