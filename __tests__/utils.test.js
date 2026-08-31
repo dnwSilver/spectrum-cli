@@ -192,29 +192,6 @@ describe('Utils', () => {
         });
     });
 
-    describe('getVersion', () => {
-        test('should return version from package.json', () => {
-            fs.readFileSync.mockReturnValue('{"version": "1.2.3"}');
-            const result = utils.getVersion();
-            expect(result).toBe('1.2.3');
-            expect(fs.readFileSync).toHaveBeenCalledWith('package.json', 'utf8');
-        });
-
-        test('should return null if package.json does not exist', () => {
-            fs.readFileSync.mockImplementation(() => {
-                throw new Error('File not found');
-            });
-            const result = utils.getVersion();
-            expect(result).toBeNull();
-        });
-
-        test('should return null if package.json is invalid JSON', () => {
-            fs.readFileSync.mockReturnValue('invalid json');
-            const result = utils.getVersion();
-            expect(result).toBeNull();
-        });
-    });
-
     describe('getRemoteUrl', () => {
         test('should parse SSH remote url', () => {
             execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project.git');

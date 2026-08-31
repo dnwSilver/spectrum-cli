@@ -15,6 +15,7 @@ jest.mock('../src/utils', () => ({
     execCommand: jest.fn(),
     getCurrentBranch: jest.fn(),
     getMainBranch: jest.fn(),
+    getRemoteUrl: jest.fn(),
     colors: {
         green: '\x1b[32m',
         reset: '\x1b[0m'
@@ -32,12 +33,20 @@ function normalizePath(p) {
 
 describe('Chart', () => {
     const originalLog = console.log;
+    const originalFetch = global.fetch;
+    const originalToken = process.env.GITLAB_PRIVATE_TOKEN;
     beforeEach(() => {
         jest.clearAllMocks();
         console.log = jest.fn();
     });
     afterAll(() => {
         console.log = originalLog;
+        global.fetch = originalFetch;
+        if (originalToken === undefined) {
+            delete process.env.GITLAB_PRIVATE_TOKEN;
+        } else {
+            process.env.GITLAB_PRIVATE_TOKEN = originalToken;
+        }
     });
 
     describe('isSemver', () => {
@@ -168,6 +177,57 @@ describe('Chart', () => {
             await expect(chart.chartCreateTag('1.2.3')).resolves.toBe(true);
             expect(utils.execCommand).toHaveBeenCalledWith('git tag "chart-app-1.2.3"');
             expect(utils.execCommand).toHaveBeenCalledWith('git push origin "chart-app-1.2.3"');
+        });
+
+        test('should include chart changelog check in spec', async () => {
+            runCommand.mockImplementation(async (spec) => spec.checks.some((item) => item.name === 'chart-changelog-version'));
+            await expect(chart.chartCreateTag('1.2.3')).resolves.toBe(true);
+        });
+
+        test('should fail downgrade check when version is not greater', async () => {
+            childProcess.execSync.mockReturnValue('sha refs/tags/chart-app-1.2.3');
+            runCommand.mockImplementation(async (spec) => spec.checks
+                .find((item) => item.name === 'version-not-downgrade')
+                .run({ chartName: 'app', version: '1.2.2' }));
+            const result = await chart.chartCreateTag('1.2.2');
+            expect(result.ok).toBe(false);
+            expect(result.reason).toContain('--force');
+        });
+
+        test('should pass downgrade check when version is greater', async () => {
+            childProcess.execSync.mockReturnValue('sha refs/tags/chart-app-1.2.3');
+            runCommand.mockImplementation(async (spec) => spec.checks
+                .find((item) => item.name === 'version-not-downgrade')
+                .run({ chartName: 'app', version: '1.2.4' }));
+            await expect(chart.chartCreateTag('1.2.4')).resolves.toEqual({
+                ok: true,
+                data: { latestChartVersion: '1.2.3' }
+            });
+        });
+
+        test('should pass downgrade check when no remote tags exist', async () => {
+            childProcess.execSync.mockReturnValue('');
+            runCommand.mockImplementation(async (spec) => spec.checks
+                .find((item) => item.name === 'version-not-downgrade')
+                .run({ chartName: 'app', version: '0.0.1' }));
+            await expect(chart.chartCreateTag('0.0.1')).resolves.toEqual({ ok: true });
+        });
+
+        test('should allow downgrade with force option', async () => {
+            childProcess.execSync.mockReturnValue('sha refs/tags/chart-app-1.2.3');
+            runCommand.mockImplementation(async (spec) => spec.checks
+                .find((item) => item.name === 'version-not-downgrade')
+                .run({ chartName: 'app', version: '1.2.2' }));
+            await expect(chart.chartCreateTag('1.2.2', { force: true })).resolves.toEqual({
+                ok: true,
+                data: { latestChartVersion: '1.2.3' }
+            });
+        });
+
+        test('should add wait step only with wait option', async () => {
+            runCommand.mockImplementation(async (spec) => spec.steps.some((item) => item.name === 'wait-for-registry'));
+            await expect(chart.chartCreateTag('1.2.3')).resolves.toBe(false);
+            await expect(chart.chartCreateTag('1.2.3', { wait: true })).resolves.toBe(true);
         });
     });
 
@@ -367,7 +427,7 @@ describe('Chart', () => {
             fs.readFileSync.mockReturnValue('spec:\n  chart:\n    spec:\n      version: 1.2.3');
             runCommand.mockImplementation(async (spec) => {
                 const ctx = { latestChartVersion: '1.2.3', helmReleaseFiles: ['a/helmrelease.yaml'] };
-                return spec.steps[1].run(ctx) && spec.steps[2].run(ctx) && spec.steps[3].run(ctx);
+                return spec.steps[2].run(ctx) && spec.steps[3].run(ctx) && spec.steps[4].run(ctx);
             });
             await expect(chart.chartDeploy()).resolves.toBe(true);
         });
@@ -378,7 +438,7 @@ describe('Chart', () => {
                 .mockReturnValueOnce('a/helmrelease.yaml');
             runCommand.mockImplementation(async (spec) => {
                 const ctx = { updatedFiles: ['a/helmrelease.yaml'] };
-                return spec.steps[3].run(ctx);
+                return spec.steps[4].run(ctx);
             });
             await expect(chart.chartDeploy()).resolves.toBe(false);
         });
@@ -386,14 +446,228 @@ describe('Chart', () => {
         test('should pass commit step full flow', async () => {
             utils.execSilent
                 .mockReturnValueOnce('')
-                .mockReturnValueOnce('a/helmrelease.yaml')
-                .mockReturnValueOnce('a/helmrelease.yaml');
+                .mockReturnValueOnce('instances/sd/helmrelease.yaml')
+                .mockReturnValueOnce('instances/sd/helmrelease.yaml');
             utils.execCommand.mockReturnValue(true);
             runCommand.mockImplementation(async (spec) => {
-                const ctx = { updatedFiles: ['a/helmrelease.yaml'] };
-                return spec.steps[3].run(ctx);
+                const ctx = {
+                    latestChartVersion: '1.2.3',
+                    updatedFiles: ['instances/sd/helmrelease.yaml'],
+                    updatedInstances: ['sd']
+                };
+                return spec.steps[4].run(ctx);
             });
             await expect(chart.chartDeploy()).resolves.toBe(true);
+            expect(utils.execCommand).toHaveBeenCalledWith('git commit -m "🚀 Деплой сервиса 1.2.3 (sd)."');
+        });
+
+        test('should verify chart version in registry before update', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                text: async () => [
+                    'apiVersion: v1',
+                    'entries:',
+                    '  app:',
+                    '    - name: app',
+                    '      version: 1.2.3'
+                ].join('\n')
+            });
+            runCommand.mockImplementation(async (spec) => spec.steps[1].run({ chartName: 'app', latestChartVersion: '1.2.3' }));
+            await expect(chart.chartDeploy()).resolves.toBe(true);
+            expect(global.fetch).toHaveBeenCalledWith(
+                'https://gitlab.example.com/api/v4/projects/group%2Fproject/packages/helm/stable/index.yaml',
+                { headers: { 'PRIVATE-TOKEN': 'secret' } }
+            );
+        });
+
+        test('should fail registry step when version is absent', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                text: async () => 'apiVersion: v1\nentries:\n  app:\n    - version: 1.2.2\n'
+            });
+            runCommand.mockImplementation(async (spec) => spec.steps[1].run({ chartName: 'app', latestChartVersion: '1.2.3' }));
+            await expect(chart.chartDeploy()).resolves.toBe(false);
+        });
+
+        test('should filter helmrelease files by instances option', async () => {
+            runCommand.mockImplementation(async (spec) => spec.checks
+                .find((item) => item.name === 'filter-instances')
+                .run({
+                    helmReleaseFiles: [
+                        'instances/sd/helmrelease.yaml',
+                        'instances/ssd/helmrelease.yaml',
+                        'instances/cbch/helmrelease.yaml'
+                    ]
+                }));
+
+            await expect(chart.chartDeploy({ instances: 'sd, cbch' })).resolves.toEqual({
+                ok: true,
+                data: {
+                    helmReleaseFiles: [
+                        'instances/sd/helmrelease.yaml',
+                        'instances/cbch/helmrelease.yaml'
+                    ]
+                }
+            });
+        });
+
+        test('should fail on unknown instance name', async () => {
+            runCommand.mockImplementation(async (spec) => spec.checks
+                .find((item) => item.name === 'filter-instances')
+                .run({ helmReleaseFiles: ['instances/sd/helmrelease.yaml'] }));
+
+            const result = await chart.chartDeploy({ instances: 'nope' });
+            expect(result.ok).toBe(false);
+            expect(result.reason).toContain('nope');
+            expect(result.reason).toContain('sd');
+        });
+
+        test('should keep all files when instances option is not set', async () => {
+            runCommand.mockImplementation(async (spec) => spec.checks
+                .find((item) => item.name === 'filter-instances')
+                .run({ helmReleaseFiles: ['instances/sd/helmrelease.yaml'] }));
+
+            await expect(chart.chartDeploy()).resolves.toEqual({ ok: true });
+        });
+
+        test('should fail instances option without instances structure', async () => {
+            runCommand.mockImplementation(async (spec) => spec.checks
+                .find((item) => item.name === 'filter-instances')
+                .run({ helmReleaseFiles: ['apps/app/helmrelease.yaml'] }));
+
+            const result = await chart.chartDeploy({ instances: 'sd' });
+            expect(result.ok).toBe(false);
+        });
+    });
+
+    describe('helmIndexHasChartVersion', () => {
+        const indexYaml = [
+            'apiVersion: v1',
+            'entries:',
+            '  app:',
+            '    - apiVersion: v2',
+            '      name: app',
+            '      version: 1.2.3',
+            '    - apiVersion: v2',
+            '      name: app',
+            '      version: 1.2.2',
+            '  other:',
+            '    - name: other',
+            '      version: 9.9.9',
+            'generated: "2026-08-28T00:00:00Z"'
+        ].join('\n');
+
+        test('should find existing chart version', () => {
+            expect(chart.helmIndexHasChartVersion(indexYaml, 'app', '1.2.3')).toBe(true);
+            expect(chart.helmIndexHasChartVersion(indexYaml, 'app', '1.2.2')).toBe(true);
+        });
+
+        test('should not find missing version or foreign chart version', () => {
+            expect(chart.helmIndexHasChartVersion(indexYaml, 'app', '9.9.9')).toBe(false);
+            expect(chart.helmIndexHasChartVersion(indexYaml, 'other', '1.2.3')).toBe(false);
+            expect(chart.helmIndexHasChartVersion('', 'app', '1.2.3')).toBe(false);
+        });
+    });
+
+    describe('fetchChartVersionFromRegistry', () => {
+        test('should fail without remote origin url', async () => {
+            utils.getRemoteUrl.mockReturnValue(null);
+            const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
+            expect(result.ok).toBe(false);
+            expect(result.reason).toContain('origin');
+        });
+
+        test('should fail without GITLAB_PRIVATE_TOKEN', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            delete process.env.GITLAB_PRIVATE_TOKEN;
+            const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
+            expect(result.ok).toBe(false);
+            expect(result.reason).toContain('GITLAB_PRIVATE_TOKEN');
+        });
+
+        test('should fail on http error', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 });
+            const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
+            expect(result.ok).toBe(false);
+            expect(result.reason).toContain('403');
+        });
+
+        test('should fail on network error', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            global.fetch = jest.fn().mockRejectedValue(new Error('offline'));
+            const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
+            expect(result.ok).toBe(false);
+            expect(result.reason).toContain('offline');
+        });
+
+        test('should report found version', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            global.fetch = jest.fn().mockResolvedValue({
+                ok: true,
+                status: 200,
+                text: async () => 'entries:\n  app:\n    - version: 1.2.3\n'
+            });
+            const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
+            expect(result).toEqual({
+                ok: true,
+                found: true,
+                indexUrl: 'https://gitlab.example.com/api/v4/projects/group%2Fproject/packages/helm/stable/index.yaml'
+            });
+        });
+    });
+
+    describe('waitForChartInRegistry', () => {
+        test('should succeed once version appears', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            global.fetch = jest.fn()
+                .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'entries:\n  app: []\n' })
+                .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'entries:\n  app:\n    - version: 1.2.3\n' });
+
+            const sleep = jest.fn().mockResolvedValue(undefined);
+            await expect(chart.waitForChartInRegistry('app', '1.2.3', { timeoutMs: 60000, intervalMs: 1, sleep })).resolves.toBe(true);
+            expect(sleep).toHaveBeenCalledTimes(1);
+        });
+
+        test('should fail on timeout', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => 'entries:\n  app: []\n' });
+
+            const sleep = jest.fn().mockResolvedValue(undefined);
+            await expect(chart.waitForChartInRegistry('app', '1.2.3', { timeoutMs: 0, intervalMs: 1, sleep })).resolves.toBe(false);
+            expect(sleep).not.toHaveBeenCalled();
+        });
+
+        test('should fail fast on registry access error', async () => {
+            utils.getRemoteUrl.mockReturnValue(null);
+            await expect(chart.waitForChartInRegistry('app', '1.2.3', { timeoutMs: 60000, intervalMs: 1 })).resolves.toBe(false);
+        });
+    });
+
+    describe('getInstanceName', () => {
+        test('should extract instance name from helmrelease path', () => {
+            expect(chart.getInstanceName('instances/sd/helmrelease.yaml')).toBe('sd');
+            expect(chart.getInstanceName('./instances/scbch/helmrelease.yaml')).toBe('scbch');
+            expect(chart.getInstanceName('apps/app/helmrelease.yaml')).toBeNull();
+            expect(chart.getInstanceName('')).toBeNull();
+        });
+    });
+
+    describe('parseInstancesOption', () => {
+        test('should split, trim and deduplicate names', () => {
+            expect(chart.parseInstancesOption('sd, cbch,sd,,')).toEqual(['sd', 'cbch']);
+            expect(chart.parseInstancesOption(undefined)).toEqual([]);
         });
     });
 });

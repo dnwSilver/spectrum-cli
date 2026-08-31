@@ -54,11 +54,6 @@ All notable changes to this project will be documented in this file.
     });
 
     describe('Utils Functions', () => {
-        test('should get version from package.json', () => {
-            const utils = require('../src/utils');
-            expect(utils.getVersion()).toBe('1.0.0');
-        });
-
         test('should detect npm package manager', () => {
             const utils = require('../src/utils');
             fs.writeFileSync('package-lock.json', '{}');
@@ -74,9 +69,9 @@ All notable changes to this project will be documented in this file.
             expect(version.upVersion('1.2.3', 'patch')).toBe('1.2.4');
         });
 
-        test('should get version from package.json', () => {
-            const utils = require('../src/utils');
-            expect(utils.getVersion()).toBe('1.0.0');
+        test('should read the release version from the changelog heading', () => {
+            const preflight = require('../src/preflight');
+            expect(preflight.getChangelogReleaseVersion()).toBe('1.0.0');
         });
     });
 
@@ -114,16 +109,17 @@ All notable changes to this project will be documented in this file.
     });
 
     describe('Error Handling', () => {
-        test('should handle missing package.json', () => {
-            fs.unlinkSync('package.json');
-            const utils = require('../src/utils');
-            expect(utils.getVersion()).toBeNull();
+        test('should handle missing CHANGELOG.md', () => {
+            fs.unlinkSync('CHANGELOG.md');
+            const preflight = require('../src/preflight');
+            expect(preflight.getChangelogReleaseVersion()).toBeNull();
+            expect(preflight.requireChangelogReleaseVersion().ok).toBe(false);
         });
 
-        test('should handle invalid JSON in package.json', () => {
-            fs.writeFileSync('package.json', 'invalid json');
-            const utils = require('../src/utils');
-            expect(utils.getVersion()).toBeNull();
+        test('should handle a changelog without release headings', () => {
+            fs.writeFileSync('CHANGELOG.md', '# Changelog\n\nПока без релизов.\n');
+            const preflight = require('../src/preflight');
+            expect(preflight.getChangelogReleaseVersion()).toBeNull();
         });
     });
 });
@@ -133,14 +129,11 @@ describe('Basic Functionality Tests', () => {
         const utils = require('../src/utils');
         expect(typeof utils.logSuccess).toBe('function');
         expect(typeof utils.logError).toBe('function');
-        expect(typeof utils.getVersion).toBe('function');
         expect(typeof utils.getCurrentBranch).toBe('function');
 
         const version = require('../src/version');
         expect(typeof version.upVersion).toBe('function');
-        expect(typeof version.setVersion).toBe('function');
-
-        expect(typeof utils.getVersion).toBe('function');
+        expect(typeof version.compareVersions).toBe('function');
 
         const changelog = require('../src/changelog');
         expect(typeof changelog.changelogAppend).toBe('function');

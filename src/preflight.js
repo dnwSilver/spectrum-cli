@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
-const { execSilent, execCommand, getCurrentBranch, getMainBranch, getDevelopBranch, getVersion } = require('./utils');
+const { execSilent, execCommand, getCurrentBranch, getMainBranch, getDevelopBranch } = require('./utils');
 const {
+    CHANGELOG_FILE,
     CHANGELOG_DIR,
     FRAGMENT_TYPES,
     getFragmentType
@@ -126,7 +127,7 @@ function requireCurrentBranchUpToDateWithRemote() {
         return fail('Не удалось определить текущую ветку.');
     }
 
-    if (!execCommand('git fetch --all --prune --jobs=10')) {
+    if (!execCommand('git fetch origin --prune --tags')) {
         return fail('Не удалось получить изменения с удаленного репозитория.');
     }
 
@@ -160,26 +161,54 @@ function requireFileExists(filePath) {
     return ok();
 }
 
-function requirePackageVersion() {
-    const version = getVersion();
-    if (!version) {
-        return fail('Не удалось прочитать версию из package.json.');
+const CHANGELOG_HEADING_PATTERN = /^##\s+(?:\S+\s+)?\[(\d+\.\d+\.\d+)\]/gm;
+
+function getChangelogReleaseVersions(changelogPath = CHANGELOG_FILE) {
+    let changelog;
+    try {
+        changelog = fs.readFileSync(changelogPath, 'utf8');
+    } catch (error) {
+        return [];
     }
-    if (!SEMVER_PATTERN.test(version)) {
-        return fail(`Версия "${version}" не соответствует semver.`);
+
+    return [...changelog.matchAll(CHANGELOG_HEADING_PATTERN)].map((match) => match[1]);
+}
+
+function getChangelogReleaseVersion(changelogPath = CHANGELOG_FILE) {
+    return getChangelogReleaseVersions(changelogPath)[0] || null;
+}
+
+function requireChangelogReleaseVersion() {
+    const version = getChangelogReleaseVersion();
+    if (!version) {
+        return fail(`Не удалось прочитать версию релиза из ${CHANGELOG_FILE}. Ожидается заголовок "## 🚀 [X.Y.Z]".`);
+    }
+    if (!STABLE_SEMVER_PATTERN.test(version)) {
+        return fail(`Версия "${version}" из ${CHANGELOG_FILE} должна быть стабильным SemVer X.Y.Z.`);
     }
     return ok({ version });
 }
 
-function requireStablePackageVersion() {
-    const version = getVersion();
-    if (!version) {
-        return fail('Не удалось прочитать версию из package.json.');
+function requireChartChangelogVersion(chartDir, version) {
+    const changelogPath = toPosixPath(path.join(String(chartDir || ''), 'CHANGELOG.md'));
+    if (!fs.existsSync(changelogPath)) {
+        return fail(`Файл "${changelogPath}" не существует. Заполните changelog чарта перед созданием тега.`);
     }
-    if (!STABLE_SEMVER_PATTERN.test(version)) {
-        return fail(`Версия "${version}" должна быть стабильным SemVer X.Y.Z без prerelease.`);
+
+    let changelog;
+    try {
+        changelog = fs.readFileSync(changelogPath, 'utf8');
+    } catch (error) {
+        return fail(`Не удалось прочитать "${changelogPath}".`);
     }
-    return ok({ version });
+
+    const escapedVersion = String(version || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const headingPattern = new RegExp(`^##\\s+(?:\\S+\\s+)?\\[${escapedVersion}\\]`, 'm');
+    if (!headingPattern.test(changelog)) {
+        return fail(`В "${changelogPath}" нет заголовка "## [${version}]". Добавьте запись о версии перед созданием тега.`);
+    }
+
+    return ok({ chartChangelogPath: changelogPath });
 }
 
 function compareStableVersions(left, right) {
@@ -193,22 +222,51 @@ function compareStableVersions(left, right) {
     return 0;
 }
 
+function requireNoPendingRelease(stableVersion) {
+    if (!STABLE_SEMVER_PATTERN.test(String(stableVersion || ''))) {
+        return fail('Для проверки незакрытых релизов требуется последний стабильный SemVer X.Y.Z.');
+    }
+
+    const changelogReleaseVersions = getChangelogReleaseVersions();
+    const pendingVersions = [...new Set(changelogReleaseVersions)]
+        .filter((version) => compareStableVersions(version, stableVersion) > 0)
+        .sort((left, right) => compareStableVersions(right, left));
+
+    if (pendingVersions.length > 0) {
+        return fail(
+            `В ${CHANGELOG_FILE} найдены незакрытые релизы новее стабильного тега v${stableVersion}: ${pendingVersions.join(', ')}. ` +
+            'Сначала выполните "spectrum release deploy", дождитесь успешного stable pipeline и выполните "spectrum release close".'
+        );
+    }
+
+    return ok({ changelogReleaseVersions });
+}
+
 function requireLatestStableVersion() {
-    const tagRefs = execSilent('git ls-remote --tags origin "refs/tags/v*"');
-    if (tagRefs === null) {
-        return fail('Не удалось получить стабильные теги из origin.');
+    const mainBranch = getMainBranch();
+    const tagNames = execSilent(`git tag --merged origin/${mainBranch} --list "v*"`);
+    const remoteTagRefs = execSilent('git ls-remote --refs --tags origin "refs/tags/v*"');
+    if (tagNames === null || remoteTagRefs === null) {
+        return fail(`Не удалось проверить стабильные теги, достижимые из origin/${mainBranch}.`);
+    }
+
+    const remoteTagNames = new Set();
+    for (const line of remoteTagRefs.split('\n')) {
+        const match = line.trim().match(/^[0-9a-f]+\s+refs\/tags\/(v\d+\.\d+\.\d+)$/i);
+        if (match) remoteTagNames.add(match[1]);
     }
 
     const versions = new Set();
-    for (const line of tagRefs.split('\n')) {
-        const match = line.trim().match(/^[0-9a-f]+\s+refs\/tags\/v(\d+\.\d+\.\d+)(?:\^\{\})?$/i);
-        if (match && STABLE_SEMVER_PATTERN.test(match[1])) {
+    for (const line of tagNames.split('\n')) {
+        const tagName = line.trim();
+        const match = tagName.match(/^v(\d+\.\d+\.\d+)$/);
+        if (match && remoteTagNames.has(tagName) && STABLE_SEMVER_PATTERN.test(match[1])) {
             versions.add(match[1]);
         }
     }
 
     if (versions.size === 0) {
-        return fail('В origin не найден стабильный тег vX.Y.Z.');
+        return fail(`В origin/${mainBranch} не найден достижимый стабильный тег vX.Y.Z.`);
     }
 
     const stableVersion = [...versions].sort(compareStableVersions).at(-1);
@@ -268,42 +326,35 @@ function requireTagMissing(tagName) {
     return ok();
 }
 
-function requireOnReleaseBranch() {
-    const currentBranch = getCurrentBranch();
-    if (!currentBranch) {
-        return fail('Не удалось определить текущую ветку.');
-    }
-    if (!currentBranch.startsWith('release/')) {
-        return fail(`Текущая ветка "${currentBranch}", ожидалась "release/*".`);
-    }
-    return ok({ currentBranch });
-}
-
-function requireReleaseBranchMissing(branchName) {
-    const localBranch = execSilent(`git branch --list "${branchName}"`);
-    if (localBranch && localBranch.trim()) {
-        return fail(`Ветка "${branchName}" уже существует локально.`);
-    }
-    const remoteBranch = execSilent(`git ls-remote --heads origin "refs/heads/${branchName}"`);
-    if (remoteBranch && remoteBranch.trim()) {
-        return fail(`Ветка "${branchName}" уже существует на origin.`);
-    }
-    return ok();
-}
-
 function requireReleaseVersionAvailable(version) {
     if (!STABLE_SEMVER_PATTERN.test(String(version || ''))) {
         return fail('Целевая release-версия должна соответствовать X.Y.Z.');
     }
 
-    const localBranches = execSilent(`git branch --list "release/${version}" "hotfix/*-${version}"`);
+    const localBranches = execSilent(`git branch --list "hotfix/*-${version}"`);
     if (localBranches && localBranches.trim()) {
-        return fail(`Версия "${version}" уже используется локальной release/hotfix-веткой.`);
+        return fail(`Версия "${version}" уже используется локальной hotfix-веткой.`);
     }
 
-    const remoteBranches = execSilent(`git ls-remote --heads origin "refs/heads/release/${version}" "refs/heads/hotfix/*-${version}"`);
+    const remoteBranches = execSilent(`git ls-remote --heads origin "refs/heads/hotfix/*-${version}"`);
+    if (remoteBranches === null) {
+        return fail('Не удалось проверить hotfix-ветки в origin.');
+    }
     if (remoteBranches && remoteBranches.trim()) {
-        return fail(`Версия "${version}" уже используется release/hotfix-веткой в origin.`);
+        return fail(`Версия "${version}" уже используется hotfix-веткой в origin.`);
+    }
+
+    const localTag = execSilent(`git tag --list "v${version}"`);
+    if (localTag && localTag.trim()) {
+        return fail(`Релизный тег "v${version}" уже существует локально.`);
+    }
+
+    const remoteTag = execSilent(`git ls-remote --tags origin "refs/tags/v${version}" "refs/tags/v${version}^{}"`);
+    if (remoteTag === null) {
+        return fail(`Не удалось проверить тег "v${version}" в origin.`);
+    }
+    if (remoteTag && remoteTag.trim()) {
+        return fail(`Релизный тег "v${version}" уже существует в origin.`);
     }
     return ok();
 }
@@ -722,14 +773,15 @@ module.exports = {
     requireRemoteReachable,
     requireCurrentBranchUpToDateWithRemote,
     requireFileExists,
-    requirePackageVersion,
-    requireStablePackageVersion,
+    getChangelogReleaseVersions,
+    getChangelogReleaseVersion,
+    requireChangelogReleaseVersion,
+    requireChartChangelogVersion,
+    requireNoPendingRelease,
     requireLatestStableVersion,
     requireStableTagAtHead,
     requireYouTrackTask,
     requireTagMissing,
-    requireOnReleaseBranch,
-    requireReleaseBranchMissing,
     requireReleaseVersionAvailable,
     requirePrettierAvailable,
     requireChangelogFormatted,

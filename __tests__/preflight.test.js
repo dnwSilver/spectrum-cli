@@ -8,7 +8,6 @@ jest.mock("../src/utils", () => ({
   getCurrentBranch: jest.fn(),
   getMainBranch: jest.fn(),
   getDevelopBranch: jest.fn(),
-  getVersion: jest.fn(),
 }));
 
 const utils = require("../src/utils");
@@ -21,6 +20,7 @@ function normalizePath(p) {
 describe("preflight", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    utils.getMainBranch.mockReturnValue("main");
   });
 
   test("requireGitRepo", () => {
@@ -39,35 +39,131 @@ describe("preflight", () => {
     expect(preflight.requireCleanWorkingTree().ok).toBe(false);
   });
 
-  test("requirePackageVersion", () => {
-    utils.getVersion.mockReturnValue("1.2.3");
-    expect(preflight.requirePackageVersion()).toEqual({ ok: true, data: { version: "1.2.3" } });
-
-    utils.getVersion.mockReturnValue("latest");
-    expect(preflight.requirePackageVersion().ok).toBe(false);
-  });
-
-  test("requires a stable package version for release commands", () => {
-    utils.getVersion.mockReturnValue("1.2.3");
-    expect(preflight.requireStablePackageVersion()).toEqual({ ok: true, data: { version: "1.2.3" } });
-
-    utils.getVersion.mockReturnValue("1.2.3-rc.1");
-    expect(preflight.requireStablePackageVersion().ok).toBe(false);
-  });
-
-  test("selects the highest stable remote tag and ignores prereleases", () => {
-    utils.execSilent.mockReturnValue([
-      "aaa refs/tags/v1.2.9",
-      "bbb refs/tags/v1.10.0",
-      "ccc refs/tags/v1.10.0^{}",
-      "ddd refs/tags/v2.0.0-rc.1",
-      "eee refs/tags/not-a-version",
+  test("reads the release version from the top changelog heading", () => {
+    fs.readFileSync.mockReturnValue([
+      "# Changelog",
+      "",
+      "## 🚀 [1.3.0] - 2026-08-27",
+      "",
+      "### 🆕 Added",
+      "",
+      "- SPEC-1 Новая фича.",
+      "",
+      "## 🚀 [1.2.0] - 2026-08-01",
     ].join("\n"));
+    expect(preflight.getChangelogReleaseVersions()).toEqual(["1.3.0", "1.2.0"]);
+    expect(preflight.getChangelogReleaseVersion()).toBe("1.3.0");
+    expect(preflight.requireChangelogReleaseVersion()).toEqual({
+      ok: true,
+      data: { version: "1.3.0" },
+    });
+
+    fs.readFileSync.mockReturnValue("## [2.0.1] - 2026-01-01\n");
+    expect(preflight.getChangelogReleaseVersion()).toBe("2.0.1");
+
+    fs.readFileSync.mockReturnValue("# Changelog\n\nБез релизов.\n");
+    expect(preflight.getChangelogReleaseVersion()).toBeNull();
+    expect(preflight.requireChangelogReleaseVersion().ok).toBe(false);
+
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error("missing");
+    });
+    expect(preflight.getChangelogReleaseVersion()).toBeNull();
+    expect(preflight.requireChangelogReleaseVersion().ok).toBe(false);
+  });
+
+  test("blocks release start while newer changelog releases have no stable tag", () => {
+    fs.readFileSync.mockReturnValue([
+      "# Changelog",
+      "",
+      "## 🚀 [0.0.2] - 2026-08-28",
+      "",
+      "## 🚀 [0.1.0] - 2026-08-28",
+      "",
+      "## [0.0.1]",
+    ].join("\n"));
+
+    const pendingResult = preflight.requireNoPendingRelease("0.0.1");
+    expect(pendingResult.ok).toBe(false);
+    expect(pendingResult.reason).toContain("0.1.0, 0.0.2");
+    expect(pendingResult.reason).toContain("v0.0.1");
+    expect(pendingResult.reason).toContain("spectrum release deploy");
+    expect(pendingResult.reason).toContain("spectrum release close");
+
+    fs.readFileSync.mockReturnValue("## 🚀 [1.2.3]\n\n## 🚀 [1.2.2]\n");
+    expect(preflight.requireNoPendingRelease("1.2.3")).toEqual({
+      ok: true,
+      data: { changelogReleaseVersions: ["1.2.3", "1.2.2"] },
+    });
+
+    fs.readFileSync.mockReturnValue("# Changelog\n\nБез релизов.\n");
+    expect(preflight.requireNoPendingRelease("1.2.3")).toEqual({
+      ok: true,
+      data: { changelogReleaseVersions: [] },
+    });
+    expect(preflight.requireNoPendingRelease("invalid").ok).toBe(false);
+  });
+
+  test("requireChartChangelogVersion validates chart changelog heading", () => {
+    fs.existsSync.mockReturnValue(true);
+    fs.readFileSync.mockReturnValue([
+      "# Changelog",
+      "",
+      "## [0.0.11] - 2026-08-28",
+      "",
+      "- Новая версия.",
+      "",
+      "## [0.0.10] - 2026-07-20",
+    ].join("\n"));
+
+    expect(preflight.requireChartChangelogVersion("charts/elksite", "0.0.11")).toEqual({
+      ok: true,
+      data: { chartChangelogPath: "charts/elksite/CHANGELOG.md" },
+    });
+
+    const missingVersion = preflight.requireChartChangelogVersion("charts/elksite", "0.0.12");
+    expect(missingVersion.ok).toBe(false);
+    expect(missingVersion.reason).toContain('"## [0.0.12]"');
+
+    fs.readFileSync.mockReturnValue("## 🚀 [0.0.11] - 2026-08-28\n");
+    expect(preflight.requireChartChangelogVersion("charts/elksite", "0.0.11").ok).toBe(true);
+
+    fs.existsSync.mockReturnValue(false);
+    expect(preflight.requireChartChangelogVersion("charts/elksite", "0.0.11").ok).toBe(false);
+
+    fs.existsSync.mockReturnValue(true);
+    fs.readFileSync.mockImplementation(() => {
+      throw new Error("read error");
+    });
+    expect(preflight.requireChartChangelogVersion("charts/elksite", "0.0.11").ok).toBe(false);
+  });
+
+  test("selects the highest stable tag reachable from origin main and ignores prereleases", () => {
+    utils.execSilent
+      .mockReturnValueOnce([
+        "v1.2.9",
+        "v1.10.0",
+        "v8.0.0",
+        "v2.0.0-rc.1",
+        "not-a-version",
+      ].join("\n"))
+      .mockReturnValueOnce([
+        "aaa refs/tags/v1.2.9",
+        "bbb refs/tags/v1.10.0",
+        "ccc refs/tags/v9.0.0",
+        "ddd refs/tags/v2.0.0-rc.1",
+      ].join("\n"));
 
     expect(preflight.requireLatestStableVersion()).toEqual({
       ok: true,
       data: { stableVersion: "1.10.0" },
     });
+    expect(utils.execSilent).toHaveBeenCalledWith(
+      'git tag --merged origin/main --list "v*"'
+    );
+    expect(utils.execSilent).toHaveBeenCalledWith(
+      'git ls-remote --refs --tags origin "refs/tags/v*"'
+    );
 
     utils.execSilent.mockReturnValue("");
     expect(preflight.requireLatestStableVersion().ok).toBe(false);
@@ -129,6 +225,7 @@ describe("preflight", () => {
       .mockReturnValueOnce("origin/feature/x")
       .mockReturnValueOnce("3 0");
     expect(preflight.requireCurrentBranchUpToDateWithRemote().ok).toBe(true);
+    expect(utils.execCommand).toHaveBeenCalledWith("git fetch origin --prune --tags");
 
     utils.execCommand.mockReturnValue(false);
     expect(preflight.requireCurrentBranchUpToDateWithRemote().ok).toBe(false);
@@ -264,37 +361,45 @@ describe("preflight", () => {
     expect(preflight.requireFileExists("x").ok).toBe(false);
   });
 
-  test("requireOnReleaseBranch and requireReleaseBranchMissing", () => {
-    utils.getCurrentBranch.mockReturnValue("release/1.2.3");
-    expect(preflight.requireOnReleaseBranch().ok).toBe(true);
-
-    utils.getCurrentBranch.mockReturnValue("main");
-    expect(preflight.requireOnReleaseBranch().ok).toBe(false);
-
-    utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("");
-    expect(preflight.requireReleaseBranchMissing("release/1.2.3").ok).toBe(true);
-    utils.execSilent.mockReturnValueOnce("release/1.2.3");
-    expect(preflight.requireReleaseBranchMissing("release/1.2.3").ok).toBe(false);
-    utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("sha refs/heads/release/1.2.3");
-    expect(preflight.requireReleaseBranchMissing("release/1.2.3").ok).toBe(false);
-  });
-
-  test("rejects release versions already reserved by release or hotfix branches", () => {
-    utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("");
+  test("rejects release versions already reserved by hotfix branches or tags", () => {
+    utils.execSilent
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("");
     expect(preflight.requireReleaseVersionAvailable("1.2.3").ok).toBe(true);
     expect(utils.execSilent).toHaveBeenNthCalledWith(
       1,
-      'git branch --list "release/1.2.3" "hotfix/*-1.2.3"'
+      'git branch --list "hotfix/*-1.2.3"'
     );
     expect(utils.execSilent).toHaveBeenNthCalledWith(
       2,
-      'git ls-remote --heads origin "refs/heads/release/1.2.3" "refs/heads/hotfix/*-1.2.3"'
+      'git ls-remote --heads origin "refs/heads/hotfix/*-1.2.3"'
     );
+    expect(utils.execSilent).toHaveBeenNthCalledWith(3, 'git tag --list "v1.2.3"');
+    expect(utils.execSilent).toHaveBeenNthCalledWith(
+      4,
+      'git ls-remote --tags origin "refs/tags/v1.2.3" "refs/tags/v1.2.3^{}"'
+    );
+    expect(utils.execSilent).not.toHaveBeenCalledWith(expect.stringContaining("release/1.2.3"));
 
-    utils.execSilent.mockReturnValueOnce("release/1.2.3");
+    utils.execSilent.mockReturnValueOnce("hotfix/AR-123-1.2.3");
     expect(preflight.requireReleaseVersionAvailable("1.2.3").ok).toBe(false);
 
     utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("sha refs/heads/hotfix/AR-124-1.2.3");
+    expect(preflight.requireReleaseVersionAvailable("1.2.3").ok).toBe(false);
+
+    utils.execSilent
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("v1.2.3");
+    expect(preflight.requireReleaseVersionAvailable("1.2.3").ok).toBe(false);
+
+    utils.execSilent
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("")
+      .mockReturnValueOnce("sha refs/tags/v1.2.3");
     expect(preflight.requireReleaseVersionAvailable("1.2.3").ok).toBe(false);
     expect(preflight.requireReleaseVersionAvailable("1.2.3-rc.1").ok).toBe(false);
   });

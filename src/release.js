@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 const { goToDevBranch, goToMainBranch, updateCurrentBranch } = require('./git');
 const { changelogBuildRelease, changelogRemoveFragments } = require('./changelog');
-const { getVersion, logSuccess, logError, execCommand, getCurrentBranch, getMainBranch, getMergeRequestUrl, getPackageManager } = require('./utils');
+const { logSuccess, logError, execCommand, getCurrentBranch, getMainBranch } = require('./utils');
 const { runCommand } = require('./command-executor');
-const { compareVersions, upVersion, updateVersionFileExact } = require('./version');
+const { upVersion } = require('./version');
 const {
     requireGitRepo,
     requireCleanWorkingTree,
@@ -11,48 +11,30 @@ const {
     requireMainAndDevBranches,
     requireOnDevBranch,
     requireOnMainBranch,
-    requireReleaseBranchMissing,
     requireReleaseVersionAvailable,
-    requireStablePackageVersion,
+    requireChangelogReleaseVersion,
+    requireNoPendingRelease,
     requireLatestStableVersion,
     requireStableTagAtHead,
     requireFileExists,
     requireChangelogFormatted,
-    requireChangelogFragments
+    requireChangelogFragments,
+    getPrettierRunner
 } = require('./preflight');
-const { CHANGELOG_FILE } = require('./changelog-config');
+const { CHANGELOG_FILE, CHANGELOG_DIR } = require('./changelog-config');
 
-function getReleaseBranchName(version) {
-    return `release/${version}`;
-}
-
-function releaseCreate(context) {
-    const branchName = context.releaseBranch;
-    if (!branchName) {
-        logError('❌', 'Не удалось определить имя release-ветки.');
+function releaseFormatChangelog() {
+    const runner = getPrettierRunner();
+    if (!runner) {
+        logError('❌', 'Prettier недоступен.');
         return false;
     }
-
-    if (!execCommand(`git switch -c ${branchName}`)) {
+    if (!execCommand(`${runner} --write ${CHANGELOG_FILE}`)) {
+        logError('❌', 'Не удалось отформатировать %s с помощью Prettier.', CHANGELOG_FILE);
         return false;
     }
-
-    logSuccess('🌱', 'Создана новая release-ветка %s.', getCurrentBranch());
+    logSuccess('🎨', 'Файл %s отформатирован.', CHANGELOG_FILE);
     return true;
-}
-
-function releasePush() {
-    const currentBranch = getCurrentBranch();
-    if (!execCommand(`git push origin ${currentBranch}`)) {
-        return false;
-    }
-
-    logSuccess('📤', 'Release-ветка %s отправлена.', currentBranch);
-    const mrUrl = getMergeRequestUrl(currentBranch, getMainBranch());
-    if (mrUrl) {
-        logSuccess('🌐', 'Создать Merge Request: %s', mrUrl);
-    }
-    return goToMainBranch();
 }
 
 function releaseCheckChangelogLint() {
@@ -82,89 +64,52 @@ function resolveReleaseVersion(stableVersion, fragments) {
     return { bumpType, newVersion };
 }
 
-function resolveNextDevelopmentVersion(stableVersion, currentVersion) {
-    const nextPatchVersion = upVersion(stableVersion, 'patch');
-    if (!nextPatchVersion) return null;
-    if (!currentVersion) return nextPatchVersion;
-    return compareVersions(currentVersion, nextPatchVersion) > 0
-        ? currentVersion
-        : nextPatchVersion;
-}
+function releaseCommit(context) {
+    if (!execCommand(`git add --all -- ${CHANGELOG_FILE} ${CHANGELOG_DIR}`)) return false;
+    if (!execCommand(`git commit --message "📝 Подготовить релиз ${context.newVersion}." --no-verify`)) return false;
 
-function runInstall(context = {}) {
-    if (context.developmentVersionChanged === false) {
-        return true;
-    }
-    const pm = getPackageManager() || 'npm';
-    if (!execCommand(`${pm} install`)) {
-        logError('❌', 'Не удалось выполнить %s install.', pm);
-        return false;
-    }
-    logSuccess('📦', 'Lock-файл обновлен (%s install).', pm);
+    logSuccess('📝', 'Коммит со схлопнутыми changelog fragments создан.');
     return true;
 }
 
-function updateReleaseVersion(context) {
-    return updateVersionFileExact(context.newVersion);
+function getReleasePushCommand(context) {
+    const devBranch = context && context.devBranch;
+    const targetBranch = (context && context.mainBranch) || getMainBranch();
+    if (!devBranch || !targetBranch) return null;
+
+    return `git push --atomic origin ${devBranch}:${devBranch} ${devBranch}:${targetBranch}`;
 }
 
-function releaseCommit() {
-    const lockFiles = { npm: 'package-lock.json', yarn: 'yarn.lock', bun: 'bun.lockb' };
-    const pm = getPackageManager();
-    const filesToAdd = [CHANGELOG_FILE, '.changelog', 'package.json'];
-    if (pm && lockFiles[pm]) {
-        filesToAdd.push(lockFiles[pm]);
-    }
-
-    const addSuccess = execCommand(`git add --all -- ${filesToAdd.join(' ')}`);
-    const commitSuccess = execCommand('git commit --message "📝 Обновить changelog и версию." --no-verify');
-
-    if (addSuccess && commitSuccess) {
-        logSuccess('📝', 'Коммит с обновленным changelog и версией создан.');
-        return true;
-    }
-    return false;
-}
-
-function prepareNextDevelopmentVersion(context) {
-    const currentVersion = getVersion();
-    let nextDevelopmentVersion;
-    try {
-        nextDevelopmentVersion = resolveNextDevelopmentVersion(context.stableVersion, currentVersion);
-    } catch (error) {
-        logError('❌', 'Не удалось сравнить dev-версию с новой стабильной версией: %s', error.message);
+function releasePush(context) {
+    const command = getReleasePushCommand(context);
+    if (!command) {
+        logError('❌', 'Не удалось сформировать команду публикации релиза.');
         return false;
     }
 
-    if (!nextDevelopmentVersion) {
-        logError('❌', 'Не удалось вычислить следующую dev-версию.');
+    if (!execCommand(command)) {
+        logError(
+            '❌',
+            'Релиз не отправлен в dev и main/master. Убедитесь, что dev содержит актуальный main/master и прямой push разрешен. Повторите: %s',
+            command
+        );
         return false;
     }
 
-    context.nextDevelopmentVersion = nextDevelopmentVersion;
-    context.developmentVersionChanged = currentVersion !== nextDevelopmentVersion;
-    if (!context.developmentVersionChanged) {
-        logSuccess('🔖', 'Dev-версия %s уже опережает стабильную линию.', currentVersion);
-        return true;
-    }
-    return updateVersionFileExact(nextDevelopmentVersion);
+    const devBranch = context.devBranch;
+    const targetBranch = context.mainBranch || getMainBranch();
+    logSuccess('📤', 'Релиз атомарно отправлен в origin/%s и origin/%s.', devBranch, targetBranch);
+    return true;
 }
 
-function commitNextDevelopmentVersion(context) {
-    if (!context.developmentVersionChanged) return true;
-
-    const lockFiles = { npm: 'package-lock.json', yarn: 'yarn.lock', bun: 'bun.lockb' };
-    const pm = getPackageManager();
-    const filesToAdd = ['package.json'];
-    if (pm && lockFiles[pm]) {
-        filesToAdd.push(lockFiles[pm]);
-    }
-
-    if (!execCommand(`git add -- ${filesToAdd.join(' ')}`)) return false;
-    if (!execCommand(`git commit --message "🔖 Открыть разработку версии ${context.nextDevelopmentVersion}." --no-verify`)) {
+function pushDev(context) {
+    const devBranch = context.devBranch || getCurrentBranch();
+    const command = `git push origin ${devBranch}`;
+    if (!execCommand(command)) {
+        logError('❌', 'Dev-ветка не отправлена. Повторите: %s', command);
         return false;
     }
-    logSuccess('📝', 'Dev переведен на версию %s.', context.nextDevelopmentVersion);
+    logSuccess('📤', 'Ветка %s отправлена.', devBranch);
     return true;
 }
 
@@ -177,7 +122,7 @@ function releaseClose() {
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'on-main-branch', run: requireOnMainBranch },
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches },
-            { name: 'package-version', run: requireStablePackageVersion },
+            { name: 'changelog-release-version', run: requireChangelogReleaseVersion },
             { name: 'stable-tag-at-head', run: (ctx) => requireStableTagAtHead(ctx.version) }
         ],
         steps: [
@@ -196,20 +141,7 @@ function releaseClose() {
                     return true;
                 }
             },
-            { name: 'open-next-development-version', run: prepareNextDevelopmentVersion },
-            { name: 'update-lock-file', run: runInstall },
-            { name: 'commit-next-development-version', run: commitNextDevelopmentVersion },
-            {
-                name: 'push-dev',
-                run: () => {
-                    const currentBranch = getCurrentBranch();
-                    if (!execCommand(`git push origin ${currentBranch}`)) {
-                        return false;
-                    }
-                    logSuccess('📤', 'Ветка %s отправлена.', currentBranch);
-                    return true;
-                }
-            }
+            { name: 'push-dev', run: pushDev }
         ]
     });
 }
@@ -222,10 +154,10 @@ function releaseStart() {
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches },
-            { name: 'package-version', run: requireStablePackageVersion },
             { name: 'on-dev-branch', run: requireOnDevBranch },
             { name: 'stable-version', run: requireLatestStableVersion },
             { name: 'changelog-exists', run: () => requireFileExists(CHANGELOG_FILE) },
+            { name: 'no-pending-release', run: (ctx) => requireNoPendingRelease(ctx.stableVersion) },
             { name: 'changelog-prettier-check', run: requireChangelogFormatted },
             { name: 'changelog-fragments', run: requireChangelogFragments },
             {
@@ -236,51 +168,30 @@ function releaseStart() {
                         return { ok: false, reason: 'Не удалось вычислить release-версию от последнего стабильного тега.' };
                     }
 
-                    const nextDevelopmentVersion = upVersion(ctx.stableVersion, 'patch');
-                    if (compareVersions(ctx.version, nextDevelopmentVersion) < 0) {
-                        return {
-                            ok: false,
-                            reason: `Dev-версия ${ctx.version} устарела: после ${ctx.stableVersion} ожидается минимум ${nextDevelopmentVersion}.`
-                        };
-                    }
-                    if (compareVersions(ctx.version, resolved.newVersion) > 0) {
-                        return {
-                            ok: false,
-                            reason: `Вычисленная версия ${resolved.newVersion} ниже текущей dev-версии ${ctx.version}.`
-                        };
-                    }
-
-                    const releaseBranch = getReleaseBranchName(resolved.newVersion);
-                    const branchCheck = requireReleaseBranchMissing(releaseBranch);
-                    if (!branchCheck.ok) return branchCheck;
                     const versionCheck = requireReleaseVersionAvailable(resolved.newVersion);
                     if (!versionCheck.ok) return versionCheck;
-                    return { ok: true, data: { ...resolved, releaseBranch } };
+                    return { ok: true, data: resolved };
                 }
             }
         ],
         steps: [
-            { name: 'set-release-version', run: updateReleaseVersion },
-            { name: 'run-install', run: runInstall },
             { name: 'build-release-changelog', run: changelogBuildRelease },
             { name: 'remove-changelog-fragments', run: changelogRemoveFragments },
+            { name: 'format-changelog', run: releaseFormatChangelog },
             { name: 'lint-changelog', run: releaseCheckChangelogLint },
-            { name: 'create-release-branch', run: releaseCreate },
             { name: 'commit-release', run: releaseCommit },
-            { name: 'push-release', run: releasePush }
+            { name: 'push-dev-and-main', run: releasePush }
         ]
     });
 }
 
 module.exports = {
-    getReleaseBranchName,
-    releaseCreate,
+    getReleasePushCommand,
+    releaseCommit,
     releasePush,
     releaseClose,
     releaseStart,
     detectBumpType,
     resolveReleaseVersion,
-    resolveNextDevelopmentVersion,
-    prepareNextDevelopmentVersion,
-    commitNextDevelopmentVersion
+    pushDev
 };

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 const mockRelease = { releaseStart: jest.fn(), releaseClose: jest.fn() };
 const mockGit = { gitCreateTagAndPush: jest.fn() };
-const mockVersion = { setVersion: jest.fn() };
 const mockChangelog = { changelogAppend: jest.fn(), changelogCheck: jest.fn() };
 const mockChart = { chartCreateTag: jest.fn(), chartVerify: jest.fn(), chartDeploy: jest.fn() };
 const mockToken = { tokenRotate: jest.fn() };
@@ -59,6 +58,11 @@ class MockCommand {
     return this;
   }
 
+  option(definition, description) {
+    this._options.push({ definition, description, required: false });
+    return this;
+  }
+
   action(fn) {
     this._action = fn;
     return this;
@@ -84,7 +88,6 @@ jest.mock("commander", () => ({
 
 jest.mock("../src/release", () => mockRelease);
 jest.mock("../src/git", () => mockGit);
-jest.mock("../src/version", () => mockVersion);
 jest.mock("../src/changelog", () => mockChangelog);
 jest.mock("../src/chart", () => mockChart);
 jest.mock("../src/token", () => mockToken);
@@ -127,26 +130,19 @@ describe("index CLI wiring", () => {
     expect(mockGit.gitCreateTagAndPush).toHaveBeenCalled();
   });
 
-  test("version up commands call setVersion with expected type", () => {
+  test("version up command group is removed", () => {
     const versionCmd = mockState.root._commands.find((c) => c._name === "version");
-    const up = versionCmd._commands.find((c) => c._name === "up");
-
-    up._commands.find((c) => c._name === "major")._action();
-    up._commands.find((c) => c._name === "minor")._action();
-    up._commands.find((c) => c._name === "patch")._action();
-
-    expect(mockVersion.setVersion).toHaveBeenNthCalledWith(1, "major");
-    expect(mockVersion.setVersion).toHaveBeenNthCalledWith(2, "minor");
-    expect(mockVersion.setVersion).toHaveBeenNthCalledWith(3, "patch");
+    expect(versionCmd).toBeUndefined();
   });
 
   test("chart create command calls chart tag creation", () => {
     const chartCmd = mockState.root._commands.find((c) => c._name === "chart");
     const create = chartCmd._commands.find((c) => c._name === "create");
 
-    create._action("1.2.3");
+    create._action("1.2.3", { force: true, wait: true });
 
-    expect(mockChart.chartCreateTag).toHaveBeenCalledWith("1.2.3");
+    expect(mockChart.chartCreateTag).toHaveBeenCalledWith("1.2.3", { force: true, wait: true });
+    expect(create._options.map((o) => o.definition)).toEqual(["--force", "--wait"]);
   });
 
   test("chart verify command calls chart verify handler", () => {
@@ -171,9 +167,10 @@ describe("index CLI wiring", () => {
     const chartCmd = mockState.root._commands.find((c) => c._name === "chart");
     const deploy = chartCmd._commands.find((c) => c._name === "deploy");
 
-    deploy._action();
+    deploy._action({ instances: "sd,cbch" });
 
-    expect(mockChart.chartDeploy).toHaveBeenCalled();
+    expect(mockChart.chartDeploy).toHaveBeenCalledWith({ instances: "sd,cbch" });
+    expect(deploy._options.map((o) => o.definition)).toEqual(["--instances <names>"]);
   });
 
   test("changelog append command handles success", async () => {

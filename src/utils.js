@@ -83,15 +83,6 @@ function getPackageManager() {
     return null;
 }
 
-function getVersion() {
-    try {
-        const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-        return packageJson.version;
-    } catch (error) {
-        return null;
-    }
-}
-
 function getRemoteUrl() {
     const raw = execSilent('git remote get-url origin');
     if (!raw) return null;
@@ -125,7 +116,6 @@ module.exports = {
     getMainBranch,
     getDevelopBranch,
     getPackageManager,
-    getVersion,
     getRemoteUrl,
     getMergeRequestUrl
 };

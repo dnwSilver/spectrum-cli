@@ -57,18 +57,22 @@ spectrum release start
 
 Команда автоматически:
 
-1. Проверяет чистое рабочее дерево, актуальность ветки, `CHANGELOG.md` и все fragments.
-2. Выбирает максимальное требуемое повышение SemVer и применяет его к последнему стабильному `vX.Y.Z`, а не к зарезервированной dev-версии.
-3. Устанавливает точную target-версию в `package.json` и обновляет lock-файл.
-4. Собирает релизный блок `CHANGELOG.md` из fragments.
-5. Удаляет использованные fragments.
-6. Создает коммит и ветку `release/X.Y.Z`. Release-ветка не привязана к отдельной задаче YouTrack.
-7. Пушит ветку и выводит ссылку на Merge Request в `main`.
+1. Проверяет чистое рабочее дерево, актуальность ветки, `CHANGELOG.md` и все fragments. Если changelog содержит хотя бы одну версию новее последнего стабильного тега, новый релиз блокируется до выполнения `release deploy` и `release close`.
+2. После `git fetch origin --prune --tags` выбирает максимальный стабильный `vX.Y.Z`, достижимый из `origin/main` или `origin/master`, и применяет к нему максимальное требуемое повышение SemVer.
+3. Собирает релизный блок `## 🚀 [X.Y.Z]` в `CHANGELOG.md` из fragments.
+4. Удаляет использованные fragments.
+5. Коммитит схлопнутый changelog одним коммитом в `dev`.
+6. Атомарно пушит release commit напрямую в `origin/dev` и `origin/main` или `origin/master`, без Merge Request.
 
-### 3. Merge release-ветки
+`package.json`, lock-файлы и `release/*`-ветки команда не трогает: версия живет
+только в git-тегах и заголовке `CHANGELOG.md`. Прямой push в stable-ветку должен
+быть разрешен правилами защиты репозитория; non-fast-forward обновление
+отклоняется.
 
-Проверьте Merge Request и смержите `release/X.Y.Z` в `main`. Каждый push
-в main/master должен выпустить registry-only `X.Y.Z-rc.N`; retry того же SHA
+### 3. Проверка RC
+
+Прямой push в main/master должен выпустить registry-only `X.Y.Z-rc.N`, где
+`X.Y.Z` — версия из верхнего заголовка `CHANGELOG.md`; retry того же SHA
 переиспользует номер. Проверьте RC до создания stable-тега.
 
 ### 4. Создание стабильного тега и релиза
@@ -79,9 +83,10 @@ git pull --ff-only
 spectrum release deploy
 ```
 
-Команда создает только `vX.Y.Z`. RC Git-тегов нет. Stable pipeline должен найти
-максимальный RC с OCI revision текущего commit, проверить обязательные образы и
-продвинуть их точные digest в `X.Y.Z` без пересборки.
+Команда читает версию `X.Y.Z` из верхнего заголовка `CHANGELOG.md` и создает
+только `vX.Y.Z`. RC Git-тегов нет. Stable pipeline должен найти максимальный RC
+с OCI revision текущего commit, проверить обязательные образы и продвинуть их
+точные digest в `X.Y.Z` без пересборки.
 
 ### 5. Закрытие релиза
 
@@ -90,10 +95,8 @@ spectrum release deploy
 spectrum release close
 ```
 
-`release close` мержит main/master в dev, устанавливает следующий patch от
-нового stable, обновляет lock-файл, создает коммит нового dev-цикла и пушит dev.
-Если dev уже выше после параллельной разработки или hotfix reconciliation, его
-версия не понижается.
+`release close` только мержит main/master в dev и пушит dev. Никакие файлы
+версий не изменяются: следующая версия вычисляется из тегов и `.changelog/`.
 
 ### 6. Автоматический процесс
 

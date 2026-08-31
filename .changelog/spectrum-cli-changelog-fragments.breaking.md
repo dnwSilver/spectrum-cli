@@ -1,4 +1,6 @@
 - Команда `spectrum changelog append` создает независимый fragment в `.changelog/` вместо изменения общего `CHANGELOG.md`; для проверки добавлена команда `spectrum changelog check`, а `spectrum release start` собирает и удаляет fragments автоматически.
-- `spectrum release start` вычисляет target от последнего стабильного тега и создает `release/X.Y.Z` без привязки релиза к отдельной задаче, не повышая повторно зарезервированный next-patch в dev.
-- `spectrum release close` после стабильного тега открывает следующий patch в dev, обновляет lock-файл и не понижает уже более высокую dev-версию.
+- Источник правды о версии — git-теги `vX.Y.Z`: CLI больше не читает и не изменяет `package.json`, lock-файлы, не создает и не проверяет `release/*`-ветки; команда `spectrum version up` удалена.
+- `spectrum release start` вычисляет target от максимального стабильного тега, достижимого из stable-ветки, схлопывает fragments в `CHANGELOG.md` одним коммитом в dev и атомарно пушит release commit напрямую в dev и main/master без MR.
+- `spectrum release start` блокирует новый релиз, пока `CHANGELOG.md` содержит одну или несколько версий новее последнего стабильного тега, не позволяя повторному запуску понизить версию.
+- `spectrum release deploy` и `spectrum release close` читают версию релиза из верхнего заголовка `## 🚀 [X.Y.Z]` файла `CHANGELOG.md`.
 - Changelog task ID принимается только из веток `<type>/<YOUTRACK-ID>` или `<type>/<YOUTRACK-ID>-<slug>`.

@@ -36,19 +36,17 @@ spectrum --help
 # Показать текущую версию CLI
 spectrum -v | --version
 
-# 📦 Управление версиями
-spectrum version up major    # Поднять major версию (1.0.0 → 2.0.0)
-spectrum version up minor    # Поднять minor версию (1.0.0 → 1.1.0)
-spectrum version up patch    # Поднять patch версию (1.0.0 → 1.0.1)
-
 # 🚀 Управление релизами
-spectrum release start              # Подготовить release/X.Y.Z
-spectrum release deploy              # Создать только стабильный тег vX.Y.Z
-spectrum release close               # Свести stable main в dev и открыть next patch
+spectrum release start               # Схлопнуть fragments и атомарно отправить release commit в dev и main/master
+spectrum release deploy              # Создать стабильный тег vX.Y.Z из заголовка CHANGELOG
+spectrum release close               # Свести stable main/master в dev
 
 # 📈 Теги chart
-spectrum chart create 1.2.3  # Создать и запушить chart-$name-$version
+spectrum chart create 1.2.3  # Создать и запушить chart-$name-$version (требует запись в CHANGELOG.md чарта)
+spectrum chart create 1.2.3 --wait   # После пуша тега дождаться публикации версии в Helm-registry
+spectrum chart create 1.2.2 --force  # Разрешить версию не больше последней опубликованной
 spectrum chart deploy  # Обновить helmrelease.yaml до последнего chart-тега и запушить
+spectrum chart deploy --instances sd,cbch  # Обновить только выбранные инстансы instances/<name>
 spectrum chart verify ~/repo  # Сравнить ingress paths AS IS vs TO BE для Next.js исходников
 
 # 📝 Управление changelog
@@ -64,9 +62,6 @@ spectrum token rotate  # Пролить GITLAB_PRIVATE_TOKEN в CI variables
 ```bash
 # Справка по релизам
 spectrum release --help
-
-# Справка по версиям
-spectrum version up --help
 
 # Справка по changelog
 spectrum changelog --help
@@ -101,7 +96,7 @@ spectrum-cli/
 ├── src/               # 📁 Исходный код
 │   ├── utils.js       # 🛠️ Утилиты и логирование
 │   ├── git.js         # 📝 Git операции
-│   ├── version.js     # 📦 Управление версиями SemVer
+│   ├── version.js     # 📦 SemVer-хелперы (парсинг, сравнение, бамп)
 │   ├── changelog-config.js # 🧩 Типы и правила changelog fragments
 │   ├── changelog.js   # 📋 Создание и сборка changelog fragments
 │   ├── chart.js       # 📈 Создание и push chart тегов
@@ -118,12 +113,9 @@ spectrum-cli/
 
 | Команда                     | Описание                            |
 | --------------------------- | ----------------------------------- |
-| `spectrum release start`           | Запустить полный цикл релиза        |
-| `spectrum release deploy`   | Деплой релиза                       |
+| `spectrum release start`    | Схлопнуть и опубликовать fragments  |
+| `spectrum release deploy`   | Создать стабильный тег vX.Y.Z       |
 | `spectrum release close`    | Закрыть релиз                       |
-| `spectrum version up major` | Увеличить major версию              |
-| `spectrum version up minor` | Увеличить minor версию              |
-| `spectrum version up patch` | Увеличить patch версию              |
 | `spectrum changelog append` | Создать changelog fragment          |
 | `spectrum changelog check`  | Проверить changelog и fragments     |
 | `spectrum chart create`     | Создать и запушить chart тег        |
@@ -133,12 +125,9 @@ spectrum-cli/
 
 ### 🛡️ Preflight-проверки по командам
 
-- `spectrum release start`: чистая и актуальная dev-ветка, стабильная core-версия `X.Y.Z`, последний stable-тег в `origin`, валидные fragments и отсутствие целевой `release/X.Y.Z` или `hotfix/*-X.Y.Z` ветки.
-- `spectrum release deploy`: чистая и актуальная main/master, стабильная core-версия `X.Y.Z`, отсутствие локального и remote-тега `vX.Y.Z`. Команда не создает RC-теги.
-- `spectrum release close`: чистая и актуальная main/master, стабильная core-версия и remote-тег `vX.Y.Z`, указывающий на текущий commit.
-- `spectrum version up major`: `package-json-exists` (есть `package.json`), `package-version`, `clean-working-tree`.
-- `spectrum version up minor`: `package-json-exists`, `package-version`, `clean-working-tree`.
-- `spectrum version up patch`: `package-json-exists`, `package-version`, `clean-working-tree`.
+- `spectrum release start`: чистая и актуальная dev-ветка, стабильный тег, достижимый из `origin/main` или `origin/master`, отсутствие в `CHANGELOG.md` незакрытых версий новее этого тега, валидные fragments и отсутствие целевых hotfix-веток и тега. Версия вычисляется только из тегов и fragments — `package.json` не читается.
+- `spectrum release deploy`: чистая и актуальная main/master, стабильная версия `X.Y.Z` из верхнего заголовка `CHANGELOG.md`, отсутствие локального и remote-тега `vX.Y.Z`. Команда не создает RC-теги.
+- `spectrum release close`: чистая и актуальная main/master, версия из верхнего заголовка `CHANGELOG.md` и remote-тег `vX.Y.Z`, указывающий на текущий commit.
 - `spectrum changelog append <message>`: `git-repo`, `changelog-exists`, валидные ID задачи, git identity и тип fragment. Команда не изменяет общий `CHANGELOG.md`.
 - `spectrum changelog check`: `git-repo`, `changelog-exists`, `changelog-prettier-check`, наличие и формат всех changelog fragments.
 - `spectrum chart create <version>`: `git-repo`, `clean-working-tree`, `on-main-branch`, `valid-semver` (переданный `<version>` — semver), `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), `tag-missing` (тега `chart-<name>-<version>` нет локально и на `origin`).
@@ -150,40 +139,42 @@ spectrum-cli/
 
 ### `spectrum release start`
 
-1. Проверяет `CHANGELOG.md` и все файлы `.changelog/<name>.<type>.md`.
-2. Находит последний стабильный тег `vX.Y.Z` в `origin` и применяет к нему максимальное повышение по fragments: `breaking` → major, `added` → minor, остальные типы → patch.
-3. Устанавливает точную target-версию и обновляет lock-файл. Зарезервированная dev-версия повторно не повышается.
-4. Собирает новый релизный блок `CHANGELOG.md` из fragments в стабильном порядке разделов.
-5. Удаляет использованные fragments.
-6. Повторно проверяет формат `CHANGELOG.md`.
-7. Создает и пушит `release/X.Y.Z`, коммитя версию, lock-файл, changelog и удаления fragments. Это служебная release-ветка GitFlow: YouTrack ID для нее не требуется.
-8. Выводит прямую ссылку на создание Merge Request.
+Выполняется на `dev`:
+
+1. Проверяет `CHANGELOG.md`, отсутствие релизов новее последнего стабильного тега и все файлы `.changelog/<name>.<type>.md`. Новый релиз нельзя начать, пока предыдущий не получил stable-тег.
+2. После `git fetch origin --prune --tags` находит максимальный стабильный тег `vX.Y.Z`, достижимый из stable-ветки, и применяет к нему максимальное повышение: `breaking` → major, `added` → minor, остальные типы → patch.
+3. Собирает новый релизный блок `## 🚀 [X.Y.Z]` в `CHANGELOG.md` из fragments в стабильном порядке разделов.
+4. Удаляет использованные fragments.
+5. Повторно проверяет формат `CHANGELOG.md`.
+6. Коммитит схлопнутый changelog одним коммитом в `dev` и атомарно пушит этот commit напрямую в `origin/dev` и `origin/main` или `origin/master`, без Merge Request.
+
+Команда не изменяет `package.json`, lock-файлы и не создает `release/*`-веток. Прямой push в stable-ветку должен быть разрешен правилами защиты репозитория; non-fast-forward обновление не выполняется.
 
 ### `spectrum release close`
 
-1. Проверяет, что стабильный `vX.Y.Z` уже указывает на текущий commit main/master.
+1. Читает версию из верхнего заголовка `CHANGELOG.md` и проверяет, что стабильный `vX.Y.Z` уже указывает на текущий commit main/master.
 2. Обновляет main/master и dev.
 3. Мержит main/master в dev.
-4. Вычисляет следующий patch от выпущенного stable и не понижает dev, если он уже выше.
-5. Обновляет version source и lock-файл, коммитит начало нового dev-цикла и пушит dev без `ci.skip`.
+4. Пушит синхронизированный `dev`.
 
 ### `spectrum release deploy`
 
-1. Проверяет актуальную main/master и стабильную core-версию `X.Y.Z`.
+1. Проверяет актуальную main/master и читает версию `X.Y.Z` из верхнего заголовка `CHANGELOG.md`.
 2. Создает единственный release-тег `vX.Y.Z`.
 3. Пушит тег в `origin`. RC-теги CLI не создает.
 
 ### Цикл версий и CI
 
-В version source всегда хранится стабильный core, а prerelease-суффикс добавляет CI:
+Источник правды о версии — git-тег `vX.Y.Z`. Файлы версий (`package.json`, `Makefile`) не читаются ни CLI, ни CI:
 
-| Событие | Version source | Артефакт |
+| Событие | Источник версии | Артефакт |
 | --- | --- | --- |
-| stable `1.0.0` | `1.0.0` | `1.0.0` |
-| следующий dev-цикл | `1.0.1` | `1.0.1-alpha.SHORTSHA` |
-| merge release в main/master | `1.1.0` | `1.1.0-rc.1`, затем `rc.2`, ... |
-| stable-тег `v1.1.0` | `1.1.0` | проверенный RC продвигается в `1.1.0` |
-| merge stable в dev | `1.1.1` | `1.1.1-alpha.SHORTSHA` |
+| stable-тег `v1.0.0` | git-тег | `1.0.0` |
+| коммиты в dev | тег `v1.0.0` + бамп из `.changelog/` | `1.1.0-alpha.SHORTSHA` |
+| `release start` на dev | fragments схлопнуты в `## 🚀 [1.1.0]` | release commit в `dev` и `main/master` |
+| merge в main/master | заголовок CHANGELOG `1.1.0` | `1.1.0-rc.1`, затем `rc.2`, ... |
+| stable-тег `v1.1.0` | git-тег | проверенный RC продвигается в `1.1.0` |
+| merge stable в dev (`release close`) | тег `v1.1.0` + бамп fragments | `X.Y.Z-alpha.SHORTSHA` |
 
 Номер RC хранится в registry и переиспользуется при retry того же commit SHA.
 Git содержит только стабильные теги `vX.Y.Z`. Stable pipeline проверяет OCI

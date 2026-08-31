@@ -1,0 +1,4 @@
+- Команда `spectrum chart create` требует запись о версии в `CHANGELOG.md` чарта и запрещает версию не больше последней опубликованной (обход через `--force`).
+- Флаг `--wait` команды `spectrum chart create` дожидается публикации версии чарта в Helm-registry GitLab.
+- Команда `spectrum chart deploy` проверяет наличие версии чарта в Helm-registry перед обновлением helmrelease-файлов (требуется `GITLAB_PRIVATE_TOKEN`).
+- Флаг `--instances` команды `spectrum chart deploy` ограничивает деплой выбранными инстансами; в сообщение коммита добавлены версия чарта и список инстансов.

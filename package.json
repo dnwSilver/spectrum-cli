@@ -1,6 +1,6 @@
 {
   "name": "spectrum-cli",
-  "version": "2.1.2",
+  "version": "3.0.0",
   "description": "🚀 Modern CLI for development workflow automation - release management, versioning, and changelog generation",
   "main": "index.js",
   "bin": {

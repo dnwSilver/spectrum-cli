@@ -49,13 +49,10 @@ git --version
 ## 🎯 Первое использование
 
 ```bash
-# Перейти в директорию проекта с package.json
+# Перейти в директорию проекта
 cd /path/to/your/project
 
-# Увеличить patch версию
-./index.js version up patch
-
-# Запустить полный цикл релиза
+# Запустить полный цикл релиза (на dev-ветке)
 ./index.js release start
 
 # Создать и запушить chart тег
@@ -66,11 +63,13 @@ cd /path/to/your/project
 
 Для корректной работы Spectrum CLI ваш проект должен содержать:
 
-1. **package.json** - с полем `version`
-2. **CHANGELOG.md** - в формате Keep a Changelog без постоянного блока `Unreleased`
-3. **Git репозиторий** - с настроенными remote
-4. **Ветки** - `main`/`master` и `develop`/`dev`
-5. **Helm chart** - файл `charts/<chart-name>/Chart.yaml` с полем `name` (для `chart create`)
+1. **CHANGELOG.md** - в формате Keep a Changelog без постоянного блока `Unreleased`
+2. **Git репозиторий** - с настроенными remote и стабильными тегами `vX.Y.Z`
+3. **Ветки** - `main`/`master` и `develop`/`dev`
+4. **Helm chart** - файл `charts/<chart-name>/Chart.yaml` с полем `name` (для `chart create`)
+
+Версия проекта живет только в git-тегах `vX.Y.Z` и заголовках `CHANGELOG.md`.
+Поле `version` в `package.json` CLI не читает и не изменяет.
 
 Рабочие ветки именуются `<type>/<YOUTRACK-ID>` или
 `<type>/<YOUTRACK-ID>-<slug>`, например `feature/AR-123` и
@@ -80,10 +79,9 @@ cd /path/to/your/project
 
 ```
 my-project/
-├── package.json      # {"version": "1.0.0", ...}
-├── CHANGELOG.md      # История собранных релизов
+├── CHANGELOG.md      # История собранных релизов (верхний заголовок = версия релиза)
 ├── .changelog/       # <name>.<type>.md для следующего релиза
-└── .git/             # git init
+└── .git/             # git init + теги vX.Y.Z
 ```
 
 ## 🆘 Решение проблем

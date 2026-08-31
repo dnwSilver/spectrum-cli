@@ -3,7 +3,6 @@ const { Command } = require("commander");
 const program = new Command();
 
 const git = require("./src/git");
-const version = require("./src/version");
 const release = require("./src/release");
 const changelog = require("./src/changelog");
 const chart = require("./src/chart");
@@ -34,42 +33,18 @@ const releaseCmd = program
 
 releaseCmd
   .command("start")
-  .description("Запустить полный процесс релиза")
+  .description("Схлопнуть changelog fragments в dev и создать MR в main/master")
   .action(() => runAction(release.releaseStart));
 
 releaseCmd
   .command("close")
-  .description("Свести стабильный релиз в dev и открыть следующий patch")
+  .description("Свести стабильный релиз из main/master в dev")
   .action(() => runAction(release.releaseClose));
 
 releaseCmd
   .command("deploy")
   .description("Создать и отправить только стабильный тег vX.Y.Z")
   .action(() => runAction(git.gitCreateTagAndPush));
-
-// Команды обновления версии
-const versionCmd = program
-  .command("version")
-  .description("Обновить версию по semantic versioning");
-
-const upCmd = versionCmd
-  .command("up")
-  .description("Обновить версию по semantic versioning");
-
-upCmd
-  .command("major")
-  .description("Повысить major версию (x.0.0)")
-  .action(() => runAction(() => version.setVersion("major")));
-
-upCmd
-  .command("minor")
-  .description("Повысить minor версию (x.y.0)")
-  .action(() => runAction(() => version.setVersion("minor")));
-
-upCmd
-  .command("patch")
-  .description("Повысить patch версию (x.y.z)")
-  .action(() => runAction(() => version.setVersion("patch")));
 
 // Команды changelog
 const changelogCmd = program
@@ -94,7 +69,9 @@ const chartCmd = program
 chartCmd
   .command("create <version>")
   .description("Создать и отправить chart-тег (chart-<name>-<version>)")
-  .action((version) => runAction(() => chart.chartCreateTag(version)));
+  .option("--force", "Разрешить версию не больше последней опубликованной")
+  .option("--wait", "Дождаться публикации версии чарта в Helm-registry")
+  .action((version, options) => runAction(() => chart.chartCreateTag(version, options)));
 
 chartCmd
   .command("verify <source_path>")
@@ -104,7 +81,8 @@ chartCmd
 chartCmd
   .command("deploy")
   .description("Задеплоить последнюю версию chart в файлы helmrelease")
-  .action(() => runAction(chart.chartDeploy));
+  .option("--instances <names>", "Список инстансов через запятую (по умолчанию все)")
+  .action((options) => runAction(() => chart.chartDeploy(options)));
 
 const tokenCmd = program
   .command("token")

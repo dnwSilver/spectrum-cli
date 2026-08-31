@@ -3,8 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const readline = require('readline');
-const { logSuccess, logError, execCommand, execSilent, colors } = require('./utils');
+const { logSuccess, logError, execCommand, execSilent, getRemoteUrl, colors } = require('./utils');
 const { runCommand } = require('./command-executor');
+const { parseGitlabUrl } = require('./token');
 const {
     requireGitRepo,
     requireCleanWorkingTree,
@@ -14,6 +15,7 @@ const {
     requireRemoteReachable,
     requireSingleChart,
     requireTagMissing,
+    requireChartChangelogVersion,
     requireHelmReleaseFiles,
     requireSingleValuesYaml,
     requireIngressPathSections,
@@ -459,7 +461,10 @@ function chartVerify(sourcePath) {
     });
 }
 
-function chartCreateTag(version) {
+function chartCreateTag(version, options = {}) {
+    const force = Boolean(options.force);
+    const wait = Boolean(options.wait);
+
     return runCommand({
         name: 'chart create',
         checks: [
@@ -477,6 +482,30 @@ function chartCreateTag(version) {
                 }
             },
             { name: 'single-chart', run: requireSingleChart },
+            {
+                name: 'chart-changelog-version',
+                run: (ctx) => requireChartChangelogVersion(path.dirname(ctx.chartFilePath), ctx.version)
+            },
+            {
+                name: 'version-not-downgrade',
+                run: (ctx) => {
+                    const latestVersion = getLatestRemoteChartVersion(ctx.chartName);
+                    if (!latestVersion) {
+                        return { ok: true };
+                    }
+                    if (compareSemver(ctx.version, latestVersion) > 0) {
+                        return { ok: true, data: { latestChartVersion: latestVersion } };
+                    }
+                    if (force) {
+                        logError('⚠️', 'Версия %s не больше последней опубликованной %s. Продолжаю из-за --force.', ctx.version, latestVersion);
+                        return { ok: true, data: { latestChartVersion: latestVersion } };
+                    }
+                    return {
+                        ok: false,
+                        reason: `Версия "${ctx.version}" не больше последней опубликованной "${latestVersion}". Для сознательного отката используйте --force.`
+                    };
+                }
+            },
             {
                 name: 'tag-missing',
                 run: (ctx) => requireTagMissing(`chart-${ctx.chartName}-${ctx.version}`)
@@ -506,7 +535,13 @@ function chartCreateTag(version) {
                     logSuccess('🚀', 'Тег %s отправлен в origin.', tagName);
                     return true;
                 }
-            }
+            },
+            ...(wait
+                ? [{
+                    name: 'wait-for-registry',
+                    run: (ctx) => waitForChartInRegistry(ctx.chartName, ctx.version)
+                }]
+                : [])
         ]
     });
 }
@@ -581,6 +616,152 @@ function getLatestRemoteChartVersion(chartName) {
 
     versions.sort(compareSemver);
     return versions[versions.length - 1];
+}
+
+const HELM_REGISTRY_CHANNEL = 'stable';
+const REGISTRY_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
+const REGISTRY_WAIT_INTERVAL_MS = 15 * 1000;
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getGitlabProject() {
+    const baseUrl = getRemoteUrl();
+    if (!baseUrl) {
+        return null;
+    }
+    try {
+        return parseGitlabUrl(baseUrl);
+    } catch (error) {
+        return null;
+    }
+}
+
+function helmIndexHasChartVersion(indexYamlContent, chartName, version) {
+    const escapedChartName = String(chartName || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const chartHeadingPattern = new RegExp(`^${escapedChartName}:\\s*(#.*)?$`);
+    const lines = String(indexYamlContent || '').split('\n');
+    let inEntries = false;
+    let inChart = false;
+    let entriesIndent = 0;
+    let chartIndent = 0;
+
+    for (const rawLine of lines) {
+        const line = rawLine.replace(/\r$/, '');
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) {
+            continue;
+        }
+
+        const indent = line.match(/^\s*/)[0].length;
+
+        if (/^entries:\s*(#.*)?$/.test(trimmed) && indent === 0) {
+            inEntries = true;
+            inChart = false;
+            entriesIndent = indent;
+            continue;
+        }
+
+        if (inEntries && indent <= entriesIndent) {
+            inEntries = false;
+            inChart = false;
+        }
+
+        if (!inEntries) {
+            continue;
+        }
+
+        if (chartHeadingPattern.test(trimmed)) {
+            inChart = true;
+            chartIndent = indent;
+            continue;
+        }
+
+        if (inChart && indent <= chartIndent) {
+            inChart = false;
+        }
+
+        if (!inChart) {
+            continue;
+        }
+
+        const versionMatch = trimmed.match(/^-?\s*version:\s*["']?([^"'\s#]+)["']?\s*(#.*)?$/);
+        if (versionMatch && versionMatch[1] === String(version)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+async function fetchChartVersionFromRegistry(chartName, version) {
+    const project = getGitlabProject();
+    if (!project) {
+        return { ok: false, reason: 'Не удалось определить GitLab-проект из remote "origin".' };
+    }
+
+    const accessToken = process.env.GITLAB_PRIVATE_TOKEN;
+    if (!accessToken) {
+        return {
+            ok: false,
+            reason: 'Не задана переменная окружения GITLAB_PRIVATE_TOKEN. Она нужна для проверки публикации чарта в Helm-registry.'
+        };
+    }
+
+    const indexUrl = `${project.origin}/api/v4/projects/${project.encodedPath}/packages/helm/${HELM_REGISTRY_CHANNEL}/index.yaml`;
+    let response;
+    try {
+        response = await fetch(indexUrl, { headers: { 'PRIVATE-TOKEN': accessToken } });
+    } catch (error) {
+        return { ok: false, reason: `Не удалось запросить Helm-registry (${indexUrl}): ${error.message}.` };
+    }
+
+    if (!response.ok) {
+        return { ok: false, reason: `Helm-registry вернул HTTP ${response.status} (${indexUrl}).` };
+    }
+
+    const indexYaml = await response.text();
+    return {
+        ok: true,
+        found: helmIndexHasChartVersion(indexYaml, chartName, version),
+        indexUrl
+    };
+}
+
+async function waitForChartInRegistry(chartName, version, options = {}) {
+    const timeoutMs = options.timeoutMs === undefined ? REGISTRY_WAIT_TIMEOUT_MS : options.timeoutMs;
+    const intervalMs = options.intervalMs === undefined ? REGISTRY_WAIT_INTERVAL_MS : options.intervalMs;
+    const sleepFn = options.sleep || sleep;
+    const deadline = Date.now() + timeoutMs;
+
+    while (true) {
+        const result = await fetchChartVersionFromRegistry(chartName, version);
+        if (!result.ok) {
+            logError('❌', '%s', result.reason);
+            return false;
+        }
+        if (result.found) {
+            logSuccess('📦', 'Версия %s чарта %s опубликована в Helm-registry.', version, chartName);
+            return true;
+        }
+        if (Date.now() >= deadline) {
+            logError('❌', 'Версия %s чарта %s не появилась в Helm-registry за отведенное время.', version, chartName);
+            return false;
+        }
+        logSuccess('⏳', 'Версия %s чарта %s еще не опубликована, продолжаю ожидание...', version, chartName);
+        await sleepFn(intervalMs);
+    }
+}
+
+function getInstanceName(filePath) {
+    const normalized = String(filePath || '').replace(/\\/g, '/');
+    const match = normalized.match(/(?:^|\/)instances\/([^/]+)\/helmrelease\.yaml$/i);
+    return match ? match[1] : null;
+}
+
+function parseInstancesOption(raw) {
+    return normalizeList(String(raw || '').split(','));
 }
 
 function updateHelmReleaseVersion(filePath, nextVersion) {
@@ -672,7 +853,9 @@ function splitGitNameOnly(output) {
         .filter(Boolean);
 }
 
-function chartDeploy() {
+function chartDeploy(options = {}) {
+    const instancesOption = options.instances;
+
     return runCommand({
         name: 'chart deploy',
         checks: [
@@ -683,7 +866,41 @@ function chartDeploy() {
             { name: 'remote-origin', run: requireRemoteOrigin },
             { name: 'remote-reachable', run: requireRemoteReachable },
             { name: 'single-chart', run: requireSingleChart },
-            { name: 'helmrelease-files', run: requireHelmReleaseFiles }
+            { name: 'helmrelease-files', run: requireHelmReleaseFiles },
+            {
+                name: 'filter-instances',
+                run: (ctx) => {
+                    const requested = parseInstancesOption(instancesOption);
+                    if (requested.length === 0) {
+                        return { ok: true };
+                    }
+
+                    const available = new Map();
+                    for (const filePath of ctx.helmReleaseFiles || []) {
+                        const instanceName = getInstanceName(filePath);
+                        if (instanceName) {
+                            available.set(instanceName, filePath);
+                        }
+                    }
+
+                    if (available.size === 0) {
+                        return {
+                            ok: false,
+                            reason: 'В репозитории нет файлов instances/<name>/helmrelease.yaml, флаг --instances неприменим.'
+                        };
+                    }
+
+                    const unknown = requested.filter((name) => !available.has(name));
+                    if (unknown.length > 0) {
+                        return {
+                            ok: false,
+                            reason: `Неизвестные инстансы: ${unknown.join(', ')}. Доступные: ${Array.from(available.keys()).join(', ')}.`
+                        };
+                    }
+
+                    return { ok: true, data: { helmReleaseFiles: requested.map((name) => available.get(name)) } };
+                }
+            }
         ],
         steps: [
             {
@@ -700,11 +917,33 @@ function chartDeploy() {
                 }
             },
             {
+                name: 'verify-chart-in-registry',
+                run: async (ctx) => {
+                    const result = await fetchChartVersionFromRegistry(ctx.chartName, ctx.latestChartVersion);
+                    if (!result.ok) {
+                        logError('❌', '%s', result.reason);
+                        return false;
+                    }
+                    if (!result.found) {
+                        logError(
+                            '❌',
+                            'Версия %s чарта %s отсутствует в Helm-registry. Дождитесь пайплайна "upload charts" и повторите.',
+                            ctx.latestChartVersion,
+                            ctx.chartName
+                        );
+                        return false;
+                    }
+                    logSuccess('📦', 'Версия %s чарта %s найдена в Helm-registry.', ctx.latestChartVersion, ctx.chartName);
+                    return true;
+                }
+            },
+            {
                 name: 'update-helmrelease-files',
                 run: (ctx) => {
                     const changes = (ctx.helmReleaseFiles || []).map((filePath) => updateHelmReleaseVersion(filePath, ctx.latestChartVersion));
                     ctx.deployChanges = changes;
                     ctx.updatedFiles = changes.filter((item) => item.changed).map((item) => item.filePath);
+                    ctx.updatedInstances = ctx.updatedFiles.map((filePath) => getInstanceName(filePath) || filePath);
 
                     printDeployChanges(changes);
                     if (ctx.updatedFiles.length === 0) {
@@ -713,6 +952,7 @@ function chartDeploy() {
                         return true;
                     }
 
+                    logSuccess('📋', 'Будут обновлены инстансы: %s (версия чарта %s).', ctx.updatedInstances.join(', '), ctx.latestChartVersion);
                     return true;
                 }
             },
@@ -786,7 +1026,12 @@ function chartDeploy() {
                         return false;
                     }
 
-                    if (!execCommand('git commit -m "🚀 Деплой сервиса."')) {
+                    const instanceNames = (ctx.updatedInstances && ctx.updatedInstances.length > 0)
+                        ? ctx.updatedInstances
+                        : normalizedFiles.map((filePath) => getInstanceName(filePath) || filePath);
+                    const versionPart = ctx.latestChartVersion ? ` ${ctx.latestChartVersion}` : '';
+                    const commitMessage = `🚀 Деплой сервиса${versionPart} (${instanceNames.join(', ')}).`;
+                    if (!execCommand(`git commit -m "${commitMessage}"`)) {
                         logError('❌', 'Не удалось создать коммит деплоя.');
                         return false;
                     }
@@ -817,5 +1062,10 @@ module.exports = {
     isSemver,
     compareSemver,
     getLatestRemoteChartVersion,
+    helmIndexHasChartVersion,
+    fetchChartVersionFromRegistry,
+    waitForChartInRegistry,
+    getInstanceName,
+    parseInstancesOption,
     updateHelmReleaseVersion
 };
