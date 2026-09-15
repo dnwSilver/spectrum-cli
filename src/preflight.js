@@ -154,6 +154,15 @@ function requireCurrentBranchUpToDateWithRemote() {
     return ok({ currentBranch, upstreamBranch: upstreamBranch.trim() });
 }
 
+function requireDevContainsRemoteMain() {
+    const mainBranch = getMainBranch();
+    const remoteMain = `origin/${mainBranch}`;
+    if (!execCommand(`git merge-base --is-ancestor ${remoteMain} HEAD`)) {
+        return fail(`Текущая ветка не содержит ${remoteMain}. Смержите ${remoteMain} в dev и повторите попытку.`);
+    }
+    return ok({ remoteMain });
+}
+
 function requireFileExists(filePath) {
     if (!fs.existsSync(filePath)) {
         return fail(`Обязательный файл "${filePath}" не существует.`);
@@ -772,6 +781,7 @@ module.exports = {
     requireRemoteOrigin,
     requireRemoteReachable,
     requireCurrentBranchUpToDateWithRemote,
+    requireDevContainsRemoteMain,
     requireFileExists,
     getChangelogReleaseVersions,
     getChangelogReleaseVersion,

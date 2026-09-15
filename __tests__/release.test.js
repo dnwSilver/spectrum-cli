@@ -120,6 +120,7 @@ describe("release", () => {
       "branch-up-to-date",
       "main-and-dev-branches",
       "on-dev-branch",
+      "dev-contains-main",
       "stable-version",
       "changelog-exists",
       "no-pending-release",

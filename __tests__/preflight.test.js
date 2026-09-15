@@ -329,6 +329,22 @@ describe("preflight", () => {
     expect(preflight.getPrettierRunner()).toBeNull();
   });
 
+  test("requireDevContainsRemoteMain", () => {
+    utils.getMainBranch.mockReturnValue("main");
+    utils.execCommand.mockReturnValue(true);
+    expect(preflight.requireDevContainsRemoteMain()).toEqual({
+      ok: true,
+      data: { remoteMain: "origin/main" },
+    });
+    expect(utils.execCommand).toHaveBeenCalledWith("git merge-base --is-ancestor origin/main HEAD");
+
+    utils.getMainBranch.mockReturnValue("master");
+    utils.execCommand.mockReturnValue(false);
+    const failed = preflight.requireDevContainsRemoteMain();
+    expect(failed.ok).toBe(false);
+    expect(failed.reason).toContain("origin/master");
+  });
+
   test("requireMainAndDevBranches validates remotes", () => {
     utils.getMainBranch.mockReturnValue("main");
     utils.getDevelopBranch.mockReturnValue("develop");

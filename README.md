@@ -125,7 +125,7 @@ spectrum-cli/
 
 ### 🛡️ Preflight-проверки по командам
 
-- `spectrum release start`: чистая и актуальная dev-ветка, стабильный тег, достижимый из `origin/main` или `origin/master`, отсутствие в `CHANGELOG.md` незакрытых версий новее этого тега, валидные fragments и отсутствие целевых hotfix-веток и тега. Версия вычисляется только из тегов и fragments — `package.json` не читается.
+- `spectrum release start`: чистая и актуальная dev-ветка, `dev` содержит `origin/main` или `origin/master`, стабильный тег, достижимый из production-ветки, отсутствие в `CHANGELOG.md` незакрытых версий новее этого тега, валидные fragments и отсутствие целевых hotfix-веток и тега. Версия вычисляется только из тегов и fragments — `package.json` не читается.
 - `spectrum release deploy`: чистая и актуальная main/master, стабильная версия `X.Y.Z` из верхнего заголовка `CHANGELOG.md`, отсутствие локального и remote-тега `vX.Y.Z`. Команда не создает RC-теги.
 - `spectrum release close`: чистая и актуальная main/master, версия из верхнего заголовка `CHANGELOG.md` и remote-тег `vX.Y.Z`, указывающий на текущий commit.
 - `spectrum changelog append <message>`: `git-repo`, `changelog-exists`, валидные ID задачи, git identity и тип fragment. Команда не изменяет общий `CHANGELOG.md`.
