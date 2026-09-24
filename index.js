@@ -4,6 +4,7 @@ const program = new Command();
 
 const git = require("./src/git");
 const release = require("./src/release");
+const hotfix = require("./src/hotfix");
 const changelog = require("./src/changelog");
 const chart = require("./src/chart");
 const token = require("./src/token");
@@ -33,7 +34,7 @@ const releaseCmd = program
 
 releaseCmd
   .command("start")
-  .description("Схлопнуть changelog fragments в dev и создать MR в main/master")
+  .description("Схлопнуть fragments и атомарно отправить release commit в dev и main/master")
   .action(() => runAction(release.releaseStart));
 
 releaseCmd
@@ -43,8 +44,20 @@ releaseCmd
 
 releaseCmd
   .command("deploy")
-  .description("Создать и отправить только стабильный тег vX.Y.Z")
+  .description("Создать и отправить только стабильный тег release/X.Y.Z")
   .action(() => runAction(git.gitCreateTagAndPush));
+
+const hotfixCmd = program.command("hotfix").description("Изолированный цикл срочного patch-релиза");
+
+hotfixCmd.command("start")
+  .description("Подготовить CHANGELOG на hotfix/* для MR, без commit, push и merge")
+  .action(() => runAction(hotfix.hotfixStart));
+hotfixCmd.command("deploy")
+  .description("После merge хотфикса отправить stable-тег с main/master")
+  .action(() => runAction(hotfix.hotfixDeploy));
+hotfixCmd.command("close")
+  .description("После stable pipeline свести production в dev")
+  .action(() => runAction(hotfix.hotfixClose));
 
 // Команды changelog
 const changelogCmd = program

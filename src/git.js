@@ -89,7 +89,7 @@ function gitCreateTagAndPush() {
             { name: 'changelog-release-version', run: requireChangelogReleaseVersion },
             {
                 name: 'tag-missing',
-                run: (ctx) => requireTagMissing(`v${ctx.version}`)
+                run: (ctx) => requireTagMissing(`release/${ctx.version}`)
             }
         ],
         steps: [
@@ -100,16 +100,16 @@ function gitCreateTagAndPush() {
             {
                 name: 'create-tag',
                 run: (ctx) => {
-                    if (!execCommand(`git tag v${ctx.version}`)) return false;
-                    logSuccess('🔖', 'Создан тег v%s.', ctx.version);
+                    if (!execCommand(`git tag release/${ctx.version}`)) return false;
+                    logSuccess('🔖', 'Создан тег release/%s.', ctx.version);
                     return true;
                 }
             },
             {
                 name: 'push-tag',
                 run: (ctx) => {
-                    if (!execCommand(`git push origin v${ctx.version}`)) return false;
-                    logSuccess('🚀', 'Тег v%s отправлен.', ctx.version);
+                    if (!execCommand(`git push origin refs/tags/release/${ctx.version}:refs/tags/release/${ctx.version}`)) return false;
+                    logSuccess('🚀', 'Тег release/%s отправлен.', ctx.version);
                     return true;
                 }
             }

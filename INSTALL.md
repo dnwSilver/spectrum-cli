@@ -64,11 +64,11 @@ cd /path/to/your/project
 Для корректной работы Spectrum CLI ваш проект должен содержать:
 
 1. **CHANGELOG.md** - в формате Keep a Changelog без постоянного блока `Unreleased`
-2. **Git репозиторий** - с настроенными remote и стабильными тегами `vX.Y.Z`
+2. **Git репозиторий** - с настроенными remote и стабильными тегами `release/X.Y.Z`, `hotfix/X.Y.Z` или legacy `vX.Y.Z`
 3. **Ветки** - `main`/`master` и `develop`/`dev`
 4. **Helm chart** - файл `charts/<chart-name>/Chart.yaml` с полем `name` (для `chart create`)
 
-Версия проекта живет только в git-тегах `vX.Y.Z` и заголовках `CHANGELOG.md`.
+Версия проекта живет в git-тегах `release/X.Y.Z`, `hotfix/X.Y.Z` (также поддерживается legacy `vX.Y.Z`) и заголовках `CHANGELOG.md`.
 Поле `version` в `package.json` CLI не читает и не изменяет.
 
 Рабочие ветки именуются `<type>/<YOUTRACK-ID>` или
@@ -81,7 +81,7 @@ cd /path/to/your/project
 my-project/
 ├── CHANGELOG.md      # История собранных релизов (верхний заголовок = версия релиза)
 ├── .changelog/       # <name>.<type>.md для следующего релиза
-└── .git/             # git init + теги vX.Y.Z
+└── .git/             # git init + теги release/X.Y.Z
 ```
 
 ## 🆘 Решение проблем

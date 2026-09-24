@@ -137,8 +137,8 @@ describe("git", () => {
     });
 
     await expect(git.gitCreateTagAndPush()).resolves.toBe(true);
-    expect(execCommand).toHaveBeenCalledWith("git tag v1.2.3");
-    expect(execCommand).toHaveBeenCalledWith("git push origin v1.2.3");
+    expect(execCommand).toHaveBeenCalledWith("git tag release/1.2.3");
+    expect(execCommand).toHaveBeenCalledWith("git push origin refs/tags/release/1.2.3:refs/tags/release/1.2.3");
   });
 
   test("gitCreateTagAndPush create step fail", async () => {

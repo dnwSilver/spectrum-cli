@@ -4,6 +4,7 @@ const mockGit = { gitCreateTagAndPush: jest.fn() };
 const mockChangelog = { changelogAppend: jest.fn(), changelogCheck: jest.fn() };
 const mockChart = { chartCreateTag: jest.fn(), chartVerify: jest.fn(), chartDeploy: jest.fn() };
 const mockToken = { tokenRotate: jest.fn() };
+const mockHotfix = { hotfixStart: jest.fn(), hotfixDeploy: jest.fn(), hotfixClose: jest.fn() };
 
 const mockState = {
   root: null,
@@ -91,6 +92,7 @@ jest.mock("../src/git", () => mockGit);
 jest.mock("../src/changelog", () => mockChangelog);
 jest.mock("../src/chart", () => mockChart);
 jest.mock("../src/token", () => mockToken);
+jest.mock("../src/hotfix", () => mockHotfix);
 jest.mock("../package.json", () => ({ version: "9.9.9" }), { virtual: true });
 
 describe("index CLI wiring", () => {
@@ -134,6 +136,16 @@ describe("index CLI wiring", () => {
     const versionCmd = mockState.root._commands.find((c) => c._name === "version");
     expect(versionCmd).toBeUndefined();
   });
+
+  test.each([['start', 'hotfixStart'], ['deploy', 'hotfixDeploy'], ['close', 'hotfixClose']])(
+    'hotfix %s calls its handler', async (command, handler) => {
+      mockHotfix[handler].mockReturnValue(true);
+      const group = mockState.root._commands.find((c) => c._name === 'hotfix');
+      await group._commands.find((c) => c._name === command)._action();
+      expect(mockHotfix[handler]).toHaveBeenCalledWith();
+      expect(process.exit).not.toHaveBeenCalled();
+    }
+  );
 
   test("chart create command calls chart tag creation", () => {
     const chartCmd = mockState.root._commands.find((c) => c._name === "chart");

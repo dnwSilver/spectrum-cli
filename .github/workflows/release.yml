@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+      - 'release/*'
+      - 'hotfix/*'
 
 permissions:
   contents: write
@@ -32,10 +34,18 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Resolve stable version
+        id: version
+        run: |
+          VERSION=$(node -e 'const tag = require("./src/stable-tags").parseStableTag(process.env.GITHUB_REF_NAME); if (!tag) process.exit(1); process.stdout.write(tag.version);')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Create release archive
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir -p dist
-          tar -czf dist/spectrum-cli-${{ github.ref_name }}.tar.gz \
+          tar -czf "dist/spectrum-cli-${RELEASE_VERSION}.tar.gz" \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='dist' \
@@ -44,10 +54,11 @@ jobs:
 
       - name: Generate changelog
         id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           if [ -f CHANGELOG.md ]; then
             # Extract the current version block up to the next release heading.
-            VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
             CHANGELOG=$(awk -v version="$VERSION" '
               $0 ~ "^## (🚀 )?\\[" version "\\]([[:space:]]|$)" { in_release=1 }
               in_release && /^## / && $0 !~ "^## (🚀 )?\\[" version "\\]([[:space:]]|$)" { exit }

@@ -26,6 +26,7 @@ jest.mock("../src/command-executor", () => ({
 }));
 
 jest.mock("../src/version", () => ({
+  ...jest.requireActual("../src/version"),
   upVersion: jest.fn(),
 }));
 
@@ -123,16 +124,16 @@ describe("release", () => {
       "dev-contains-main",
       "stable-version",
       "changelog-exists",
-      "no-pending-release",
+      "release-state",
       "changelog-prettier-check",
       "changelog-fragments",
       "detect-bump-type",
     ]);
     expect(spec.steps.map((step) => step.name)).toEqual([
       "build-release-changelog",
-      "remove-changelog-fragments",
       "format-changelog",
       "lint-changelog",
+      "remove-changelog-fragments",
       "commit-release",
       "push-dev-and-main",
     ]);
@@ -164,6 +165,25 @@ describe("release", () => {
     }).ok).toBe(false);
   });
 
+  test("releaseStart reuses an open version and still rejects reserved or published versions", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseStart();
+    const check = spec.checks.find(({ name }) => name === "detect-bump-type");
+    const context = { stableVersion: "1.2.0", openReleaseVersion: "1.3.0", changelogFragments: [{ bump: "major" }] };
+    expect(check.run(context)).toEqual({ ok: true, data: { bumpType: "major", newVersion: "1.3.0" } });
+    expect(version.upVersion).not.toHaveBeenCalled();
+    utils.execSilent.mockReturnValueOnce("hotfix/AR-123-1.3.0");
+    expect(check.run(context).ok).toBe(false);
+    utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("").mockReturnValueOnce("v1.3.0");
+    expect(check.run(context).ok).toBe(false);
+  });
+
+  test("releaseCommit skips empty commits and does not stage a missing fragments directory", () => {
+    expect(release.releaseCommit({ newVersion: "1.3.0", changelogFragments: [] })).toBe(true);
+    expect(utils.execCommand).toHaveBeenCalledWith("git add --all -- CHANGELOG.md");
+    expect(utils.execCommand).not.toHaveBeenCalledWith(expect.stringContaining("git commit"));
+  });
+
   test("releaseStart steps collapse fragments and stage only changelog artifacts", async () => {
     runCommand.mockImplementation(async (spec) => spec);
     const spec = await release.releaseStart();
@@ -171,11 +191,11 @@ describe("release", () => {
     const context = { newVersion: "1.3.0", changelogFragments: [{ filePath: ".changelog/a.added.md" }] };
     expect(spec.steps[0].run(context)).toBe(true);
     expect(changelog.changelogBuildRelease).toHaveBeenCalledWith(context);
-    expect(spec.steps[1].run(context)).toBe(true);
+    expect(spec.steps[3].run(context)).toBe(true);
     expect(changelog.changelogRemoveFragments).toHaveBeenCalledWith(context);
 
     utils.execSilent.mockReturnValue("3.0.0");
-    expect(spec.steps[2].run(context)).toBe(true);
+    expect(spec.steps[1].run(context)).toBe(true);
     expect(utils.execCommand).toHaveBeenCalledWith(
       "npx --yes prettier --write CHANGELOG.md"
     );
@@ -195,8 +215,8 @@ describe("release", () => {
     const spec = await release.releaseStart();
 
     utils.execSilent.mockReturnValue(null);
+    expect(spec.steps[1].run({})).toBe(false);
     expect(spec.steps[2].run({})).toBe(false);
-    expect(spec.steps[3].run({})).toBe(false);
   });
 
   test("releaseClose reads the release version from the changelog heading", async () => {

@@ -7,6 +7,7 @@ const { execFileSync } = require("child_process");
 const release = require("../src/release");
 const preflight = require("../src/preflight");
 const changelog = require("../src/changelog");
+const { gitCreateTagAndPush } = require("../src/git");
 
 function git(cwd, ...args) {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -70,6 +71,21 @@ describe("tag-based release flow with a temporary origin", () => {
   afterEach(() => {
     process.chdir(originalCwd);
     fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  test("release deploy publishes a namespaced tag even when a branch has the same name", async () => {
+    git(workDir, 'switch', 'master');
+    fs.writeFileSync(path.join(workDir, 'CHANGELOG.md'), '# Changelog\n\n## 🚀 [0.0.2] - 2026-09-24\n\n### 🪲 Fixed\n\n- Correction.\n');
+    git(workDir, 'add', 'CHANGELOG.md');
+    git(workDir, 'commit', '-m', 'Prepared release');
+    git(workDir, 'push', 'origin', 'master');
+    git(workDir, 'branch', 'release/0.0.2');
+    const head = git(workDir, 'rev-parse', 'HEAD');
+    expect(await gitCreateTagAndPush()).toBe(true);
+    expect(git(originDir, 'rev-parse', 'refs/tags/release/0.0.2')).toBe(head);
+    expect(git(originDir, 'tag', '--list', 'v0.0.2', 'hotfix/0.0.2')).toBe('');
+    expect(preflight.requireStableTagAtHead('0.0.2').ok).toBe(true);
+    expect(await gitCreateTagAndPush()).toBe(false);
   });
 
   test("collapses fragments on dev and publishes the release snapshot without version files", () => {

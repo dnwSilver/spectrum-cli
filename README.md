@@ -38,8 +38,13 @@ spectrum -v | --version
 
 # 🚀 Управление релизами
 spectrum release start               # Схлопнуть fragments и атомарно отправить release commit в dev и main/master
-spectrum release deploy              # Создать стабильный тег vX.Y.Z из заголовка CHANGELOG
+spectrum release deploy              # Создать стабильный тег release/X.Y.Z из заголовка CHANGELOG
 spectrum release close               # Свести stable main/master в dev
+
+# Срочный patch без переноса незавершённого dev в production
+spectrum hotfix start                # Только локальная подготовка CHANGELOG на hotfix/*
+spectrum hotfix deploy               # После merge MR: stable-тег на актуальном main/master
+spectrum hotfix close                # После stable pipeline: main/master → dev
 
 # 📈 Теги chart
 spectrum chart create 1.2.3  # Создать и запушить chart-$name-$version (требует запись в CHANGELOG.md чарта)
@@ -114,7 +119,7 @@ spectrum-cli/
 | Команда                     | Описание                            |
 | --------------------------- | ----------------------------------- |
 | `spectrum release start`    | Схлопнуть и опубликовать fragments  |
-| `spectrum release deploy`   | Создать стабильный тег vX.Y.Z       |
+| `spectrum release deploy`   | Создать стабильный тег release/X.Y.Z       |
 | `spectrum release close`    | Закрыть релиз                       |
 | `spectrum changelog append` | Создать changelog fragment          |
 | `spectrum changelog check`  | Проверить changelog и fragments     |
@@ -125,9 +130,9 @@ spectrum-cli/
 
 ### 🛡️ Preflight-проверки по командам
 
-- `spectrum release start`: чистая и актуальная dev-ветка, `dev` содержит `origin/main` или `origin/master`, стабильный тег, достижимый из production-ветки, отсутствие в `CHANGELOG.md` незакрытых версий новее этого тега, валидные fragments и отсутствие целевых hotfix-веток и тега. Версия вычисляется только из тегов и fragments — `package.json` не читается.
-- `spectrum release deploy`: чистая и актуальная main/master, стабильная версия `X.Y.Z` из верхнего заголовка `CHANGELOG.md`, отсутствие локального и remote-тега `vX.Y.Z`. Команда не создает RC-теги.
-- `spectrum release close`: чистая и актуальная main/master, версия из верхнего заголовка `CHANGELOG.md` и remote-тег `vX.Y.Z`, указывающий на текущий commit.
+- `spectrum release start`: чистая и актуальная dev-ветка, `dev` содержит `origin/main` или `origin/master`, стабильный тег, достижимый из production-ветки, согласованная опубликованная история `CHANGELOG.md` и не более одного открытого релиза. При первом запуске нужны валидные fragments и свободная версия; повторный дополняет открытый раздел без повышения версии. `package.json` не читается.
+- `spectrum release deploy`: чистая и актуальная main/master, стабильная версия `X.Y.Z` из верхнего заголовка `CHANGELOG.md`, отсутствие этой версии среди локальных и remote-тегов всех трёх форм. Команда не создает RC-теги.
+- `spectrum release close`: чистая и актуальная main/master, версия из верхнего заголовка `CHANGELOG.md` и remote stable-тег поддерживаемой формы, указывающий на текущий commit.
 - `spectrum changelog append <message>`: `git-repo`, `changelog-exists`, валидные ID задачи, git identity и тип fragment. Команда не изменяет общий `CHANGELOG.md`.
 - `spectrum changelog check`: `git-repo`, `changelog-exists`, `changelog-prettier-check`, наличие и формат всех changelog fragments.
 - `spectrum chart create <version>`: `git-repo`, `clean-working-tree`, `on-main-branch`, `valid-semver` (переданный `<version>` — semver), `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), `tag-missing` (тега `chart-<name>-<version>` нет локально и на `origin`).
@@ -141,18 +146,21 @@ spectrum-cli/
 
 Выполняется на `dev`:
 
-1. Проверяет `CHANGELOG.md`, отсутствие релизов новее последнего стабильного тега и все файлы `.changelog/<name>.<type>.md`. Новый релиз нельзя начать, пока предыдущий не получил stable-тег.
-2. После `git fetch origin --prune --tags` находит максимальный стабильный тег `vX.Y.Z`, достижимый из stable-ветки, и применяет к нему максимальное повышение: `breaking` → major, `added` → minor, остальные типы → patch.
-3. Собирает новый релизный блок `## 🚀 [X.Y.Z]` в `CHANGELOG.md` из fragments в стабильном порядке разделов.
-4. Удаляет использованные fragments.
-5. Повторно проверяет формат `CHANGELOG.md`.
-6. Коммитит схлопнутый changelog одним коммитом в `dev` и атомарно пушит этот commit напрямую в `origin/dev` и `origin/main` или `origin/master`, без Merge Request.
+1. Проверяет чистую актуальную dev-ветку, включающую `origin/main` или `origin/master`, changelog и fragments.
+2. После `git fetch origin --prune --tags` находит максимальный stable-тег среди `release/X.Y.Z`, `hotfix/X.Y.Z` и `vX.Y.Z`, достижимый из production-ветки.
+3. Если открытого релиза нет, вычисляет версию по fragments: `breaking` → major, `added` → minor, остальные → patch. Если раздел уже открыт в main/master, сохраняет его версию и дату, объединяет прежние записи с новыми по разделам без дублей. Тип новых fragments не повышает уже выбранную версию.
+4. Форматирует и проверяет `CHANGELOG.md`, затем удаляет использованные fragments.
+5. Коммитит изменения и атомарно пушит dev в `origin/dev` и `origin/main` или `origin/master`, без Merge Request. Если новых записей нет, пустой коммит не создаётся; можно повторить отправку после её сбоя.
+
+Например, повторный `release start` дополняет открытый `1.4.0`; после публикации
+`release/1.4.0` новые fragments уже формируют следующий релиз. Изменение
+опубликованной истории и конфликтующие открытые версии блокируют команду.
 
 Команда не изменяет `package.json`, lock-файлы и не создает `release/*`-веток. Прямой push в stable-ветку должен быть разрешен правилами защиты репозитория; non-fast-forward обновление не выполняется.
 
 ### `spectrum release close`
 
-1. Читает версию из верхнего заголовка `CHANGELOG.md` и проверяет, что стабильный `vX.Y.Z` уже указывает на текущий commit main/master.
+1. Читает версию из верхнего заголовка `CHANGELOG.md` и проверяет, что remote stable-теги этой версии указывают на текущий commit main/master.
 2. Обновляет main/master и dev.
 3. Мержит main/master в dev.
 4. Пушит синхронизированный `dev`.
@@ -160,12 +168,71 @@ spectrum-cli/
 ### `spectrum release deploy`
 
 1. Проверяет актуальную main/master и читает версию `X.Y.Z` из верхнего заголовка `CHANGELOG.md`.
-2. Создает единственный release-тег `vX.Y.Z`.
+2. Создает единственный release-тег `release/X.Y.Z`.
 3. Пушит тег в `origin`. RC-теги CLI не создает.
+
+### Формат стабильных тегов
+
+Новые обычные релизы получают `release/X.Y.Z`, хотфиксы — `hotfix/X.Y.Z`.
+Старый `vX.Y.Z` эквивалентен `release/X.Y.Z`: он участвует в поиске последней
+версии и проверке занятости номера. Старые теги не нужно переименовывать.
+Нумерация общая: после `release/1.2.3` и `hotfix/1.2.4` следующий patch — `1.2.5`.
+Выпустить занятый номер под другим префиксом нельзя. В changelog и версиях
+образов остаётся `X.Y.Z`, без `release/` и `hotfix/`. Это имена **тегов**, не веток.
+
+Все hotfix-команды сначала проверяют ветку: разрешены только `hotfix/*`, `main`
+или `master`. `dev`, `develop`, `feature/*` и detached HEAD отклоняются до fetch.
+Проверки этапов строже: `start` требует task-backed hotfix-ветку, `deploy` и
+`close` — актуальный production commit на `main/master` после merge MR.
+
+### Изолированный цикл хотфикса
+
+Создайте `hotfix/<TASK>` или `hotfix/<TASK>-<slug>` от актуального `origin/main`
+или `origin/master`. Включайте только срочное исправление и его patch fragments
+(`fixed`, `security`, `support` либо другой совместимый patch-тип).
+`added` и `breaking` требуют обычного релиза. Все команды запускаются из корня
+репозитория; для `start` нужен Prettier, как для обычной сборки changelog.
+
+1. **`spectrum hotfix start`** обновляет сведения об origin и выбирает опубликованный
+   stable-тег, достижимый из production. Цель — этот stable плюс один patch.
+   Команда формирует верхний датированный раздел `CHANGELOG.md` и удаляет только
+   собранные fragments. Она не делает commit, staging, push, merge или tag,
+   не меняет файлы версий и сохраняет посторонние локальные изменения.
+2. Повторный `start` дополняет тот же неопубликованный раздел, сохраняя дату и
+   существующие записи без дублей. Без новых fragments подготовленный раздел
+   остаётся без изменений. Например, от `v6.35.0` первый и повторные запуски
+   готовят `6.35.1`; только после публикации `hotfix/6.35.1` следующий хотфикс получит
+   `6.35.2`. Унаследованные от production fragments не собираются и не меняются.
+3. Проверьте diff, закоммитьте и отправьте исправление по правилам проекта.
+   **В MR из hotfix в production уже должны быть верхний patch-раздел и удаления
+   использованных fragments.** Merge выполняется отдельно после ревью. Если
+   другой хотфикс уже в production, сначала перенесите его изменения в свою
+   ветку и повторите подготовку: пока stable-тега нет, раздел и версия общие.
+4. После merge MR и проверки RC выполните **`spectrum hotfix deploy`** на чистом
+   `main/master`, точно совпадающем с origin. Команда проверяет следующий patch,
+   неизменность опубликованной истории и отсутствие несобранных hotfix fragments,
+   создаёт `hotfix/X.Y.Z` на проверенном SHA и отправляет **только этот тег**.
+   Повтор после ошибки push допускает существующий локальный тег лишь на том же
+   SHA; опубликованный тег не перемещается. Ветки не сливаются.
+5. После успешного stable pipeline выполните **`spectrum hotfix close`** на том же
+   чистом production commit с тегом `hotfix/X.Y.Z`. Команда обновит `dev/develop` только
+   fast-forward, смержит production в integration и отправит integration.
+   Незавершённая работа и fragments в dev сохраняются. Локальные неопубликованные
+   commits блокируют автоматическую отправку; конфликт остаётся для ручного
+   разрешения, без push. При неуспешном push готового merge проверьте локальный
+   diff и согласуйте ветку вручную — повторный `close` не отправляет локальные
+   commits без проверки.
+
+CLI не проверяет статус CI и не управляет кластером: проверка RC, успешного stable
+pipeline и фактического выката выполняется отдельно в системе доставки. Обычный
+`release start` не используется в этом цикле: он отправляет integration в production.
+`changelog check` проверяет исходные fragments до сборки; после сборки сам `hotfix start`
+проверяет подготовленный раздел. CI проекта должен принимать собранные заметки в MR,
+не требуя повторного fragment для уже включённой записи.
 
 ### Цикл версий и CI
 
-Источник правды о версии — git-тег `vX.Y.Z`. Файлы версий (`package.json`, `Makefile`) не читаются ни CLI, ни CI:
+Источник версии — Git-теги `release/X.Y.Z`, `hotfix/X.Y.Z` и legacy `vX.Y.Z`. Файлы версий (`package.json`, `Makefile`) не читаются ни CLI, ни CI:
 
 | Событие | Источник версии | Артефакт |
 | --- | --- | --- |
@@ -173,11 +240,11 @@ spectrum-cli/
 | коммиты в dev | тег `v1.0.0` + бамп из `.changelog/` | `1.1.0-alpha.SHORTSHA` |
 | `release start` на dev | fragments схлопнуты в `## 🚀 [1.1.0]` | release commit в `dev` и `main/master` |
 | merge в main/master | заголовок CHANGELOG `1.1.0` | `1.1.0-rc.1`, затем `rc.2`, ... |
-| stable-тег `v1.1.0` | git-тег | проверенный RC продвигается в `1.1.0` |
-| merge stable в dev (`release close`) | тег `v1.1.0` + бамп fragments | `X.Y.Z-alpha.SHORTSHA` |
+| stable-тег `release/1.1.0` | git-тег | проверенный RC продвигается в `1.1.0` |
+| merge stable в dev (`release close`) | тег `release/1.1.0` + бамп fragments | `X.Y.Z-alpha.SHORTSHA` |
 
 Номер RC хранится в registry и переиспользуется при retry того же commit SHA.
-Git содержит только стабильные теги `vX.Y.Z`. Stable pipeline проверяет OCI
+Новые stable-теги — `release/X.Y.Z` и `hotfix/X.Y.Z`; старые `vX.Y.Z` сохраняются. Stable pipeline проверяет OCI
 revision обязательных образов и копирует точные RC digest без пересборки. Эту
 CI-часть реализует подключенный release component, а не Spectrum CLI.
 

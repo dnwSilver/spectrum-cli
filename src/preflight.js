@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
+const { parseStableTag, stableTagNames } = require('./stable-tags');
 const path = require('path');
 const { execSilent, execCommand, getCurrentBranch, getMainBranch, getDevelopBranch } = require('./utils');
 const {
@@ -243,7 +244,7 @@ function requireNoPendingRelease(stableVersion) {
 
     if (pendingVersions.length > 0) {
         return fail(
-            `В ${CHANGELOG_FILE} найдены незакрытые релизы новее стабильного тега v${stableVersion}: ${pendingVersions.join(', ')}. ` +
+            `В ${CHANGELOG_FILE} найдены незакрытые релизы новее stable-версии ${stableVersion}: ${pendingVersions.join(', ')}. ` +
             'Сначала выполните "spectrum release deploy", дождитесь успешного stable pipeline и выполните "spectrum release close".'
         );
     }
@@ -253,29 +254,29 @@ function requireNoPendingRelease(stableVersion) {
 
 function requireLatestStableVersion() {
     const mainBranch = getMainBranch();
-    const tagNames = execSilent(`git tag --merged origin/${mainBranch} --list "v*"`);
-    const remoteTagRefs = execSilent('git ls-remote --refs --tags origin "refs/tags/v*"');
+    const tagNames = execSilent(`git tag --merged origin/${mainBranch} --list "release/*" "hotfix/*" "v*"`);
+    const remoteTagRefs = execSilent('git ls-remote --refs --tags origin "refs/tags/release/*" "refs/tags/hotfix/*" "refs/tags/v*"');
     if (tagNames === null || remoteTagRefs === null) {
         return fail(`Не удалось проверить стабильные теги, достижимые из origin/${mainBranch}.`);
     }
 
     const remoteTagNames = new Set();
     for (const line of remoteTagRefs.split('\n')) {
-        const match = line.trim().match(/^[0-9a-f]+\s+refs\/tags\/(v\d+\.\d+\.\d+)$/i);
-        if (match) remoteTagNames.add(match[1]);
+        const match = line.trim().match(/^[0-9a-f]+\s+refs\/tags\/(.+)$/i);
+        if (match && parseStableTag(match[1])) remoteTagNames.add(match[1]);
     }
 
     const versions = new Set();
     for (const line of tagNames.split('\n')) {
         const tagName = line.trim();
-        const match = tagName.match(/^v(\d+\.\d+\.\d+)$/);
-        if (match && remoteTagNames.has(tagName) && STABLE_SEMVER_PATTERN.test(match[1])) {
-            versions.add(match[1]);
+        const parsed = parseStableTag(tagName);
+        if (parsed && remoteTagNames.has(tagName)) {
+            versions.add(parsed.version);
         }
     }
 
     if (versions.size === 0) {
-        return fail(`В origin/${mainBranch} не найден достижимый стабильный тег vX.Y.Z.`);
+        return fail(`В origin/${mainBranch} не найден достижимый stable-тег release/X.Y.Z, hotfix/X.Y.Z или vX.Y.Z.`);
     }
 
     const stableVersion = [...versions].sort(compareStableVersions).at(-1);
@@ -283,34 +284,19 @@ function requireLatestStableVersion() {
 }
 
 function requireStableTagAtHead(version) {
-    if (!STABLE_SEMVER_PATTERN.test(String(version || ''))) {
-        return fail('Для закрытия релиза требуется стабильная версия X.Y.Z.');
-    }
-
+    if (!STABLE_SEMVER_PATTERN.test(String(version || ''))) return fail('Требуется stable-версия X.Y.Z.');
     const head = execSilent('git rev-parse HEAD');
-    const tagRefs = execSilent(`git ls-remote --tags origin "refs/tags/v${version}" "refs/tags/v${version}^{}"`);
-    if (!head || tagRefs === null) {
-        return fail(`Не удалось проверить стабильный тег "v${version}".`);
-    }
-
-    let tagCommit = null;
-    for (const line of tagRefs.split('\n')) {
+    const names = stableTagNames(version);
+    const patterns = names.flatMap((tag) => [`"refs/tags/${tag}"`, `"refs/tags/${tag}^{}"`]).join(' ');
+    const tagRefs = execSilent(`git ls-remote --tags origin ${patterns}`);
+    if (!head || tagRefs === null) return fail(`Не удалось проверить stable-теги версии ${version}.`);
+    const refs = new Map(tagRefs.trim().split('\n').filter(Boolean).map((line) => {
         const [sha, ref] = line.trim().split(/\s+/);
-        if (ref === `refs/tags/v${version}^{}`) {
-            tagCommit = sha;
-            break;
-        }
-        if (ref === `refs/tags/v${version}`) {
-            tagCommit = sha;
-        }
-    }
-
-    if (!tagCommit) {
-        return fail(`Стабильный тег "v${version}" отсутствует в origin.`);
-    }
-    if (tagCommit !== head) {
-        return fail(`Стабильный тег "v${version}" указывает не на текущий commit main/master.`);
-    }
+        return [ref, sha];
+    }));
+    const commits = names.map((tag) => refs.get(`refs/tags/${tag}^{}`) || refs.get(`refs/tags/${tag}`)).filter(Boolean);
+    if (!commits.length) return fail(`Stable-тег версии ${version} отсутствует в origin.`);
+    if (commits.some((commit) => commit !== head)) return fail(`Stable-тег ${version} не совпадает с HEAD или конфликтует с alias.`);
     return ok({ stableVersion: version });
 }
 
@@ -322,16 +308,14 @@ function requireYouTrackTask(task) {
 }
 
 function requireTagMissing(tagName) {
-    const localTag = execSilent(`git tag -l "${tagName}"`);
-    if (localTag && localTag.trim()) {
-        return fail(`Тег "${tagName}" уже существует локально.`);
-    }
-
-    const remoteTag = execSilent(`git ls-remote --tags origin "refs/tags/${tagName}"`);
-    if (remoteTag && remoteTag.trim()) {
-        return fail(`Тег "${tagName}" уже существует на origin.`);
-    }
-
+    const parsed = parseStableTag(tagName);
+    const names = parsed ? stableTagNames(parsed.version) : [tagName];
+    const localTag = execSilent(`git tag -l ${names.map((tag) => `"${tag}"`).join(' ')}`);
+    if (localTag === null) return fail('Не удалось проверить локальные теги.');
+    if (localTag.trim()) return fail(`Версия тега ${tagName} уже существует локально: ${localTag}.`);
+    const remoteTag = execSilent(`git ls-remote --tags origin ${names.map((tag) => `"refs/tags/${tag}"`).join(' ')}`);
+    if (remoteTag === null) return fail('Не удалось проверить теги origin.');
+    if (remoteTag.trim()) return fail(`Версия тега ${tagName} уже существует на origin.`);
     return ok();
 }
 
@@ -353,17 +337,19 @@ function requireReleaseVersionAvailable(version) {
         return fail(`Версия "${version}" уже используется hotfix-веткой в origin.`);
     }
 
-    const localTag = execSilent(`git tag --list "v${version}"`);
+    const names = stableTagNames(version);
+    const localTag = execSilent(`git tag --list ${names.map((tag) => `"${tag}"`).join(' ')}`);
+    if (localTag === null) return fail('Не удалось проверить локальные stable-теги.');
     if (localTag && localTag.trim()) {
-        return fail(`Релизный тег "v${version}" уже существует локально.`);
+        return fail(`Релизный тег версии ${version} уже существует локально.`);
     }
 
-    const remoteTag = execSilent(`git ls-remote --tags origin "refs/tags/v${version}" "refs/tags/v${version}^{}"`);
+    const remoteTag = execSilent(`git ls-remote --tags origin ${names.flatMap((tag) => [`"refs/tags/${tag}"`, `"refs/tags/${tag}^{}"`]).join(' ')}`);
     if (remoteTag === null) {
-        return fail(`Не удалось проверить тег "v${version}" в origin.`);
+        return fail(`Не удалось проверить тег версии ${version} в origin.`);
     }
     if (remoteTag && remoteTag.trim()) {
-        return fail(`Релизный тег "v${version}" уже существует в origin.`);
+        return fail(`Релизный тег версии ${version} уже существует в origin.`);
     }
     return ok();
 }

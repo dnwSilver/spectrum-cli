@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 const { goToDevBranch, goToMainBranch, updateCurrentBranch } = require('./git');
 const { changelogBuildRelease, changelogRemoveFragments } = require('./changelog');
-const { logSuccess, logError, execCommand, getCurrentBranch, getMainBranch } = require('./utils');
+const { logSuccess, logError, execCommand, execSilent, getCurrentBranch, getMainBranch } = require('./utils');
+const { requireReleaseState, requireReleaseFragments, appendOpenRelease } = require('./open-release');
 const { runCommand } = require('./command-executor');
 const { upVersion } = require('./version');
 const {
@@ -14,12 +15,10 @@ const {
     requireOnMainBranch,
     requireReleaseVersionAvailable,
     requireChangelogReleaseVersion,
-    requireNoPendingRelease,
     requireLatestStableVersion,
     requireStableTagAtHead,
     requireFileExists,
     requireChangelogFormatted,
-    requireChangelogFragments,
     getPrettierRunner
 } = require('./preflight');
 const { CHANGELOG_FILE, CHANGELOG_DIR } = require('./changelog-config');
@@ -66,7 +65,14 @@ function resolveReleaseVersion(stableVersion, fragments) {
 }
 
 function releaseCommit(context) {
-    if (!execCommand(`git add --all -- ${CHANGELOG_FILE} ${CHANGELOG_DIR}`)) return false;
+    const paths = context.changelogFragments?.length ? `${CHANGELOG_FILE} ${CHANGELOG_DIR}` : CHANGELOG_FILE;
+    if (!execCommand(`git add --all -- ${paths}`)) return false;
+    const staged = execSilent('git diff --cached --name-only');
+    if (staged === null) return false;
+    if (!staged.trim()) {
+        logSuccess('📋', 'Новых changelog-записей нет; пустой коммит не создаётся.');
+        return true;
+    }
     if (!execCommand(`git commit --message "📝 Подготовить релиз ${context.newVersion}." --no-verify`)) return false;
 
     logSuccess('📝', 'Коммит со схлопнутыми changelog fragments создан.');
@@ -159,13 +165,15 @@ function releaseStart() {
             { name: 'dev-contains-main', run: requireDevContainsRemoteMain },
             { name: 'stable-version', run: requireLatestStableVersion },
             { name: 'changelog-exists', run: () => requireFileExists(CHANGELOG_FILE) },
-            { name: 'no-pending-release', run: (ctx) => requireNoPendingRelease(ctx.stableVersion) },
+            { name: 'release-state', run: requireReleaseState },
             { name: 'changelog-prettier-check', run: requireChangelogFormatted },
-            { name: 'changelog-fragments', run: requireChangelogFragments },
+            { name: 'changelog-fragments', run: requireReleaseFragments },
             {
                 name: 'detect-bump-type',
                 run: (ctx) => {
-                    const resolved = resolveReleaseVersion(ctx.stableVersion, ctx.changelogFragments);
+                    const resolved = ctx.openReleaseVersion
+                        ? { bumpType: detectBumpType(ctx.changelogFragments), newVersion: ctx.openReleaseVersion }
+                        : resolveReleaseVersion(ctx.stableVersion, ctx.changelogFragments);
                     if (!resolved) {
                         return { ok: false, reason: 'Не удалось вычислить release-версию от последнего стабильного тега.' };
                     }
@@ -177,10 +185,10 @@ function releaseStart() {
             }
         ],
         steps: [
-            { name: 'build-release-changelog', run: changelogBuildRelease },
-            { name: 'remove-changelog-fragments', run: changelogRemoveFragments },
+            { name: 'build-release-changelog', run: (ctx) => ctx.openReleaseVersion ? appendOpenRelease(ctx) : changelogBuildRelease(ctx) },
             { name: 'format-changelog', run: releaseFormatChangelog },
             { name: 'lint-changelog', run: releaseCheckChangelogLint },
+            { name: 'remove-changelog-fragments', run: (ctx) => !ctx.changelogFragments.length || changelogRemoveFragments(ctx) },
             { name: 'commit-release', run: releaseCommit },
             { name: 'push-dev-and-main', run: releasePush }
         ]

@@ -86,7 +86,7 @@ describe("preflight", () => {
     const pendingResult = preflight.requireNoPendingRelease("0.0.1");
     expect(pendingResult.ok).toBe(false);
     expect(pendingResult.reason).toContain("0.1.0, 0.0.2");
-    expect(pendingResult.reason).toContain("v0.0.1");
+    expect(pendingResult.reason).toContain("0.0.1");
     expect(pendingResult.reason).toContain("spectrum release deploy");
     expect(pendingResult.reason).toContain("spectrum release close");
 
@@ -159,10 +159,10 @@ describe("preflight", () => {
       data: { stableVersion: "1.10.0" },
     });
     expect(utils.execSilent).toHaveBeenCalledWith(
-      'git tag --merged origin/main --list "v*"'
+      'git tag --merged origin/main --list "release/*" "hotfix/*" "v*"'
     );
     expect(utils.execSilent).toHaveBeenCalledWith(
-      'git ls-remote --refs --tags origin "refs/tags/v*"'
+      'git ls-remote --refs --tags origin "refs/tags/release/*" "refs/tags/hotfix/*" "refs/tags/v*"'
     );
 
     utils.execSilent.mockReturnValue("");
@@ -392,12 +392,11 @@ describe("preflight", () => {
       2,
       'git ls-remote --heads origin "refs/heads/hotfix/*-1.2.3"'
     );
-    expect(utils.execSilent).toHaveBeenNthCalledWith(3, 'git tag --list "v1.2.3"');
+    expect(utils.execSilent).toHaveBeenNthCalledWith(3, 'git tag --list "release/1.2.3" "hotfix/1.2.3" "v1.2.3"');
     expect(utils.execSilent).toHaveBeenNthCalledWith(
       4,
-      'git ls-remote --tags origin "refs/tags/v1.2.3" "refs/tags/v1.2.3^{}"'
+      'git ls-remote --tags origin "refs/tags/release/1.2.3" "refs/tags/release/1.2.3^{}" "refs/tags/hotfix/1.2.3" "refs/tags/hotfix/1.2.3^{}" "refs/tags/v1.2.3" "refs/tags/v1.2.3^{}"'
     );
-    expect(utils.execSilent).not.toHaveBeenCalledWith(expect.stringContaining("release/1.2.3"));
 
     utils.execSilent.mockReturnValueOnce("hotfix/AR-123-1.2.3");
     expect(preflight.requireReleaseVersionAvailable("1.2.3").ok).toBe(false);
