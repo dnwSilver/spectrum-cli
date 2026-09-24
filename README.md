@@ -42,7 +42,7 @@ spectrum release deploy              # Создать стабильный те�
 spectrum release close               # Свести stable main/master в dev
 
 # Срочный patch без переноса незавершённого dev в production
-spectrum hotfix start                # Только локальная подготовка CHANGELOG на hotfix/*
+spectrum hotfix start                # Локальная подготовка 🩹 CHANGELOG на hotfix/* или main/master
 spectrum hotfix deploy               # После merge MR: stable-тег на актуальном main/master
 spectrum hotfix close                # После stable pipeline: main/master → dev
 
@@ -182,24 +182,28 @@ spectrum-cli/
 
 Все hotfix-команды сначала проверяют ветку: разрешены только `hotfix/*`, `main`
 или `master`. `dev`, `develop`, `feature/*` и detached HEAD отклоняются до fetch.
-Проверки этапов строже: `start` требует task-backed hotfix-ветку, `deploy` и
-`close` — актуальный production commit на `main/master` после merge MR.
+Для `start` подходят `hotfix/<TASK>[-slug]` и production-ветка `main/master`,
+содержащая актуальный origin. Локальные исправления и commits допустимы.
+`deploy` и `close` требуют чистый production commit, совпадающий с origin.
 
 ### Изолированный цикл хотфикса
 
 Создайте `hotfix/<TASK>` или `hotfix/<TASK>-<slug>` от актуального `origin/main`
-или `origin/master`. Включайте только срочное исправление и его patch fragments
+или `origin/master`, либо работайте прямо в актуальной production-ветке
+`main/master`. Включайте только срочное исправление и его patch fragments
 (`fixed`, `security`, `support` либо другой совместимый patch-тип).
 `added` и `breaking` требуют обычного релиза. Все команды запускаются из корня
 репозитория; для `start` нужен Prettier, как для обычной сборки changelog.
 
 1. **`spectrum hotfix start`** обновляет сведения об origin и выбирает опубликованный
    stable-тег, достижимый из production. Цель — этот stable плюс один patch.
-   Команда формирует верхний датированный раздел `CHANGELOG.md` и удаляет только
+   Команда формирует верхний раздел `## 🩹 [X.Y.Z] - YYYY-MM-DD` и удаляет только
    собранные fragments. Она не делает commit, staging, push, merge или tag,
    не меняет файлы версий и сохраняет посторонние локальные изменения.
 2. Повторный `start` дополняет тот же неопубликованный раздел, сохраняя дату и
-   существующие записи без дублей. Без новых fragments подготовленный раздел
+   существующие записи без дублей. Дата необязательна: раздел без даты останется
+   без даты. Старые заголовки с `🚀`, `🩹`, без значка и с датами через точки
+   читаются без переписывания опубликованной истории. Без новых fragments подготовленный раздел
    остаётся без изменений. Например, от `v6.35.0` первый и повторные запуски
    готовят `6.35.1`; только после публикации `hotfix/6.35.1` следующий хотфикс получит
    `6.35.2`. Унаследованные от production fragments не собираются и не меняются.
@@ -208,7 +212,8 @@ spectrum-cli/
    использованных fragments.** Merge выполняется отдельно после ревью. Если
    другой хотфикс уже в production, сначала перенесите его изменения в свою
    ветку и повторите подготовку: пока stable-тега нет, раздел и версия общие.
-4. После merge MR и проверки RC выполните **`spectrum hotfix deploy`** на чистом
+4. После доставки подготовленного исправления в production через MR или
+   разрешённый проектом push и проверки RC выполните **`spectrum hotfix deploy`** на чистом
    `main/master`, точно совпадающем с origin. Команда проверяет следующий patch,
    неизменность опубликованной истории и отсутствие несобранных hotfix fragments,
    создаёт `hotfix/X.Y.Z` на проверенном SHA и отправляет **только этот тег**.

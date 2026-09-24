@@ -50,7 +50,7 @@ releaseCmd
 const hotfixCmd = program.command("hotfix").description("Изолированный цикл срочного patch-релиза");
 
 hotfixCmd.command("start")
-  .description("Подготовить CHANGELOG на hotfix/* для MR, без commit, push и merge")
+  .description("Подготовить 🩹 CHANGELOG на hotfix/* или main/master, без commit, push и merge")
   .action(() => runAction(hotfix.hotfixStart));
 hotfixCmd.command("deploy")
   .description("После merge хотфикса отправить stable-тег с main/master")

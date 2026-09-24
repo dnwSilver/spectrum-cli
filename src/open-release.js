@@ -2,7 +2,7 @@ const fs = require('fs');
 const { execSilent, logError, logSuccess } = require('./utils');
 const { compareVersions } = require('./version');
 const { CHANGELOG_FILE, CHANGELOG_DIR } = require('./changelog-config');
-const { parseChangelog, releaseEntries } = require('./hotfix-changelog');
+const { parseChangelog, releaseEntries, normalizeLineEndings } = require('./hotfix-changelog');
 const { renderReleaseBlock, stripLegacyUnreleasedBlock } = require('./changelog');
 const { requireChangelogFragments } = require('./preflight');
 
@@ -23,7 +23,7 @@ function resolveReleaseState(localText, productionText, stableVersion) {
     if (local.open && production.open && local.open.version !== production.open.version) {
         throw new Error('Открытые версии в dev и production различаются. Сначала согласуйте CHANGELOG.md.');
     }
-    const history = ({ document }) => document.releases.map((release) => release.text.trim()).join('\n\n');
+    const history = ({ document }) => document.releases.map((release) => normalizeLineEndings(release.text).trim()).join('\n\n');
     if (history(local) !== history(production)) {
         throw new Error('Опубликованная история CHANGELOG.md изменена относительно production.');
     }
@@ -65,7 +65,7 @@ function appendOpenRelease(context) {
                 keys.add(key);
             }
         }
-        const block = renderReleaseBlock(open.version, merged, open.date);
+        const block = renderReleaseBlock(open.version, merged, open.date, open.marker);
         const tail = local.document.releases.map((release) => release.text).join('');
         const updated = `${local.document.intro.trimEnd()}\n\n${block.trim()}\n${tail ? `\n${tail}` : ''}`;
         fs.writeFileSync(CHANGELOG_FILE, updated);

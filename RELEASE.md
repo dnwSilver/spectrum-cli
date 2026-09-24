@@ -103,8 +103,11 @@ spectrum release close
 Обычный `release start` отправляет весь integration snapshot в production и для
 изолированного хотфикса не подходит. Используйте отдельный цикл:
 
-1. От актуального production создайте `hotfix/<TASK>[-slug]`, внесите исправление
-   и его patch fragments. Выполните `spectrum hotfix start` из корня проекта.
+1. Работайте в актуальном `main/master` или создайте от production
+   `hotfix/<TASK>[-slug]`, внесите исправление и его patch fragments.
+   Выполните `spectrum hotfix start` из корня проекта. Новый раздел имеет заголовок
+   `## 🩹 [X.Y.Z] - YYYY-MM-DD`. Дата в существующих разделах необязательна;
+   поддерживаются прежние заголовки и даты через точки.
    Это только локальная подготовка `CHANGELOG.md` и удаление собранных fragments;
    commit, push, merge и tag отсутствуют.
 2. Цель — опубликованный production stable плюс ровно один patch. Повторный
@@ -114,7 +117,8 @@ spectrum release close
    fragments вместе с исправлением. Merge выполняется отдельно. Обновляйте базу
    при параллельных хотфиксах: до публикации они дополняют один patch, после неё
    новый хотфикс готовит следующий patch. Dev в production не переносится.
-4. После merge MR и проверки RC запустите `spectrum hotfix deploy` на чистом
+4. После доставки исправления в production через MR или разрешённый проектом
+   push и проверки RC запустите `spectrum hotfix deploy` на чистом
    production, совпадающем с origin. Отправляется только тег `hotfix/X.Y.Z` на проверенном
    commit; версия и ветки не меняются. CLI не проверяет успешность CI или выката.
 5. После успешного stable pipeline запустите `spectrum hotfix close`: production

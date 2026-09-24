@@ -270,7 +270,7 @@ function stripLegacyUnreleasedBlock(changelog) {
     return `${changelog.slice(0, unreleasedMatch.index).trimEnd()}\n\n${changelog.slice(end).trimStart()}`;
 }
 
-function renderReleaseBlock(version, fragments, date = new Date().toISOString().slice(0, 10)) {
+function renderReleaseBlock(version, fragments, date = new Date().toISOString().slice(0, 10), marker = '🚀') {
     const fragmentsByType = new Map();
     for (const fragment of fragments) {
         const entries = fragmentsByType.get(fragment.type) || [];
@@ -278,7 +278,7 @@ function renderReleaseBlock(version, fragments, date = new Date().toISOString().
         fragmentsByType.set(fragment.type, entries);
     }
 
-    const lines = [`## 🚀 [${version}] - ${date}`];
+    const lines = [`## ${marker ? `${marker} ` : ''}[${version}]${date ? ` - ${date}` : ''}`];
     for (const [type, config] of Object.entries(FRAGMENT_TYPES)) {
         const entries = fragmentsByType.get(type);
         if (!entries || entries.length === 0) continue;

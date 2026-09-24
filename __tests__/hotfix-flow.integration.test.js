@@ -79,7 +79,7 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         const index = git(work, 'diff', '--cached');
         expect(hotfixStart()).toBe(true);
         const first = contents();
-        expect(first).toContain('## 🚀 [1.2.4]');
+        expect(first).toContain('## 🩹 [1.2.4]');
         expect(first).toContain('- TASK-1 Исправлена ошибка.');
         expect(first.endsWith(stableText.slice(stableText.indexOf('## ')))).toBe(true);
         expect(fs.existsSync('.changelog/TASK-1.fixed.md')).toBe(false);
@@ -140,11 +140,51 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         git(work, 'switch', '-c', 'hotfix/TASK-2');
         fragment('TASK-2.fixed.md', '- TASK-2 Другое исправление.\n');
         expect(hotfixStart()).toBe(true);
-        expect(contents()).toContain('## 🚀 [1.2.5]');
+        expect(contents()).toContain('## 🩹 [1.2.5]');
         expect(contents().endsWith(published.slice(published.indexOf('## ')))).toBe(true);
     });
 
-    test.each(['dev', 'master', 'feature/TASK-1', 'hotfix/no-task'])('rejects start on %s', (branch) => {
+    test.each(['master', 'main'])('prepares directly on %s, then deploys and closes after explicit commit and push', (branch) => {
+        git(work, 'switch', 'master');
+        if (branch === 'main') {
+            git(work, 'branch', '-m', 'master', 'main');
+            git(work, 'push', 'origin', 'main');
+            git(origin, 'symbolic-ref', 'HEAD', 'refs/heads/main');
+            git(work, 'push', 'origin', '--delete', 'master');
+        }
+        fs.writeFileSync('implementation', 'hotfix committed locally');
+        fragment('TASK-1.security.md');
+        commit('Local correction');
+        const head = git(work, 'rev-parse', 'HEAD');
+        expect(hotfixStart()).toBe(true);
+        expect(contents()).toContain('## 🩹 [1.2.4]');
+        expect(git(work, 'branch', '--show-current')).toBe(branch);
+        expect(git(work, 'rev-parse', 'HEAD')).toBe(head);
+        expect(git(origin, 'rev-parse', `refs/heads/${branch}`)).toBe(initial);
+        const prepared = contents();
+        expect(hotfixStart()).toBe(true);
+        expect(contents()).toBe(prepared);
+        commit('Prepared hotfix');
+        git(work, 'push', 'origin', branch);
+        expect(hotfixDeploy()).toBe(true);
+        expect(hotfixClose()).toBe(true);
+        expect(fs.readFileSync('implementation', 'utf8')).toBe('hotfix committed locally');
+        expect(fs.existsSync('unfinished-feature')).toBe(true);
+    });
+
+    test('start on stale master refuses to overwrite unpublished history', () => {
+        git(work, 'switch', 'hotfix/TASK-1');
+        fs.writeFileSync('remote-correction', 'production update');
+        commit('Concurrent production change');
+        git(work, 'push', 'origin', 'HEAD:master');
+        git(work, 'switch', 'master');
+        fragment('TASK-1.fixed.md');
+        expect(hotfixStart()).toBe(false);
+        expect(contents()).toBe(stableText);
+        expect(fs.existsSync('.changelog/TASK-1.fixed.md')).toBe(true);
+    });
+
+    test.each(['dev', 'feature/TASK-1', 'hotfix/no-task'])('rejects start on %s', (branch) => {
         if (['dev', 'master'].includes(branch)) git(work, 'switch', branch);
         else git(work, 'switch', '-c', branch);
         const before = contents();
@@ -176,6 +216,26 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         fs.writeFileSync('CHANGELOG.md', stableText.replace('Published', 'Rewritten'));
         expect(hotfixStart()).toBe(false);
         expect(fs.existsSync('.changelog/TASK-1.fixed.md')).toBe(true);
+    });
+
+    test('CRLF checkout preserves inherited fragments and supports subsequent hotfixes', () => {
+        git(work, 'config', 'core.autocrlf', 'true');
+        const checkout = stableText.replace(/\n/g, '\r\n');
+        fs.writeFileSync('CHANGELOG.md', checkout);
+        const inherited = '- Unrelated pending feature.\r\n';
+        fragment('inherited.added.md', inherited);
+        fragment('TASK-1.fixed.md');
+        expect(hotfixStart()).toBe(true);
+        expect(contents().endsWith(checkout.slice(checkout.indexOf('## ')))).toBe(true);
+        expect(fs.readFileSync('.changelog/inherited.added.md', 'utf8')).toBe(inherited);
+        mergeHotfix();
+        expect(hotfixDeploy()).toBe(true);
+        git(work, 'switch', '-c', 'hotfix/TASK-2');
+        fragment('TASK-2.fixed.md', '- TASK-2 Next correction.\r\n');
+        expect(hotfixStart()).toBe(true);
+        expect(contents()).toContain('## 🩹 [1.2.5]');
+        fragment('inherited.added.md', '- Actual edit.\r\n');
+        expect(hotfixStart()).toBe(false);
     });
 
     test('formatter failure restores original changelog and leaves fragments', () => {

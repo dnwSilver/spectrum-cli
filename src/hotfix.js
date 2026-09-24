@@ -1,11 +1,12 @@
 const fs = require('fs');
+const path = require('path');
 const { execFileSync } = require('child_process');
 const preflight = require('./preflight');
 const { execCommand, logSuccess, logError } = require('./utils');
 const { upVersion, compareVersions } = require('./version');
 const { STABLE_TAG_PATTERNS, parseStableTag, stableTagNames } = require('./stable-tags');
 const { CHANGELOG_FILE, CHANGELOG_DIR, FRAGMENT_TYPES, getFragmentType } = require('./changelog-config');
-const { parseChangelog, pendingDocument, prepareChangelog } = require('./hotfix-changelog');
+const { parseChangelog, pendingDocument, prepareChangelog, normalizeLineEndings } = require('./hotfix-changelog');
 
 function git(...args) {
     try {
@@ -41,7 +42,7 @@ function readAt(ref, file = CHANGELOG_FILE) {
 
 function context(mode) {
     const root = git('rev-parse', '--show-toplevel').trim();
-    if (fs.realpathSync(root) !== fs.realpathSync(process.cwd())) {
+    if (path.relative(fs.realpathSync(root), fs.realpathSync(process.cwd())) !== '') {
         throw new Error('Запустите hotfix из корня репозитория.');
     }
     const branch = git('branch', '--show-current').trim();
@@ -51,8 +52,8 @@ function context(mode) {
     if (mode !== 'start' && !['main', 'master'].includes(branch)) {
         throw new Error('hotfix deploy/close выполняются на main/master после merge хотфикса.');
     }
-    if (mode === 'start' && !/^hotfix\/[A-Z]+-[0-9]+(?:-[A-Za-z0-9][A-Za-z0-9._-]*)?$/.test(branch)) {
-        throw new Error('hotfix start выполняется только на hotfix/<TASK>[-slug].');
+    if (mode === 'start' && !['main', 'master'].includes(branch) && !/^hotfix\/[A-Z]+-[0-9]+(?:-[A-Za-z0-9][A-Za-z0-9._-]*)?$/.test(branch)) {
+        throw new Error('hotfix start выполняется на hotfix/<TASK>[-slug], main или master.');
     }
     if (mode !== 'start' && git('status', '--porcelain').trim()) {
         throw new Error('Для deploy/close требуется чистое рабочее дерево.');
@@ -64,6 +65,9 @@ function context(mode) {
     const mainRef = `refs/remotes/origin/${mainBranch}`;
     const mainSha = git('rev-parse', mainRef).trim();
     const head = git('rev-parse', 'HEAD').trim();
+    if (['main', 'master'].includes(branch) && branch !== mainBranch) {
+        throw new Error(`Production-ветка origin — ${mainBranch}. Переключитесь на неё или на hotfix/<TASK>[-slug].`);
+    }
     if (mode === 'start') {
         if (!ancestor(mainSha, head)) throw new Error('Сначала обновите hotfix из актуальной production-ветки.');
     } else if (branch !== mainBranch || head !== mainSha) {
@@ -115,7 +119,7 @@ function newFragments(baseRef) {
     const inherited = git('ls-tree', '-r', '-z', '--name-only', baseRef, '--', `${CHANGELOG_DIR}/`)
         .split('\0').filter(Boolean);
     for (const file of inherited) {
-        if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== readAt(baseRef, file)) {
+        if (!fs.existsSync(file) || normalizeLineEndings(fs.readFileSync(file, 'utf8')) !== normalizeLineEndings(readAt(baseRef, file))) {
             throw new Error(`Нельзя изменять унаследованный fragment ${file} в хотфиксе.`);
         }
     }

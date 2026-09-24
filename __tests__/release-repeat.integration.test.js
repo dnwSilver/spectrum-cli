@@ -76,6 +76,24 @@ describe('repeated release start against a real temporary origin', () => {
     expect(fs.readFileSync('CHANGELOG.md', 'utf8')).toContain('## 🚀 [1.1.1]');
   });
 
+  test('appends to an undated open release without adding a date', async () => {
+    fragment('fix.fixed.md', 'First correction.');
+    expect(await releaseStart()).toBe(true);
+    const first = fs.readFileSync('CHANGELOG.md', 'utf8');
+    const undated = first.replace(/(## 🚀 \[1\.0\.1\]) - \d{4}-\d{2}-\d{2}/, '$1');
+    fs.writeFileSync('CHANGELOG.md', undated);
+    commit('Keep pending release undated');
+    git(work, 'push', 'origin', 'HEAD:master');
+    fragment('another.fixed.md', 'Second correction.');
+    expect(await releaseStart()).toBe(true);
+    const text = fs.readFileSync('CHANGELOG.md', 'utf8');
+    expect(text).toContain('## 🚀 [1.0.1]\n');
+    expect(text).not.toContain('[1.0.1] -');
+    expect(text).toContain('First correction.');
+    expect(text).toContain('Second correction.');
+    expect(text).toContain(block('1.0.0', 'Published.'));
+  });
+
   test('retains production notes even when a dev edit removed them', async () => {
     fragment('feature.added.md', 'Keep production note.');
     expect(await releaseStart()).toBe(true);
@@ -110,6 +128,11 @@ describe('repeated release start against a real temporary origin', () => {
 
 describe('open release reconciliation', () => {
   const history = '# Changelog\n\n' + block('1.0.0', 'Published.');
+  test('compares CRLF working tree history against LF production blobs', () => {
+    const checkout = history.replace(/\n/g, '\r\n');
+    expect(resolveReleaseState(checkout, history, '1.0.0').openReleaseVersion).toBeNull();
+    expect(() => resolveReleaseState(checkout.replace('Published.', 'Changed.'), history, '1.0.0')).toThrow(/история/);
+  });
   test('preserves the existing migration from legacy Unreleased headings', () => {
     const legacy = history.replace('# Changelog\n\n', '# Changelog\n\n## [Unreleased]\n\n### Added\n\n');
     expect(resolveReleaseState(legacy, history, '1.0.0').openReleaseVersion).toBeNull();
