@@ -8,9 +8,15 @@ const hotfix = require("./src/hotfix");
 const changelog = require("./src/changelog");
 const chart = require("./src/chart");
 const token = require("./src/token");
+const { checkForUpdates, upgrade } = require("./src/update-check");
 const { version: pkgVersion } = require("./package.json");
 
 async function runAction(action, ...args) {
+  try {
+    await checkForUpdates();
+  } catch {
+    // A failed update check must not affect the command.
+  }
   try {
     const result = await action(...args);
     if (!result) {
@@ -26,6 +32,11 @@ program
   .name("spectrum")
   .description("🚀 Spectrum CLI для процесса разработки")
   .version(pkgVersion, "-v, --version");
+
+program
+  .command("upgrade")
+  .description("Обновить Spectrum CLI через npm install -g spectrum-cli")
+  .action(() => runAction(upgrade));
 
 // Команды релиза
 const releaseCmd = program
@@ -73,6 +84,11 @@ changelogCmd
   .command("check")
   .description("Проверить CHANGELOG.md и changelog fragments")
   .action(() => runAction(changelog.changelogCheck));
+
+changelogCmd
+  .command("write")
+  .description("Привести заголовки CHANGELOG.md к формату релиза и запустить Prettier")
+  .action(() => runAction(changelog.changelogWrite));
 
 // Команды chart
 const chartCmd = program

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 🚀 [3.2.0] - 2026-10-01
+
+### 🆕 Added
+
+- Добавлена команда `spectrum changelog write`: выравнивает заголовки релизов и хотфиксов и форматирует `CHANGELOG.md` через Prettier.
+- Добавлена команда `spectrum upgrade` для глобального обновления CLI через npm.
+- Перед выполнением команд CLI проверяет наличие новой версии в npm с таймаутом 200 мс и выводит версии и команду обновления; ошибка проверки не прерывает команду.
+
+### 🪲 Fixed
+
+- `spectrum hotfix start` собирает все текущие фрагменты из `.changelog/` независимо от истории Git.
+
 ## 🚀 [3.1.1] - 2026-09-24
 
 ### 🪲 Fixed

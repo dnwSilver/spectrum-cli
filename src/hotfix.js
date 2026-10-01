@@ -5,8 +5,8 @@ const preflight = require('./preflight');
 const { execCommand, logSuccess, logError } = require('./utils');
 const { upVersion, compareVersions } = require('./version');
 const { STABLE_TAG_PATTERNS, parseStableTag, stableTagNames } = require('./stable-tags');
-const { CHANGELOG_FILE, CHANGELOG_DIR, FRAGMENT_TYPES, getFragmentType } = require('./changelog-config');
-const { parseChangelog, pendingDocument, prepareChangelog, normalizeLineEndings } = require('./hotfix-changelog');
+const { CHANGELOG_FILE } = require('./changelog-config');
+const { parseChangelog, pendingDocument, prepareChangelog } = require('./hotfix-changelog');
 
 function git(...args) {
     try {
@@ -92,10 +92,9 @@ function context(mode) {
             throw new Error(`Конфликт stable-тегов версии ${stable}: разные commits.`);
         }
     }
-    const stableText = readAt(`refs/tags/${stableTag}`);
     const productionText = readAt(mainSha);
     const target = upVersion(stable, 'patch');
-    return { mainBranch, mainSha, head, remoteTags, stable, stableTag, stableText, productionText, target };
+    return { mainBranch, mainSha, head, remoteTags, stable, stableTag, productionText, target };
 }
 
 function assertTagAvailable(ctx, allowMatchingLocal = false) {
@@ -115,28 +114,14 @@ function assertOriginUnchanged(ctx) {
     }
 }
 
-function newFragments(baseRef) {
-    const inherited = git('ls-tree', '-r', '-z', '--name-only', baseRef, '--', `${CHANGELOG_DIR}/`)
-        .split('\0').filter(Boolean);
-    for (const file of inherited) {
-        if (!fs.existsSync(file) || normalizeLineEndings(fs.readFileSync(file, 'utf8')) !== normalizeLineEndings(readAt(baseRef, file))) {
-            throw new Error(`Нельзя изменять унаследованный fragment ${file} в хотфиксе.`);
-        }
-    }
-    if (!fs.existsSync(CHANGELOG_DIR)) return [];
-    return fs.readdirSync(CHANGELOG_DIR).sort().filter((name) => !name.startsWith('.'))
-        .map((name) => `${CHANGELOG_DIR}/${name}`).filter((file) => !inherited.includes(file))
-        .map((filePath) => {
-            const type = getFragmentType(filePath);
-            if (!type || !fs.lstatSync(filePath).isFile()) throw new Error(`Некорректный fragment ${filePath}.`);
-            const content = fs.readFileSync(filePath, 'utf8');
-            const entries = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-            if (!entries.length || entries.some((line) => !line.startsWith('- ') || line.length > 120)) {
-                throw new Error(`Пустой или неверно оформленный fragment ${filePath}: записи «- …», до 120 символов.`);
-            }
-            if (FRAGMENT_TYPES[type].bump !== 'patch') throw new Error(`Хотфикс не допускает minor/major: ${filePath}.`);
-            return { filePath, content, type, ...FRAGMENT_TYPES[type], entries };
-        });
+function currentFragments() {
+    if (!preflight.findChangelogFragmentFiles().length) return [];
+    const result = preflight.requireChangelogFragments();
+    if (!result.ok) throw new Error(result.reason);
+    return result.data.changelogFragments.map((fragment) => {
+        if (fragment.bump !== 'patch') throw new Error(`Хотфикс не допускает minor/major: ${fragment.filePath}.`);
+        return { ...fragment, content: fs.readFileSync(fragment.filePath, 'utf8') };
+    });
 }
 
 function formatChangelog() {
@@ -160,7 +145,7 @@ function hotfixStart() {
     return run(() => {
         const ctx = context('start');
         assertTagAvailable(ctx);
-        const fragments = newFragments(ctx.mainSha);
+        const fragments = currentFragments();
         const original = fs.readFileSync(CHANGELOG_FILE, 'utf8');
         const updated = prepareChangelog({ text: original, ...ctx, fragments });
         assertOriginUnchanged(ctx);
@@ -168,7 +153,7 @@ function hotfixStart() {
             try {
                 fs.writeFileSync(CHANGELOG_FILE, updated);
                 formatChangelog();
-                // Formatting must not rewrite published history or lose merged notes.
+                // Validate the formatted current file and keep all merged hotfix notes.
                 prepareChangelog({ text: fs.readFileSync(CHANGELOG_FILE, 'utf8'), ...ctx, fragments: [] });
                 for (const fragment of fragments) fs.unlinkSync(fragment.filePath);
             } catch (error) {
@@ -184,9 +169,9 @@ function hotfixStart() {
 function hotfixDeploy() {
     return run(() => {
         const ctx = context('deploy');
-        const prepared = pendingDocument(ctx.productionText, ctx.stableText, ctx.target);
+        const prepared = pendingDocument(ctx.productionText, ctx.target);
         if (!prepared.pending) throw new Error(`В CHANGELOG.md нужен верхний подготовленный раздел ${ctx.target}.`);
-        if (newFragments(`refs/tags/${ctx.stableTag}`).length) throw new Error('В production остались несобранные hotfix fragments.');
+        if (currentFragments().length) throw new Error('В production остались несобранные hotfix fragments.');
         assertTagAvailable(ctx, true);
         assertOriginUnchanged(ctx);
         const tag = `hotfix/${ctx.target}`;

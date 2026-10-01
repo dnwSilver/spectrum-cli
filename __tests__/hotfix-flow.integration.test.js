@@ -49,7 +49,6 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         stableText = '# Changelog\n\n## 🚀 [1.2.3] - 2026-01-01\n\n### 🪲 Fixed\n\n- Published correction.\n';
         fs.writeFileSync(path.join(work, 'CHANGELOG.md'), stableText);
         fs.writeFileSync(path.join(work, 'package.json'), '{"version":"0.0.0"}\n');
-        fragment('inherited.added.md', '- Unrelated pending feature.\n');
         commit('Stable baseline');
         initial = git(work, 'rev-parse', 'HEAD');
         git(work, 'tag', 'v1.2.3');
@@ -83,7 +82,6 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         expect(first).toContain('- TASK-1 Исправлена ошибка.');
         expect(first.endsWith(stableText.slice(stableText.indexOf('## ')))).toBe(true);
         expect(fs.existsSync('.changelog/TASK-1.fixed.md')).toBe(false);
-        expect(fs.readFileSync('.changelog/inherited.added.md', 'utf8')).toBe('- Unrelated pending feature.\n');
         expect(git(work, 'diff', '--cached')).toBe(index);
         expect(git(work, 'rev-parse', 'HEAD')).toBe(initial);
         expect(git(origin, 'rev-parse', 'refs/heads/master')).toBe(initial);
@@ -200,7 +198,6 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         ['TASK-1.unknown.md', '- Unknown.\n'],
         ['TASK-1.fixed.md', 'Invalid line.\n'],
         ['TASK-1.fixed.md', ''],
-        ['TASK-1.fixed.md', '- ' + 'x'.repeat(120)],
     ])('rejects invalid or non-patch fragment %s', (name, content) => {
         fragment(name, content);
         expect(hotfixStart()).toBe(false);
@@ -208,34 +205,43 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         expect(fs.readFileSync(`.changelog/${name}`, 'utf8')).toBe(content);
     });
 
-    test('inherited fragments and published history cannot be changed', () => {
-        fragment('inherited.added.md', '- Modified inherited fragment.\n');
-        expect(hotfixStart()).toBe(false);
-        fragment('inherited.added.md', '- Unrelated pending feature.\n');
-        fragment('TASK-1.fixed.md');
+    test.each(['master', 'hotfix/TASK-1'])('collects all current fragments on %s regardless of Git history', (branch) => {
+        git(work, 'switch', 'master');
+        fragment('already-in-production.fixed.md', '- Existing correction.\n');
+        fragment('long-note.changed.md', `- ${'x'.repeat(150)}\n`);
+        commit('Pending changelog fragments');
+        git(work, 'push', 'origin', 'master');
+        if (branch !== 'master') {
+            git(work, 'switch', 'hotfix/TASK-1');
+            git(work, 'merge', '--ff-only', 'master');
+        }
         fs.writeFileSync('CHANGELOG.md', stableText.replace('Published', 'Rewritten'));
-        expect(hotfixStart()).toBe(false);
-        expect(fs.existsSync('.changelog/TASK-1.fixed.md')).toBe(true);
+        expect(hotfixStart()).toBe(true);
+        expect(contents()).toContain('Rewritten correction.');
+        expect(contents()).toContain('- Existing correction.');
+        expect(contents()).toContain(`- ${'x'.repeat(150)}`);
+        expect(fs.existsSync('.changelog/already-in-production.fixed.md')).toBe(false);
+        expect(fs.existsSync('.changelog/long-note.changed.md')).toBe(false);
     });
 
-    test('CRLF checkout preserves inherited fragments and supports subsequent hotfixes', () => {
+    test('CRLF checkout collects committed fragments and supports subsequent hotfixes', () => {
         git(work, 'config', 'core.autocrlf', 'true');
         const checkout = stableText.replace(/\n/g, '\r\n');
         fs.writeFileSync('CHANGELOG.md', checkout);
-        const inherited = '- Unrelated pending feature.\r\n';
-        fragment('inherited.added.md', inherited);
-        fragment('TASK-1.fixed.md');
+        const committed = '- Pending correction.\r\n';
+        fragment('committed.fixed.md', committed);
+        commit('Pending correction');
+        git(work, 'push', 'origin', 'HEAD:master');
         expect(hotfixStart()).toBe(true);
         expect(contents().endsWith(checkout.slice(checkout.indexOf('## ')))).toBe(true);
-        expect(fs.readFileSync('.changelog/inherited.added.md', 'utf8')).toBe(inherited);
+        expect(contents()).toContain('- Pending correction.');
+        expect(fs.existsSync('.changelog/committed.fixed.md')).toBe(false);
         mergeHotfix();
         expect(hotfixDeploy()).toBe(true);
         git(work, 'switch', '-c', 'hotfix/TASK-2');
         fragment('TASK-2.fixed.md', '- TASK-2 Next correction.\r\n');
         expect(hotfixStart()).toBe(true);
         expect(contents()).toContain('## 🩹 [1.2.5]');
-        fragment('inherited.added.md', '- Actual edit.\r\n');
-        expect(hotfixStart()).toBe(false);
     });
 
     test('formatter failure restores original changelog and leaves fragments', () => {
@@ -246,10 +252,10 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         expect(fs.existsSync('.changelog/TASK-1.fixed.md')).toBe(true);
     });
 
-    test('formatter cannot rewrite published history before fragment cleanup', () => {
+    test('formatted changelog is still validated before fragment cleanup', () => {
         fragment('TASK-1.fixed.md');
         utils.execCommand.mockImplementation(() => {
-            fs.writeFileSync('CHANGELOG.md', contents().replace('Published correction.', 'Changed history.'));
+            fs.writeFileSync('CHANGELOG.md', contents().replace('## 🚀 [1.2.3] - 2026-01-01', '## Invalid heading'));
             return true;
         });
         expect(hotfixStart()).toBe(false);

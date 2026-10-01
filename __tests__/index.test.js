@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 const mockRelease = { releaseStart: jest.fn(), releaseClose: jest.fn() };
 const mockGit = { gitCreateTagAndPush: jest.fn() };
-const mockChangelog = { changelogAppend: jest.fn(), changelogCheck: jest.fn() };
+const mockChangelog = { changelogAppend: jest.fn(), changelogCheck: jest.fn(), changelogWrite: jest.fn() };
 const mockChart = { chartCreateTag: jest.fn(), chartVerify: jest.fn(), chartDeploy: jest.fn() };
 const mockToken = { tokenRotate: jest.fn() };
 const mockHotfix = { hotfixStart: jest.fn(), hotfixDeploy: jest.fn(), hotfixClose: jest.fn() };
+const mockUpdate = { checkForUpdates: jest.fn(), upgrade: jest.fn() };
 
 const mockState = {
   root: null,
@@ -93,6 +94,7 @@ jest.mock("../src/changelog", () => mockChangelog);
 jest.mock("../src/chart", () => mockChart);
 jest.mock("../src/token", () => mockToken);
 jest.mock("../src/hotfix", () => mockHotfix);
+jest.mock("../src/update-check", () => mockUpdate);
 jest.mock("../package.json", () => ({ version: "9.9.9" }), { virtual: true });
 
 describe("index CLI wiring", () => {
@@ -102,6 +104,7 @@ describe("index CLI wiring", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.resetModules();
+    mockUpdate.checkForUpdates.mockResolvedValue(undefined);
     process.exit = jest.fn();
     console.error = jest.fn();
     require("../index.js");
@@ -116,17 +119,18 @@ describe("index CLI wiring", () => {
     expect(mockState.root._parse).toHaveBeenCalled();
   });
 
-  test("release commands call target handlers", () => {
+  test("release commands check for updates and call target handlers", async () => {
     const releaseCmd = mockState.root._commands.find((c) => c._name === "release");
     const start = releaseCmd._commands.find((c) => c._name === "start");
     const close = releaseCmd._commands.find((c) => c._name === "close");
     const deploy = releaseCmd._commands.find((c) => c._name === "deploy");
 
     expect(start._options).toEqual([]);
-    start._action();
-    close._action();
-    deploy._action();
+    await start._action();
+    await close._action();
+    await deploy._action();
 
+    expect(mockUpdate.checkForUpdates).toHaveBeenCalledTimes(3);
     expect(mockRelease.releaseStart).toHaveBeenCalledWith();
     expect(mockRelease.releaseClose).toHaveBeenCalled();
     expect(mockGit.gitCreateTagAndPush).toHaveBeenCalled();
@@ -137,49 +141,73 @@ describe("index CLI wiring", () => {
     expect(versionCmd).toBeUndefined();
   });
 
+  test("upgrade checks for updates and invokes the npm installer", async () => {
+    mockUpdate.upgrade.mockReturnValue(true);
+    const upgrade = mockState.root._commands.find((c) => c._name === "upgrade");
+
+    await upgrade._action();
+
+    expect(mockUpdate.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(mockUpdate.upgrade).toHaveBeenCalledWith();
+    expect(process.exit).not.toHaveBeenCalled();
+  });
+
   test.each([['start', 'hotfixStart'], ['deploy', 'hotfixDeploy'], ['close', 'hotfixClose']])(
     'hotfix %s calls its handler', async (command, handler) => {
       mockHotfix[handler].mockReturnValue(true);
       const group = mockState.root._commands.find((c) => c._name === 'hotfix');
       await group._commands.find((c) => c._name === command)._action();
+      expect(mockUpdate.checkForUpdates).toHaveBeenCalledTimes(1);
       expect(mockHotfix[handler]).toHaveBeenCalledWith();
       expect(process.exit).not.toHaveBeenCalled();
     }
   );
 
-  test("chart create command calls chart tag creation", () => {
+  test("an update check error does not block the command or print an error", async () => {
+    mockUpdate.checkForUpdates.mockRejectedValue(new Error("registry unavailable"));
+    mockHotfix.hotfixStart.mockReturnValue(true);
+    const group = mockState.root._commands.find((c) => c._name === "hotfix");
+
+    await group._commands.find((c) => c._name === "start")._action();
+
+    expect(mockHotfix.hotfixStart).toHaveBeenCalled();
+    expect(console.error).not.toHaveBeenCalled();
+    expect(process.exit).not.toHaveBeenCalled();
+  });
+
+  test("chart create command calls chart tag creation", async () => {
     const chartCmd = mockState.root._commands.find((c) => c._name === "chart");
     const create = chartCmd._commands.find((c) => c._name === "create");
 
-    create._action("1.2.3", { force: true, wait: true });
+    await create._action("1.2.3", { force: true, wait: true });
 
     expect(mockChart.chartCreateTag).toHaveBeenCalledWith("1.2.3", { force: true, wait: true });
     expect(create._options.map((o) => o.definition)).toEqual(["--force", "--wait"]);
   });
 
-  test("chart verify command calls chart verify handler", () => {
+  test("chart verify command calls chart verify handler", async () => {
     const chartCmd = mockState.root._commands.find((c) => c._name === "chart");
     const verify = chartCmd._commands.find((c) => c._name === "verify");
 
-    verify._action("/tmp/source");
+    await verify._action("/tmp/source");
 
     expect(mockChart.chartVerify).toHaveBeenCalledWith("/tmp/source");
   });
 
-  test("token rotate command calls token rotate handler", () => {
+  test("token rotate command calls token rotate handler", async () => {
     const tokenCmd = mockState.root._commands.find((c) => c._name === "token");
     const rotate = tokenCmd._commands.find((c) => c._name === "rotate");
 
-    rotate._action();
+    await rotate._action();
 
     expect(mockToken.tokenRotate).toHaveBeenCalled();
   });
 
-  test("chart deploy command calls chart deploy handler", () => {
+  test("chart deploy command calls chart deploy handler", async () => {
     const chartCmd = mockState.root._commands.find((c) => c._name === "chart");
     const deploy = chartCmd._commands.find((c) => c._name === "deploy");
 
-    deploy._action({ instances: "sd,cbch" });
+    await deploy._action({ instances: "sd,cbch" });
 
     expect(mockChart.chartDeploy).toHaveBeenCalledWith({ instances: "sd,cbch" });
     expect(deploy._options.map((o) => o.definition)).toEqual(["--instances <names>"]);
@@ -215,6 +243,18 @@ describe("index CLI wiring", () => {
     await check._action();
 
     expect(mockChangelog.changelogCheck).toHaveBeenCalled();
+    expect(process.exit).not.toHaveBeenCalled();
+  });
+
+  test("changelog write command calls the formatter", async () => {
+    mockChangelog.changelogWrite.mockResolvedValue(true);
+    const changelogCmd = mockState.root._commands.find((c) => c._name === "changelog");
+    const write = changelogCmd._commands.find((c) => c._name === "write");
+
+    await write._action();
+
+    expect(mockUpdate.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(mockChangelog.changelogWrite).toHaveBeenCalledWith();
     expect(process.exit).not.toHaveBeenCalled();
   });
 

@@ -16,14 +16,12 @@ test('retains the pending date and reads formatter-wrapped bullets', () => {
 });
 
 test.each([
-    pending().replace('[1.2.4]', '[1.3.0]'),
     pending().replace('### 🪲 Fixed', '### 🆕 Added'),
     pending().replace('First correction.', 'First correction.\nunknown unindented text'),
-    pending().replace('Published.', 'Rewritten history.'),
     pending().replace('[1.2.3]', '[1.2.4]'),
     pending('### 🪲 Fixed'),
     pending().replace('[1.2.4]', '[Unreleased]'),
-])('rejects invalid pending or rewritten historical sections', (text) => {
+])('rejects invalid pending sections', (text) => {
     expect(() => prepare(text)).toThrow();
 });
 
@@ -31,16 +29,38 @@ test('does not lose notes already merged into production', () => {
     expect(() => prepare(stableText, { productionText: pending() })).toThrow(/production/);
 });
 
-test('published version cannot be reused as the next pending block', () => {
+test('validates only the current changelog, allowing Legend removed from Git snapshots', () => {
+    const current = stableText + '\n## 🩹 [1.2.2]\n\n### 🪲 Fixed\n\n- Older correction.\n';
+    const historical = current.replace('## 🩹 [1.2.2]', '## Legend\n\n- Legacy glossary.\n\n## 🩹 [1.2.2]');
+    const result = prepare(current, { stableText: historical, productionText: historical });
+    expect(result).toContain('## 🩹 [1.2.4]');
+    expect(result).not.toContain('Legend');
+    expect(prepare(result, { stableText: historical, productionText: historical, fragments: [] })).toBe(result);
+    expect(() => prepare(historical, { stableText: historical, productionText: historical }))
+        .toThrow(/Некорректный заголовок.*Legend/);
+    expect(() => prepare(current.replace('Published.', 'Changed.'), {
+        stableText: historical, productionText: historical,
+    })).not.toThrow();
+});
+
+test('allows edits to previously published notes', () => {
     const published = pending();
-    expect(() => pendingDocument(published.replace('First correction.', 'Changed released note.'), published, '1.2.5'))
-        .toThrow(/stable/);
+    expect(() => pendingDocument(published.replace('First correction.', 'Changed released note.'), '1.2.5'))
+        .not.toThrow();
+});
+
+test('allows corrected historical headings and introduction while preserving the current tail', () => {
+    const productionText = stableText.replace('[1.2.3]', '[1.2.3.1]');
+    const current = stableText.replace('# Changelog', '# Updated changelog').replace('Published.', 'Corrected note.');
+    const result = prepare(current, { productionText });
+    expect(result).toContain('# Updated changelog');
+    expect(result.endsWith(current.slice(current.indexOf('## ')))).toBe(true);
 });
 
 
 test.each([
     '## [1.2.3]', '## 🚀 [1.2.3]', '## 🩹 [1.2.3]',
-    '## 🚀[1.2.3] - 2022.10.25', '## 🩹 [1.2.3] - 29.03.2022',
+    '## 🚀 [1.2.3] - 2022.10.25', '## 🩹 [1.2.3] - 29.03.2022',
 ])('preserves published legacy heading %s while creating a bandage hotfix', (heading) => {
     const history = stableText.replace('## 🚀 [1.2.3] - 2026-01-01', heading);
     const result = prepare(history, { stableText: history, productionText: history });
@@ -58,13 +78,13 @@ test('appends to an undated bandage section without inventing a date', () => {
     expect(prepare(result, { fragments: [] })).toBe(result);
 });
 
-test('preserves historical duplicate versions but rejects new historical duplicates', () => {
+test('preserves historical duplicate versions and edits', () => {
     const legacy = stableText + '\n## 🩹 [1.0.0]\n\n- First.\n\n## 🩹 [1.0.0]\n\n- Second.\n';
     const result = prepare(legacy, { stableText: legacy, productionText: legacy });
     expect(result.endsWith(legacy.slice(legacy.indexOf('## ')))).toBe(true);
     expect(() => prepare(result + '\n## 🩹 [1.0.0]\n\n- Injected.\n', {
         stableText: legacy, productionText: legacy,
-    })).toThrow(/stable/);
+    })).not.toThrow();
 });
 
 test('rejects duplicate undated pending hotfix sections', () => {
@@ -77,5 +97,5 @@ test('accepts a CRLF checkout against LF Git blobs without rewriting the histori
     const result = prepare(checkout);
     expect(result.endsWith(checkout.slice(checkout.indexOf('## ')))).toBe(true);
     expect(prepare(result, { fragments: [] })).toBe(result);
-    expect(() => prepare(checkout.replace('Published.', 'Changed history.'))).toThrow(/stable/);
+    expect(prepare(checkout.replace('Published.', 'Changed history.'))).toContain('Changed history.');
 });
