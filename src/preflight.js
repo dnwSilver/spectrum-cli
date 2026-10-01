@@ -199,7 +199,7 @@ function requireChangelogReleaseVersion() {
     return ok({ version });
 }
 
-function requireChartChangelogVersion(chartDir, version) {
+function requireChartChangelogVersion(chartDir) {
     const changelogPath = toPosixPath(path.join(String(chartDir || ''), 'CHANGELOG.md'));
     if (!fs.existsSync(changelogPath)) {
         return fail(`Файл "${changelogPath}" не существует. Заполните changelog чарта перед созданием тега.`);
@@ -212,13 +212,13 @@ function requireChartChangelogVersion(chartDir, version) {
         return fail(`Не удалось прочитать "${changelogPath}".`);
     }
 
-    const escapedVersion = String(version || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const headingPattern = new RegExp(`^##\\s+(?:\\S+\\s+)?\\[${escapedVersion}\\]`, 'm');
-    if (!headingPattern.test(changelog)) {
-        return fail(`В "${changelogPath}" нет заголовка "## [${version}]". Добавьте запись о версии перед созданием тега.`);
+    const firstHeading = changelog.match(/^##(?!#)[^\r\n]*$/m)?.[0];
+    const version = firstHeading?.match(/^##\s+(?:\S+\s+)?\[([^\]]+)\](?:\s|$)/)?.[1];
+    if (!version || !SEMVER_PATTERN.test(version)) {
+        return fail(`Верхний раздел "${changelogPath}" должен содержать версию SemVer в заголовке "## [X.Y.Z]".`);
     }
 
-    return ok({ chartChangelogPath: changelogPath });
+    return ok({ chartChangelogPath: changelogPath, version });
 }
 
 function compareStableVersions(left, right) {

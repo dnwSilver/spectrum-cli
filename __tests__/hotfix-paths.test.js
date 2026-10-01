@@ -28,8 +28,9 @@ describe.each([hotfixStart, hotfixDeploy, hotfixClose])('%p repository root chec
         path.relative.mockImplementation(path.win32.relative);
         fs.realpathSync.mockReturnValueOnce(root).mockReturnValueOnce(cwd);
         expect(command()).toBe(false);
-        expect(logError).toHaveBeenCalledWith('❌', expect.stringContaining('только на hotfix/*, main или master'));
-        expect(execFileSync).toHaveBeenCalledTimes(2);
+        expect(logError).toHaveBeenCalledWith('❌', 'Предпроверка не пройдена (%s): %s',
+            'branch', expect.stringContaining('только на hotfix/*, main или master'));
+        expect(execFileSync.mock.calls.some(([, args]) => args[0] === 'fetch')).toBe(false);
     });
 
     test.each([
@@ -41,7 +42,8 @@ describe.each([hotfixStart, hotfixDeploy, hotfixClose])('%p repository root chec
         path.relative.mockImplementation(platformPath.relative);
         fs.realpathSync.mockReturnValueOnce(root).mockReturnValueOnce(cwd);
         expect(command()).toBe(false);
-        expect(logError).toHaveBeenCalledWith('❌', 'Запустите hotfix из корня репозитория.');
+        expect(logError).toHaveBeenCalledWith('❌', 'Предпроверка не пройдена (%s): %s',
+            'repository-root', 'Запустите hotfix из корня репозитория.');
         expect(execFileSync).toHaveBeenCalledTimes(1);
     });
 });

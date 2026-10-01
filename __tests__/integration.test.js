@@ -149,7 +149,7 @@ describe('Basic Functionality Tests', () => {
         expect(typeof release.releaseClose).toBe('function');
 
         const chart = require('../src/chart');
-        expect(typeof chart.chartCreateTag).toBe('function');
+        expect(typeof chart.chartStart).toBe('function');
         expect(typeof chart.getChartName).toBe('function');
         expect(typeof chart.isSemver).toBe('function');
     });

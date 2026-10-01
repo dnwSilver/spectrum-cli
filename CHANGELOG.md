@@ -5,13 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+This is the changelog of the `spectrum-cli` npm package. Its version comes from
+`package.json`; the release commands use Git tags and `CHANGELOG.md` in the
+**target project** and do not update that project's `package.json`.
+
 ## 🚀 [3.2.0] - 2026-10-01
 
 ### 🆕 Added
 
 - Добавлена команда `spectrum changelog write`: выравнивает заголовки релизов и хотфиксов и форматирует `CHANGELOG.md` через Prettier.
 - Добавлена команда `spectrum upgrade` для глобального обновления CLI через npm.
-- Перед выполнением команд CLI проверяет наличие новой версии в npm с таймаутом 200 мс и выводит версии и команду обновления; ошибка проверки не прерывает команду.
+- Перед выполнением команд с действием CLI проверяет наличие новой версии в npm с таймаутом 200 мс и выводит версии и команду обновления; ошибка проверки не прерывает команду. `--help` и `--version` проверку не запускают.
 
 ### 🪲 Fixed
 

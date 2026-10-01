@@ -1,21 +1,11 @@
-# Security Policy
+# Безопасность Spectrum CLI
 
-## Supported Versions
+## Версии
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+Актуальная версия в этом репозитории — `3.2.0` (`package.json`, тег `v3.2.0`). О наличии новой опубликованной версии можно узнать через `npm view spectrum-cli version`. Таблица поддержки веток `4.x`/`5.x` к этому проекту не относится. Исправления безопасности готовятся для актуальной версии; поддержка старых выпусков отдельно не обещается.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+## Сообщить об уязвимости
 
-## Reporting a Vulnerability
+Не публикуйте сведения об эксплуатации и секреты в открытом issue. Отправьте сообщение сопровождающему на адрес из поля `author.email` в [package.json](./package.json) либо воспользуйтесь приватным сообщением об уязвимости в GitHub, если оно доступно для репозитория. Укажите затронутую версию, способ воспроизведения, влияние и безопасный способ связи. Сопровождающий уточнит детали и согласует исправление и публикацию; фиксированный срок ответа здесь не установлен.
 
-Use this section to tell people how to report a vulnerability.
-
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Если уже опубликовано исправление, обновите глобальную npm-установку командой `spectrum upgrade` или `npm install -g spectrum-cli@latest`. Проверить установленную версию можно через `spectrum --version`.

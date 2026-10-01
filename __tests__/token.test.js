@@ -18,6 +18,7 @@ jest.mock("../src/utils", () => ({
 
 const utils = require("../src/utils");
 const token = require("../src/token");
+const { withDryRun } = require("../src/command-executor");
 
 function jsonResponse(status, data, headers = {}) {
   return {
@@ -126,6 +127,27 @@ describe("token rotate", () => {
     expect(fs.writeFileSync).toHaveBeenCalledWith(configPath, token.defaultConfigContent(), "utf8");
     expect(result.data.bot).toBe("example-bot");
     expect(result.data.targets).toHaveLength(2);
+  });
+
+  test("dry mode does not create a missing config", () => {
+    fs.existsSync.mockReturnValue(false);
+    const result = withDryRun(true, () => token.loadOrCreateConfig());
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('--dry');
+    expect(fs.mkdirSync).not.toHaveBeenCalled();
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  test("dry rotate checks access without changing CI variables", async () => {
+    global.fetch = jest.fn(async (_url, options) => jsonResponse(options.method === 'GET' ? 200 : 500, {}));
+    await expect(withDryRun(true, () => token.tokenRotate())).resolves.toBe(true);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+    expect(utils.logSuccess).toHaveBeenCalledWith('🔎', 'Проверено (%s): %s.',
+      'check-access', 'проверен доступ к целевым группам и проектам GitLab');
+    expect(JSON.stringify(utils.logSuccess.mock.calls)).not.toContain('glpat-owner-token');
+    expect(JSON.stringify(utils.logSuccess.mock.calls)).not.toContain('glpat-ci-token');
   });
 
   test("loadOrCreateConfig fails on empty lists", () => {

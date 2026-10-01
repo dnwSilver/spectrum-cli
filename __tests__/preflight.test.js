@@ -116,26 +116,31 @@ describe("preflight", () => {
       "## [0.0.10] - 2026-07-20",
     ].join("\n"));
 
-    expect(preflight.requireChartChangelogVersion("charts/elksite", "0.0.11")).toEqual({
+    expect(preflight.requireChartChangelogVersion("charts/elksite")).toEqual({
       ok: true,
-      data: { chartChangelogPath: "charts/elksite/CHANGELOG.md" },
+      data: { chartChangelogPath: "charts/elksite/CHANGELOG.md", version: "0.0.11" },
     });
 
-    const missingVersion = preflight.requireChartChangelogVersion("charts/elksite", "0.0.12");
-    expect(missingVersion.ok).toBe(false);
-    expect(missingVersion.reason).toContain('"## [0.0.12]"');
-
     fs.readFileSync.mockReturnValue("## 🚀 [0.0.11] - 2026-08-28\n");
-    expect(preflight.requireChartChangelogVersion("charts/elksite", "0.0.11").ok).toBe(true);
+    expect(preflight.requireChartChangelogVersion("charts/elksite").data.version).toBe("0.0.11");
+
+    fs.readFileSync.mockReturnValue("## [Unreleased]\n\n## [0.0.11]\n");
+    expect(preflight.requireChartChangelogVersion("charts/elksite").ok).toBe(false);
+
+    fs.readFileSync.mockReturnValue("## [0.0.11.2]\n\n## [0.0.11]\n");
+    expect(preflight.requireChartChangelogVersion("charts/elksite").ok).toBe(false);
+
+    fs.readFileSync.mockReturnValue("## [0.0.11]\n\n## [0.0.12]\n");
+    expect(preflight.requireChartChangelogVersion("charts/elksite").data.version).toBe("0.0.11");
 
     fs.existsSync.mockReturnValue(false);
-    expect(preflight.requireChartChangelogVersion("charts/elksite", "0.0.11").ok).toBe(false);
+    expect(preflight.requireChartChangelogVersion("charts/elksite").ok).toBe(false);
 
     fs.existsSync.mockReturnValue(true);
     fs.readFileSync.mockImplementation(() => {
       throw new Error("read error");
     });
-    expect(preflight.requireChartChangelogVersion("charts/elksite", "0.0.11").ok).toBe(false);
+    expect(preflight.requireChartChangelogVersion("charts/elksite").ok).toBe(false);
   });
 
   test("selects the highest stable tag reachable from origin main and ignores prereleases", () => {
@@ -200,6 +205,12 @@ describe("preflight", () => {
 
     utils.execSilent.mockReturnValueOnce("v1.2.3");
     expect(preflight.requireTagMissing("v1.2.3").ok).toBe(false);
+
+    utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("abc refs/tags/chart-app-1.2.3");
+    expect(preflight.requireTagMissing("chart-app-1.2.3").ok).toBe(false);
+
+    utils.execSilent.mockReturnValueOnce("chart-app-1.2.3");
+    expect(preflight.requireTagMissing("chart-app-1.2.3").ok).toBe(false);
   });
 
   test("requireRemoteOrigin", () => {

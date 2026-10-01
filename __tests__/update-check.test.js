@@ -2,6 +2,7 @@ const childProcess = require('child_process');
 const { version: currentVersion } = require('../package.json');
 const { upVersion } = require('../src/version');
 const { checkForUpdates, upgrade, UPDATE_CHECK_TIMEOUT_MS } = require('../src/update-check');
+const { withDryRun } = require('../src/command-executor');
 
 describe('optional CLI update check', () => {
     const originalFetch = global.fetch;
@@ -72,6 +73,12 @@ describe('optional CLI update check', () => {
         expect(install).toHaveBeenCalledWith('npm', ['install', '-g', 'spectrum-cli'], {
             stdio: 'inherit', shell: process.platform === 'win32'
         });
+    });
+
+    test('dry upgrade does not run npm', () => {
+        const install = jest.spyOn(childProcess, 'spawnSync');
+        expect(withDryRun(true, () => upgrade())).toBe(true);
+        expect(install).not.toHaveBeenCalled();
     });
 
     test('upgrade reports an npm launch error to the command wrapper', () => {

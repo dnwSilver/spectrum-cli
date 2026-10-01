@@ -130,7 +130,7 @@ function releaseClose() {
             { name: 'on-main-branch', run: requireOnMainBranch },
             { name: 'main-and-dev-branches', run: requireMainAndDevBranches },
             { name: 'changelog-release-version', run: requireChangelogReleaseVersion },
-            { name: 'stable-tag-at-head', run: (ctx) => requireStableTagAtHead(ctx.version) }
+            { name: 'stable-tag-at-head', requires: ['version'], run: (ctx) => requireStableTagAtHead(ctx.version) }
         ],
         steps: [
             { name: 'switch-main', run: () => goToMainBranch() },
@@ -165,11 +165,12 @@ function releaseStart() {
             { name: 'dev-contains-main', run: requireDevContainsRemoteMain },
             { name: 'stable-version', run: requireLatestStableVersion },
             { name: 'changelog-exists', run: () => requireFileExists(CHANGELOG_FILE) },
-            { name: 'release-state', run: requireReleaseState },
+            { name: 'release-state', requires: ['mainBranch', 'stableVersion'], run: requireReleaseState },
             { name: 'changelog-prettier-check', run: requireChangelogFormatted },
             { name: 'changelog-fragments', run: requireReleaseFragments },
             {
                 name: 'detect-bump-type',
+                requires: ['changelogFragments', 'stableVersion'],
                 run: (ctx) => {
                     const resolved = ctx.openReleaseVersion
                         ? { bumpType: detectBumpType(ctx.changelogFragments), newVersion: ctx.openReleaseVersion }

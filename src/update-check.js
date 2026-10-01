@@ -1,6 +1,7 @@
 const childProcess = require('child_process');
 const { name, version: currentVersion } = require('../package.json');
 const { compareVersions } = require('./version');
+const { isDryRun, reportDryRun, reportNoPreflights } = require('./command-executor');
 
 const UPDATE_CHECK_TIMEOUT_MS = 200;
 
@@ -34,6 +35,11 @@ async function checkForUpdates() {
 }
 
 function upgrade() {
+    reportNoPreflights('upgrade');
+    if (isDryRun()) {
+        reportDryRun('upgrade');
+        return true;
+    }
     const result = childProcess.spawnSync('npm', ['install', '-g', name], {
         stdio: 'inherit',
         shell: process.platform === 'win32'

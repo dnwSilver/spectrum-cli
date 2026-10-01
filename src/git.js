@@ -89,6 +89,7 @@ function gitCreateTagAndPush() {
             { name: 'changelog-release-version', run: requireChangelogReleaseVersion },
             {
                 name: 'tag-missing',
+                requires: ['version'],
                 run: (ctx) => requireTagMissing(`release/${ctx.version}`)
             }
         ],

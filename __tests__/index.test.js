@@ -2,7 +2,7 @@
 const mockRelease = { releaseStart: jest.fn(), releaseClose: jest.fn() };
 const mockGit = { gitCreateTagAndPush: jest.fn() };
 const mockChangelog = { changelogAppend: jest.fn(), changelogCheck: jest.fn(), changelogWrite: jest.fn() };
-const mockChart = { chartCreateTag: jest.fn(), chartVerify: jest.fn(), chartDeploy: jest.fn() };
+const mockChart = { chartStart: jest.fn(), chartVerify: jest.fn(), chartDeploy: jest.fn() };
 const mockToken = { tokenRotate: jest.fn() };
 const mockHotfix = { hotfixStart: jest.fn(), hotfixDeploy: jest.fn(), hotfixClose: jest.fn() };
 const mockUpdate = { checkForUpdates: jest.fn(), upgrade: jest.fn() };
@@ -20,6 +20,7 @@ class MockCommand {
     this._aliases = [];
     this._commands = [];
     this._options = [];
+    this._allowExcessArguments = true;
     this._action = null;
     this._parse = jest.fn();
   }
@@ -62,6 +63,11 @@ class MockCommand {
 
   option(definition, description) {
     this._options.push({ definition, description, required: false });
+    return this;
+  }
+
+  allowExcessArguments(allow) {
+    this._allowExcessArguments = allow;
     return this;
   }
 
@@ -119,19 +125,62 @@ describe("index CLI wiring", () => {
     expect(mockState.root._parse).toHaveBeenCalled();
   });
 
+  test("every action has short dry and silence flags", () => {
+    const actions = [];
+    const collect = (command) => {
+      if (command._action) actions.push(command);
+      command._commands.forEach(collect);
+    };
+    collect(mockState.root);
+    expect(actions).toHaveLength(14);
+    for (const command of actions) {
+      expect(command._options.map((option) => option.definition)).toContain("-d, --dry");
+      expect(command._options.map((option) => option.definition)).toContain("-s, --silence");
+    }
+  });
+
+  test("dry option from Commander opts skips the update check and reaches the handler", async () => {
+    const releaseCmd = mockState.root._commands.find((c) => c._name === "release");
+    mockRelease.releaseStart.mockImplementation(() => {
+      expect(require('../src/command-executor').isDryRun()).toBe(true);
+      return true;
+    });
+    await releaseCmd._commands.find((c) => c._name === 'start')._action({ opts: () => ({ dry: true }) });
+    expect(mockRelease.releaseStart).toHaveBeenCalledWith({ dry: true });
+    expect(mockUpdate.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  test("silence from Commander opts hides successful preflight output", async () => {
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      mockRelease.releaseStart.mockImplementation(() => {
+        require('../src/command-executor').reportPreflight('release start', 'git-repo');
+        return true;
+      });
+      const releaseCmd = mockState.root._commands.find((c) => c._name === 'release');
+      await releaseCmd._commands.find((c) => c._name === 'start')
+        ._action({ opts: () => ({ dry: true, silence: true }) });
+
+      expect(mockRelease.releaseStart).toHaveBeenCalledWith({ dry: true, silence: true });
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   test("release commands check for updates and call target handlers", async () => {
     const releaseCmd = mockState.root._commands.find((c) => c._name === "release");
     const start = releaseCmd._commands.find((c) => c._name === "start");
     const close = releaseCmd._commands.find((c) => c._name === "close");
     const deploy = releaseCmd._commands.find((c) => c._name === "deploy");
 
-    expect(start._options).toEqual([]);
+    expect(start._options.map((o) => o.definition)).toEqual(["-d, --dry", "-s, --silence"]);
     await start._action();
     await close._action();
     await deploy._action();
 
     expect(mockUpdate.checkForUpdates).toHaveBeenCalledTimes(3);
-    expect(mockRelease.releaseStart).toHaveBeenCalledWith();
+    expect(mockRelease.releaseStart).toHaveBeenCalledWith({});
     expect(mockRelease.releaseClose).toHaveBeenCalled();
     expect(mockGit.gitCreateTagAndPush).toHaveBeenCalled();
   });
@@ -148,7 +197,7 @@ describe("index CLI wiring", () => {
     await upgrade._action();
 
     expect(mockUpdate.checkForUpdates).toHaveBeenCalledTimes(1);
-    expect(mockUpdate.upgrade).toHaveBeenCalledWith();
+    expect(mockUpdate.upgrade).toHaveBeenCalledWith({});
     expect(process.exit).not.toHaveBeenCalled();
   });
 
@@ -158,7 +207,7 @@ describe("index CLI wiring", () => {
       const group = mockState.root._commands.find((c) => c._name === 'hotfix');
       await group._commands.find((c) => c._name === command)._action();
       expect(mockUpdate.checkForUpdates).toHaveBeenCalledTimes(1);
-      expect(mockHotfix[handler]).toHaveBeenCalledWith();
+      expect(mockHotfix[handler]).toHaveBeenCalledWith({});
       expect(process.exit).not.toHaveBeenCalled();
     }
   );
@@ -175,14 +224,25 @@ describe("index CLI wiring", () => {
     expect(process.exit).not.toHaveBeenCalled();
   });
 
-  test("chart create command calls chart tag creation", async () => {
+  test("chart start command calls chart tag creation", async () => {
     const chartCmd = mockState.root._commands.find((c) => c._name === "chart");
-    const create = chartCmd._commands.find((c) => c._name === "create");
+    const start = chartCmd._commands.find((c) => c._name === "start");
 
-    await create._action("1.2.3", { force: true, wait: true });
+    await start._action({ force: true, wait: true });
 
-    expect(mockChart.chartCreateTag).toHaveBeenCalledWith("1.2.3", { force: true, wait: true });
-    expect(create._options.map((o) => o.definition)).toEqual(["--force", "--wait"]);
+    expect(mockChart.chartStart).toHaveBeenCalledWith({ force: true, wait: true });
+    expect(start._options.map((o) => o.definition)).toEqual(["-f, --force", "-n, --no-wait", "-d, --dry", "-s, --silence"]);
+    expect(start._allowExcessArguments).toBe(false);
+    expect(chartCmd._commands.some((c) => c._name === "create")).toBe(false);
+  });
+
+  test("chart start forwards negated wait and dry options", async () => {
+    const chartCmd = mockState.root._commands.find((c) => c._name === "chart");
+    mockChart.chartStart.mockReturnValue(true);
+    await chartCmd._commands.find((c) => c._name === "start")
+      ._action({ opts: () => ({ wait: false, dry: true }) });
+    expect(mockChart.chartStart).toHaveBeenCalledWith({ wait: false, dry: true });
+    expect(mockUpdate.checkForUpdates).not.toHaveBeenCalled();
   });
 
   test("chart verify command calls chart verify handler", async () => {
@@ -210,7 +270,7 @@ describe("index CLI wiring", () => {
     await deploy._action({ instances: "sd,cbch" });
 
     expect(mockChart.chartDeploy).toHaveBeenCalledWith({ instances: "sd,cbch" });
-    expect(deploy._options.map((o) => o.definition)).toEqual(["--instances <names>"]);
+    expect(deploy._options.map((o) => o.definition)).toEqual(["-i, --instances <names>", "-d, --dry", "-s, --silence"]);
   });
 
   test("changelog append command handles success", async () => {
@@ -254,7 +314,7 @@ describe("index CLI wiring", () => {
     await write._action();
 
     expect(mockUpdate.checkForUpdates).toHaveBeenCalledTimes(1);
-    expect(mockChangelog.changelogWrite).toHaveBeenCalledWith();
+    expect(mockChangelog.changelogWrite).toHaveBeenCalledWith({});
     expect(process.exit).not.toHaveBeenCalled();
   });
 

@@ -10,6 +10,7 @@ jest.mock('../src/utils', () => ({
 const utils = require('../src/utils');
 const preflight = require('../src/preflight');
 const { hotfixStart, hotfixDeploy, hotfixClose } = require('../src/hotfix');
+const { withCommandOptions, withDryRun } = require('../src/command-executor');
 
 function git(cwd, ...args) {
     return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -114,6 +115,37 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         expect(contents().match(/\[1\.2\.4\]/g)).toHaveLength(1);
         expect(git(origin, 'rev-parse', 'refs/heads/master')).toBe(deployed);
         expect(git(work, 'rev-parse', 'HEAD')).toBe(git(origin, 'rev-parse', 'refs/heads/dev'));
+    });
+
+    test('dry mode checks each hotfix phase without editing changelog, creating a tag or switching branches', () => {
+        fragment('TASK-1.fixed.md');
+        expect(withDryRun(true, () => hotfixStart())).toBe(true);
+        expect(contents()).toBe(stableText);
+        expect(fs.existsSync('.changelog/TASK-1.fixed.md')).toBe(true);
+
+        expect(hotfixStart()).toBe(true);
+        mergeHotfix();
+        expect(withDryRun(true, () => hotfixDeploy())).toBe(true);
+        expect(git(origin, 'tag', '-l', 'hotfix/1.2.4')).toBe('');
+
+        expect(hotfixDeploy()).toBe(true);
+        const devBefore = git(origin, 'rev-parse', 'refs/heads/dev');
+        expect(withDryRun(true, () => hotfixClose())).toBe(true);
+        expect(git(work, 'branch', '--show-current')).toBe('master');
+        expect(git(origin, 'rev-parse', 'refs/heads/dev')).toBe(devBefore);
+        const output = log.mock.calls.flat().join('\n');
+        expect(output).toContain('Проверено');
+        expect(output).toContain('production-history');
+        expect(output).toContain('stable-tag-at-head');
+    });
+
+    test('silence hides successful hotfix preflights but keeps the dry result', () => {
+        fragment('TASK-1.fixed.md');
+        expect(withCommandOptions({ dry: true, silence: true }, () => hotfixStart())).toBe(true);
+        const output = log.mock.calls.flat().join('\n');
+        expect(output).not.toContain('Проверено (');
+        expect(output).toContain('Все предпроверки пройдены');
+        expect(contents()).toBe(stableText);
     });
 
     test('another hotfix on merged but unpublished production reuses the pending patch', () => {
@@ -301,6 +333,20 @@ describe('isolated hotfix lifecycle with real Git origins', () => {
         git(work, 'tag', 'hotfix/1.2.4');
         expect(hotfixStart()).toBe(false);
         expect(contents()).toBe(stableText);
+    });
+
+    test('reports independent hotfix preflight failures together', () => {
+        fragment('TASK-1.added.md', '- Incompatible for a hotfix.\n');
+        git(work, 'tag', 'hotfix/1.2.4');
+
+        expect(withDryRun(true, () => hotfixStart())).toBe(false);
+        const output = log.mock.calls.flat().join('\n');
+        expect(output).toContain('Предпроверка не пройдена (');
+        expect(output).toContain('tag-missing');
+        expect(output).toContain('changelog-fragments');
+        expect(output).toContain('Предпроверка не выполнена (');
+        expect(contents()).toBe(stableText);
+        expect(fs.existsSync('.changelog/TASK-1.added.md')).toBe(true);
     });
 
     test('stale hotfix must first incorporate updated production', () => {

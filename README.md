@@ -40,7 +40,7 @@ npm install
 # Показать справку
 spectrum --help
 # Показать текущую версию CLI
-spectrum -v | --version
+spectrum -v  # или spectrum --version
 
 # 🚀 Управление релизами
 spectrum release start               # Схлопнуть fragments и атомарно отправить release commit в dev и main/master
@@ -53,9 +53,9 @@ spectrum hotfix deploy               # После merge MR: stable-тег на �
 spectrum hotfix close                # После stable pipeline: main/master → dev
 
 # 📈 Теги chart
-spectrum chart create 1.2.3  # Создать и запушить chart-$name-$version (требует запись в CHANGELOG.md чарта)
-spectrum chart create 1.2.3 --wait   # После пуша тега дождаться публикации версии в Helm-registry
-spectrum chart create 1.2.2 --force  # Разрешить версию не больше последней опубликованной
+spectrum chart start         # Создать тег по CHANGELOG.md чарта и дождаться публикации в Helm-registry
+spectrum chart start -n      # Не ждать публикации после отправки тега
+spectrum chart start --force # Разрешить версию не выше последнего remote-тега, если ее еще нет в registry и Git
 spectrum chart deploy  # Обновить helmrelease.yaml до последнего chart-тега и запушить
 spectrum chart deploy --instances sd,cbch  # Обновить только выбранные инстансы instances/<name>
 spectrum chart verify ~/repo  # Сравнить ingress paths AS IS vs TO BE для Next.js исходников
@@ -68,6 +68,31 @@ spectrum changelog write               # Выравнять заголовки C
 # 🔑 GitLab токены
 spectrum token rotate  # Пролить GITLAB_PRIVATE_TOKEN в CI variables
 ```
+
+Все команды с действием показывают, какая предпроверка успешно пройдена;
+при ошибке выводят её имя и причину. Независимые предпроверки продолжают
+выполняться после ошибки; зависимые проверки без нужных данных помечаются как
+невыполненные. Шаги команды запускаются, только если все проверки прошли.
+`-s, --silence` скрывает сообщения об успешно пройденных предпроверках.
+Ошибки проверок и итоговое сообщение команды остаются видны; флаг можно
+совмещать с `-d, --dry`.
+`-d, --dry` выполняет все предпроверки,
+показывает их результаты и не запускает шаги записи, создания тегов,
+публикации или деплоя. Предпроверки могут обращаться к `origin`, registry и
+GitLab; `token rotate -d` запрашивает токены и проверяет доступ к целям, но не
+изменяет CI variables. Если конфиг токенов отсутствует, `--dry` завершится
+ошибкой и не создаст его. Для `upgrade -d` предпроверок нет: команда сообщает
+об успехе, не запуская npm.
+
+| Короткий флаг | Полный флаг | Где действует |
+| --- | --- | --- |
+| `-d` | `--dry` | Все команды с действием: только предпроверки |
+| `-s` | `--silence` | Все команды с действием: скрыть успешные предпроверки |
+| `-f` | `--force` | `chart start`: разрешить версию не больше последнего тега на `origin`; проверки Git-тега и Helm-registry обязательны |
+| `-n` | `--no-wait` | `chart start`: не ждать появления версии в Helm-registry после push; по умолчанию команда ждёт |
+| `-i <names>` | `--instances <names>` | `chart deploy`: выбрать инстансы через запятую |
+| `-h` | `--help` | Справка CLI и команд |
+| `-v` | `--version` | Версия CLI |
 
 ### Справка по командам:
 
@@ -130,7 +155,7 @@ spectrum-cli/
 | `spectrum release close`    | Закрыть релиз                       |
 | `spectrum changelog append` | Создать changelog fragment          |
 | `spectrum changelog check`  | Проверить changelog и fragments     |
-| `spectrum chart create`     | Создать и запушить chart тег        |
+| `spectrum chart start`      | Создать и запушить chart тег        |
 | `spectrum chart deploy`     | Обновить chart версию в helmrelease |
 | `spectrum chart verify`     | Проверить ingress paths chart       |
 | `spectrum token rotate`     | Пролить GITLAB_PRIVATE_TOKEN в CI   |
@@ -142,7 +167,7 @@ spectrum-cli/
 - `spectrum release close`: чистая и актуальная main/master, версия из верхнего заголовка `CHANGELOG.md` и remote stable-тег поддерживаемой формы, указывающий на текущий commit.
 - `spectrum changelog append <message>`: `git-repo`, `changelog-exists`, валидные ID задачи, git identity и тип fragment. Команда не изменяет общий `CHANGELOG.md`.
 - `spectrum changelog check`: `git-repo`, `changelog-exists`, `changelog-prettier-check`, наличие и формат всех changelog fragments.
-- `spectrum chart create <version>`: `git-repo`, `clean-working-tree`, `on-main-branch`, `valid-semver` (переданный `<version>` — semver), `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), `tag-missing` (тега `chart-<name>-<version>` нет локально и на `origin`).
+- `spectrum chart start`: `git-repo`, `clean-working-tree`, `on-main-branch`, `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), валидный верхний SemVer-заголовок в `charts/<chart-name>/CHANGELOG.md`, отсутствие тега `chart-<name>-<version>` локально и на `origin`, отсутствие этой версии чарта в Helm-registry. Для запроса registry нужен `GITLAB_PRIVATE_TOKEN`; ошибка доступа блокирует команду. `-f, --force` обходит только проверку повышения версии относительно последнего remote-тега. После push команда по умолчанию ждёт версию в registry; `-n, --no-wait` отключает ожидание.
 - `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
 - `spectrum chart verify <source_path>`: `git-repo`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
 - `spectrum token rotate`: `load-config` (есть валидный `~/.config/spectrum-cli/config.yaml`), `ask-tokens` (owner PAT и `GITLAB_PRIVATE_TOKEN` только в памяти), `check-access` (все группы и проекты доступны owner PAT).
@@ -266,14 +291,14 @@ pipeline и фактического выката выполняется отд�
 revision обязательных образов и копирует точные RC digest без пересборки. Эту
 CI-часть реализует подключенный release component, а не Spectrum CLI.
 
-### `spectrum chart create <version>`
+### `spectrum chart start`
 
 1. Ищет `Chart.yaml` в `charts/<chart-name>/Chart.yaml` и читает поле `name`
 2. Проверяет, что текущая ветка — `main`
-3. Проверяет semver для переданной версии
+3. Читает версию из верхнего заголовка `charts/<chart-name>/CHANGELOG.md` и проверяет SemVer
 4. Собирает тег `chart-<name>-<version>`
-5. Проверяет, что такого тега еще нет
-6. Создает тег и пушит его в `origin`
+5. Проверяет, что такого тега еще нет локально и на `origin`, а версия отсутствует в Helm-registry
+6. Создает тег и пушит его в `origin`, затем ждёт появления версии в registry; `-n, --no-wait` отключает ожидание
 
 ### `spectrum chart deploy`
 

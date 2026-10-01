@@ -395,10 +395,10 @@ function chartVerify(sourcePath) {
             { name: 'git-repo', run: requireGitRepo },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'single-values-yaml', run: requireSingleValuesYaml },
-            { name: 'values-ingress-sections', run: (ctx) => requireIngressPathSections(ctx.valuesYamlPath) },
+            { name: 'values-ingress-sections', requires: ['valuesYamlPath'], run: (ctx) => requireIngressPathSections(ctx.valuesYamlPath) },
             { name: 'source-path-directory', run: () => requireSourcePathDirectory(sourcePath) },
-            { name: 'next-project', run: (ctx) => requireNextProject(ctx.sourcePath) },
-            { name: 'build-command-support', run: (ctx) => requireBuildCommandSupport(ctx.sourcePath) }
+            { name: 'next-project', requires: ['sourcePath'], run: (ctx) => requireNextProject(ctx.sourcePath) },
+            { name: 'build-command-support', requires: ['sourcePath'], run: (ctx) => requireBuildCommandSupport(ctx.sourcePath) }
         ],
         steps: [
             {
@@ -449,11 +449,11 @@ function chartVerify(sourcePath) {
                     ) > 0;
 
                     if (hasChanges) {
-                        logError('❌', '[chart verify] Обнаружены различия.');
+                        logError('❌', 'Обнаружены различия.');
                         return false;
                     }
 
-                    logSuccess('✅', '[chart verify] КАК ЕСТЬ совпадает с КАК ДОЛЖНО БЫТЬ.');
+                    logSuccess('✅', 'КАК ЕСТЬ совпадает с КАК ДОЛЖНО БЫТЬ.');
                     return true;
                 }
             }
@@ -461,33 +461,31 @@ function chartVerify(sourcePath) {
     });
 }
 
-function chartCreateTag(version, options = {}) {
+function chartStart(options = {}) {
     const force = Boolean(options.force);
-    const wait = Boolean(options.wait);
+    const wait = options.wait !== false;
 
     return runCommand({
-        name: 'chart create',
+        name: 'chart start',
         checks: [
             { name: 'git-repo', run: requireGitRepo },
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'on-main-branch', run: requireOnMainBranch },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
-            {
-                name: 'valid-semver',
-                run: () => {
-                    if (!isSemver(version)) {
-                        return { ok: false, reason: `Версия "${version}" не соответствует semver.` };
-                    }
-                    return { ok: true, data: { version } };
-                }
-            },
             { name: 'single-chart', run: requireSingleChart },
             {
                 name: 'chart-changelog-version',
-                run: (ctx) => requireChartChangelogVersion(path.dirname(ctx.chartFilePath), ctx.version)
+                requires: ['chartFilePath'],
+                run: (ctx) => requireChartChangelogVersion(path.dirname(ctx.chartFilePath))
+            },
+            {
+                name: 'tag-missing',
+                requires: ['chartName', 'version'],
+                run: (ctx) => requireTagMissing(`chart-${ctx.chartName}-${ctx.version}`)
             },
             {
                 name: 'version-not-downgrade',
+                requires: ['chartName', 'version'],
                 run: (ctx) => {
                     const latestVersion = getLatestRemoteChartVersion(ctx.chartName);
                     if (!latestVersion) {
@@ -497,18 +495,26 @@ function chartCreateTag(version, options = {}) {
                         return { ok: true, data: { latestChartVersion: latestVersion } };
                     }
                     if (force) {
-                        logError('⚠️', 'Версия %s не больше последней опубликованной %s. Продолжаю из-за --force.', ctx.version, latestVersion);
+                        logError('⚠️', 'Версия %s не больше последней версии тега %s. Продолжаю из-за --force.', ctx.version, latestVersion);
                         return { ok: true, data: { latestChartVersion: latestVersion } };
                     }
                     return {
                         ok: false,
-                        reason: `Версия "${ctx.version}" не больше последней опубликованной "${latestVersion}". Для сознательного отката используйте --force.`
+                        reason: `Версия "${ctx.version}" не больше последней версии тега "${latestVersion}" на origin. Для сознательного отката используйте --force.`
                     };
                 }
             },
             {
-                name: 'tag-missing',
-                run: (ctx) => requireTagMissing(`chart-${ctx.chartName}-${ctx.version}`)
+                name: 'registry-version-missing',
+                requires: ['chartName', 'version'],
+                run: async (ctx) => {
+                    const result = await fetchChartVersionFromRegistry(ctx.chartName, ctx.version);
+                    if (!result.ok) return { ok: false, reason: result.reason };
+                    if (result.found) {
+                        return { ok: false, reason: `Версия ${ctx.version} чарта ${ctx.chartName} уже опубликована в Helm-registry.` };
+                    }
+                    return { ok: true };
+                }
             }
         ],
         steps: [
@@ -1049,7 +1055,7 @@ function chartDeploy(options = {}) {
 }
 
 module.exports = {
-    chartCreateTag,
+    chartStart,
     chartDeploy,
     chartVerify,
     normalizeList,

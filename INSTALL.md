@@ -1,129 +1,48 @@
-# 📦 Установка Spectrum CLI
+# Установка Spectrum CLI
 
-> **Spectrum CLI** - современный инструмент для автоматизации workflow разработки
+## Требования
 
-## 🚀 Быстрая установка
+- Node.js 20 или новее и npm 6 или новее (`package.json#engines`).
+- Git для команд, работающих с репозиторием. Доступ к `origin` нужен для релизов, хотфиксов и тегов.
+- Для команд, проверяющих или собирающих changelog, нужен доступный Prettier: установленный в проекте или вызываемый через `npx` (см. [README.md](./README.md#работа-с-changelog)).
 
-### NPM
+## Установка из npm
 
 ```bash
-# Установить глобально из npm registry
 npm install -g spectrum-cli
-
-# Проверить установку
 spectrum --version
 spectrum --help
 ```
 
-# Установить зависимости
+Пакет регистрирует команду `spectrum` через поле `bin` в `package.json`. Для обновления глобальной установки запустите `spectrum upgrade` (внутри выполняется `npm install -g spectrum-cli`). Перед выполнением команд с действием CLI пытается проверить новую версию в npm Registry; ожидание ограничено 200 мс, ошибка сети не блокирует команду. `--help` и `--version` эту проверку не запускают.
 
-npm install --production
-
-# Использовать
-
-```
-./index.js --help
-
-```
-
-## 🔧 Системные требования
-
-- **Node.js** >= 20.0.0
-- **npm** или **yarn**
-- **Git** >= 2.0.0
-
-## ✅ Проверка установки
+## Запуск из исходников
 
 ```bash
-# Проверить версию Node.js
-node --version
-
-# Проверить Git
-git --version
-
-# Проверить Spectrum CLI
-./index.js --version
-./index.js --help
+git clone https://github.com/dnwSilver/spectrum-cli.git
+cd spectrum-cli
+npm ci
+node index.js --version
+node index.js --help
 ```
 
-## 🎯 Первое использование
+Здесь запускается `index.js` из текущего checkout. `spectrum upgrade` обновляет глобальный npm-пакет, а не этот checkout.
+
+## Установщик для Unix
+
+В репозитории есть `install.sh`. Он скачивает **текущий `main`**, устанавливает зависимости в `~/.spectrum-cli`, создает ссылку `~/.local/bin/spectrum` и добавляет этот каталог в существующие `~/.bashrc`, `~/.zshrc` и `~/.profile`. Это не установка конкретного релизного тега и не глобальная npm-установка. Скрипту нужны Bash, `curl` или `wget`, `tar`, Node.js, npm и Git.
 
 ```bash
-# Перейти в директорию проекта
-cd /path/to/your/project
-
-# Запустить полный цикл релиза (на dev-ветке)
-./index.js release start
-
-# Создать и запушить chart тег
-./index.js chart create 1.2.3
+bash install.sh
+bash install.sh --uninstall
 ```
 
-## 🔧 Настройка проекта
+После установки откройте новый shell или добавьте `~/.local/bin` в `PATH`. Для установки фиксированной версии используйте npm с явным `@X.Y.Z`.
 
-Для корректной работы Spectrum CLI ваш проект должен содержать:
+## Перед использованием в проекте
 
-1. **CHANGELOG.md** - в формате Keep a Changelog без постоянного блока `Unreleased`
-2. **Git репозиторий** - с настроенными remote и стабильными тегами `release/X.Y.Z`, `hotfix/X.Y.Z` или legacy `vX.Y.Z`
-3. **Ветки** - `main`/`master` и `develop`/`dev`
-4. **Helm chart** - файл `charts/<chart-name>/Chart.yaml` с полем `name` (для `chart create`)
+Запускайте команды из корня Git-репозитория проекта. Для `changelog append` нужен `CHANGELOG.md` и ветка вида `<type>/<YOUTRACK-ID>[-slug]`, например `feature/ABC-123-login`. Команда создает файл `.changelog/<name>.<type>.md`; `changelog check` проверяет его и формат `CHANGELOG.md`.
 
-Версия проекта живет в git-тегах `release/X.Y.Z`, `hotfix/X.Y.Z` (также поддерживается legacy `vX.Y.Z`) и заголовках `CHANGELOG.md`.
-Поле `version` в `package.json` CLI не читает и не изменяет.
+`release start` требует ветку `dev`/`develop`, настроенный `origin`, production-ветку `main`/`master` и опубликованный стабильный тег `release/X.Y.Z`, `hotfix/X.Y.Z` либо старый `vX.Y.Z`. Команда создает коммит и пушит его в обе ветки. Сначала ознакомьтесь с [процессом релиза](./RELEASE.md) и [проверками команд](./README.md#preflight-проверки-по-командам).
 
-Рабочие ветки именуются `<type>/<YOUTRACK-ID>` или
-`<type>/<YOUTRACK-ID>-<slug>`, например `feature/AR-123` и
-`hotfix/ABBVJSOP-1-timeout`.
-
-### Пример минимальной структуры:
-
-```
-my-project/
-├── CHANGELOG.md      # История собранных релизов (верхний заголовок = версия релиза)
-├── .changelog/       # <name>.<type>.md для следующего релиза
-└── .git/             # git init + теги release/X.Y.Z
-```
-
-## 🆘 Решение проблем
-
-### "Command not found"
-
-```bash
-# Убедитесь что Node.js установлен
-which node
-
-# Или используйте полный путь
-/path/to/spectrum-cli/index.js --help
-```
-
-### "Permission denied"
-
-```bash
-# Сделайте файл исполняемым
-chmod +x index.js
-```
-
-### "Cannot find module 'commander'"
-
-```bash
-# Установите зависимости
-npm install
-```
-
-### "Git branch not found"
-
-```bash
-# Создайте необходимые ветки
-git checkout -b develop
-git checkout -b main
-```
-
-## 📞 Поддержка
-
-- 🐛 **Issues**: [GitHub Issues](https://github.com/dnwsilver/spectrum-cli/issues)
-- 📖 **Документация**: [README.md](./README.md)
-- 💬 **Обсуждения**: [GitHub Discussions](https://github.com/dnwsilver/spectrum-cli/discussions)
-
----
-
-_После установки переходите к [README.md](./README.md) для изучения команд_ 📚
+Для `chart start` нужен Helm chart в `charts/<chart-name>/Chart.yaml`, верхний заголовок версии в его `CHANGELOG.md` и `GITLAB_PRIVATE_TOKEN` для проверки Helm-registry. Остальные требования конкретных команд описаны в [README.md](./README.md).

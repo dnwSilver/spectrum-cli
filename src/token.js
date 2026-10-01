@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline');
 const { logSuccess, logError } = require('./utils');
-const { runCommand } = require('./command-executor');
+const { runCommand, isDryRun } = require('./command-executor');
 
 const TOKEN_NAME = 'GITLAB_PRIVATE_TOKEN';
 
@@ -227,6 +227,9 @@ function loadOrCreateConfig() {
     const configDir = path.dirname(configPath);
 
     if (!fs.existsSync(configPath)) {
+        if (isDryRun()) {
+            return { ok: false, reason: `Конфиг ${configPath} не найден. В режиме --dry он не создаётся.` };
+        }
         logSuccess('📄', 'Конфиг не найден, создаю %s', configPath);
         fs.mkdirSync(configDir, { recursive: true });
         fs.writeFileSync(configPath, defaultConfigContent(), 'utf8');
@@ -372,8 +375,8 @@ function tokenRotate() {
         name: 'token rotate',
         checks: [
             { name: 'load-config', run: loadOrCreateConfig },
-            { name: 'ask-tokens', run: askTokens },
-            { name: 'check-access', run: checkTargetsAccess }
+            { name: 'ask-tokens', requires: ['tokenTtlMonths', 'bot'], run: askTokens },
+            { name: 'check-access', requires: ['targets', 'origin', 'ownerToken'], run: checkTargetsAccess }
         ],
         steps: [
             { name: 'update-ci-variables', run: updateCiVariables }
