@@ -97,6 +97,7 @@ describe('hotfix start with real Git origins', () => {
     test.each([
         ['TASK-1.added.md', '- New feature.\n'],
         ['TASK-1.breaking.md', '- Incompatible change.\n'],
+        ['TASK-1.removed.md', '- Removed old API.\n'],
         ['TASK-1.unknown.md', '- Unknown.\n'],
         ['TASK-1.fixed.md', 'Invalid line.\n'],
         ['TASK-1.fixed.md', ''],

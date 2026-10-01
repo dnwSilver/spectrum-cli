@@ -1,4 +1,5 @@
 const { prepareChangelog, pendingDocument } = require('../src/changelog/hotfix');
+const { FRAGMENT_TYPES } = require('../src/changelog/config');
 
 const stableText = '# Changelog\n\n## 🚀 [1.2.3] - 2026-01-01\n\n### 🪲 Fixed\n\n- Published.\n';
 const fragment = { type: 'fixed', bump: 'patch', entries: ['- New correction.'] };
@@ -27,6 +28,14 @@ test.each([
 
 test('does not lose notes already merged into production', () => {
     expect(() => prepare(stableText, { productionText: pending() })).toThrow(/production/);
+});
+
+test('rejects removed fragments in a patch-only hotfix', () => {
+    expect(() => prepare(stableText, { fragments: [{
+        type: 'removed',
+        bump: FRAGMENT_TYPES.removed.bump,
+        entries: ['- Removed old API.'],
+    }] })).toThrow(/minor или major/);
 });
 
 test('validates only the current changelog, allowing Legend removed from Git snapshots', () => {

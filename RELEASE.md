@@ -25,7 +25,7 @@ npm view spectrum-cli@X.Y.Z dist-tags
 
 ## Релиз приложения командой `spectrum release`
 
-Предусловия команд и ограничения веток приведены в [README.md](./README.md#preflight-проверки-по-командам). Для `changelog append` используйте ветку `<type>/<YOUTRACK-ID>[-slug]` и создавайте fragments в `.changelog/`. Поддерживаемые суффиксы: `breaking`, `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`, `support`. Каждая непустая строка начинается с `- `. `hotfix` — название процесса, не суффикс fragment. `breaking` требует major, `added` — minor, остальные типы — patch.
+Предусловия команд и ограничения веток приведены в [README.md](./README.md#preflight-проверки-по-командам). Для `changelog append` используйте ветку `<type>/<YOUTRACK-ID>[-slug]` и создавайте fragments в `.changelog/`. Поддерживаемые суффиксы: `breaking`, `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`, `support`. Каждая непустая строка начинается с `- `. `hotfix` — название процесса, не суффикс fragment. `breaking` и `removed` требуют major, `added` — minor, остальные типы — patch.
 
 ```bash
 spectrum changelog append "Описание изменения"

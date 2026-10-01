@@ -36,6 +36,7 @@ const utils = require("../src/common/utils");
 const version = require("../src/common/version");
 const { runCommand } = require("../src/cli/command-executor");
 const release = require("../src/release");
+const { FRAGMENT_TYPES } = require("../src/changelog/config");
 
 describe("release", () => {
   beforeEach(() => {
@@ -75,6 +76,10 @@ describe("release", () => {
       bumpType: "major",
       newVersion: "2.0.0",
     });
+    expect(release.resolveReleaseVersion("4.2.3", [
+      { type: "removed", bump: FRAGMENT_TYPES.removed.bump },
+      { type: "fixed", bump: FRAGMENT_TYPES.fixed.bump },
+    ])).toEqual({ bumpType: "major", newVersion: "5.0.0" });
   });
 
   test("releasePush publishes the release commit to dev and main atomically", () => {

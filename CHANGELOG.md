@@ -9,6 +9,12 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [5.0.0] - 2026-10-01
+
+### 💥 Breaking change
+
+- Fragment `.changelog/*.removed.md` теперь повышает версию приложения до следующего major-релиза вместо patch. Такой fragment нельзя включить в hotfix; для него нужен обычный релиз.
+
 ## 🚀 [4.0.0] - 2026-10-01
 
 ### 💥 Breaking change

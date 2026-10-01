@@ -8,7 +8,7 @@ const FRAGMENT_TYPES = Object.freeze({
     added: Object.freeze({ section: '### 🆕 Added', bump: 'minor' }),
     changed: Object.freeze({ section: '### 🛠 Changed', bump: 'patch' }),
     deprecated: Object.freeze({ section: '### 📜 Deprecated', bump: 'patch' }),
-    removed: Object.freeze({ section: '### 🗑 Removed', bump: 'patch' }),
+    removed: Object.freeze({ section: '### 🗑 Removed', bump: 'major' }),
     fixed: Object.freeze({ section: '### 🪲 Fixed', bump: 'patch' }),
     security: Object.freeze({ section: '### 🔐 Security', bump: 'patch' }),
     support: Object.freeze({ section: '### 📦 Support', bump: 'patch' })
