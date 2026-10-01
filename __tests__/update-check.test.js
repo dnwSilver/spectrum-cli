@@ -1,8 +1,8 @@
 const childProcess = require('child_process');
 const { version: currentVersion } = require('../package.json');
-const { upVersion } = require('../src/version');
-const { checkForUpdates, upgrade, UPDATE_CHECK_TIMEOUT_MS } = require('../src/update-check');
-const { withDryRun } = require('../src/command-executor');
+const { upVersion } = require('../src/common/version');
+const { checkForUpdates, upgrade, UPDATE_CHECK_TIMEOUT_MS } = require('../src/cli/update-check');
+const { withDryRun } = require('../src/cli/command-executor');
 
 describe('optional CLI update check', () => {
     const originalFetch = global.fetch;

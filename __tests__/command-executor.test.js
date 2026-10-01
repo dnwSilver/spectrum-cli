@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-jest.mock("../src/utils", () => ({
+jest.mock("../src/common/utils", () => ({
   logError: jest.fn(),
   logSuccess: jest.fn(),
 }));
 
-const { logError, logSuccess } = require("../src/utils");
-const { runCommand, withCommandOptions, withDryRun, reportNoPreflights } = require("../src/command-executor");
+const { logError, logSuccess } = require("../src/common/utils");
+const { runCommand, withCommandOptions, withDryRun, reportNoPreflights } = require("../src/cli/command-executor");
 
 describe("command-executor", () => {
   beforeEach(() => {

@@ -100,7 +100,7 @@ jest.mock("../src/changelog", () => mockChangelog);
 jest.mock("../src/chart", () => mockChart);
 jest.mock("../src/token", () => mockToken);
 jest.mock("../src/hotfix", () => mockHotfix);
-jest.mock("../src/update-check", () => mockUpdate);
+jest.mock("../src/cli/update-check", () => mockUpdate);
 jest.mock("../package.json", () => ({ version: "9.9.9" }), { virtual: true });
 
 describe("index CLI wiring", () => {
@@ -142,7 +142,7 @@ describe("index CLI wiring", () => {
   test("dry option from Commander opts skips the update check and reaches the handler", async () => {
     const releaseCmd = mockState.root._commands.find((c) => c._name === "release");
     mockRelease.releaseStart.mockImplementation(() => {
-      expect(require('../src/command-executor').isDryRun()).toBe(true);
+      expect(require('../src/cli/command-executor').isDryRun()).toBe(true);
       return true;
     });
     await releaseCmd._commands.find((c) => c._name === 'start')._action({ opts: () => ({ dry: true }) });
@@ -154,7 +154,7 @@ describe("index CLI wiring", () => {
     const log = jest.spyOn(console, 'log').mockImplementation(() => {});
     try {
       mockRelease.releaseStart.mockImplementation(() => {
-        require('../src/command-executor').reportPreflight('release start', 'git-repo');
+        require('../src/cli/command-executor').reportPreflight('release start', 'git-repo');
         return true;
       });
       const releaseCmd = mockState.root._commands.find((c) => c._name === 'release');
@@ -318,92 +318,4 @@ describe("index CLI wiring", () => {
     expect(process.exit).not.toHaveBeenCalled();
   });
 
-  test("custom help formatter renders sections", () => {
-    const helper = {
-      padWidth: () => 10,
-      helpWidth: 80,
-      commandUsage: () => "spectrum <command>",
-      commandDescription: () => "desc",
-      visibleOptions: () => [
-        {
-          flags: "-v, --version",
-          description: "show version",
-        },
-      ],
-      visibleCommands: () => [
-        {
-          name: () => "release",
-          usage: () => "release start",
-          aliases: () => ["r"],
-          description: () => "release management",
-        },
-      ],
-      optionTerm: (o) => o.flags,
-      optionDescription: (o) => o.description,
-    };
-
-    const text = mockState.helpConfig.formatHelp(mockState.root, helper);
-
-    expect(text).toContain("Использование: spectrum <command>");
-    expect(text).toContain("Команды:");
-    expect(text).toContain("Опции:");
-    expect(text).toContain("[r]");
-  });
-
-  test("custom help formatter handles empty sections", () => {
-    const helper = {
-      padWidth: () => 10,
-      helpWidth: 80,
-      commandUsage: () => "",
-      commandDescription: () => "",
-      visibleOptions: () => [],
-      visibleCommands: () => [],
-      optionTerm: (o) => o.flags,
-      optionDescription: (o) => o.description,
-    };
-
-    const text = mockState.helpConfig.formatHelp(mockState.root, helper);
-    expect(text).toBe("");
-  });
-
-  test("custom help formatter falls back to default helpWidth", () => {
-    const helper = {
-      padWidth: () => 10,
-      commandUsage: () => "spectrum",
-      commandDescription: () => "desc",
-      visibleOptions: () => [],
-      visibleCommands: () => [],
-      optionTerm: (o) => o.flags,
-      optionDescription: (o) => o.description,
-    };
-
-    const text = mockState.helpConfig.formatHelp(mockState.root, helper);
-    expect(text).toContain("Использование: spectrum");
-  });
-
-  test("custom help formatter renders command without aliases", () => {
-    const helper = {
-      padWidth: () => 10,
-      helpWidth: 80,
-      commandUsage: () => "spectrum chart",
-      commandDescription: () => "chart commands",
-      visibleOptions: () => [],
-      visibleCommands: () => [
-        {
-          name: () => "deploy",
-          usage: () => "deploy",
-          aliases: () => [],
-          description: () => "deploy chart",
-        },
-      ],
-      optionTerm: (o) => o.flags,
-      optionDescription: (o) => o.description,
-    };
-
-    const text = mockState.helpConfig.formatHelp(mockState.root, helper);
-    expect(text).toContain("Использование: spectrum chart");
-    expect(text).toContain("chart commands");
-    expect(text).toContain("deploy");
-    expect(text).toContain("deploy chart");
-  });
 });

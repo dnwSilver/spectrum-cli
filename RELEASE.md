@@ -4,7 +4,7 @@
 
 ## Публикация npm-пакета `spectrum-cli`
 
-[`.github/workflows/release.yml`](./.github/workflows/release.yml) запускается при push тегов `v*`, `release/*` и `hotfix/*`. Для этого репозитория текущий выпуск `3.2.0` отмечен тегом `v3.2.0`; в workflow из имени тега извлекается стабильная версия `X.Y.Z`. Тег должен указывать на коммит с той же версией в `package.json`, иначе `npm publish` попытается опубликовать версию из пакета, а не из тега.
+[`.github/workflows/release.yml`](./.github/workflows/release.yml) запускается при push тегов `v*`, `release/*` и `hotfix/*`. Версия подготавливаемого выпуска указана в `package.json`; последнюю опубликованную версию проверяйте через `npm view spectrum-cli version`. В workflow из имени тега извлекается стабильная версия `X.Y.Z`. Тег должен указывать на коммит с той же версией в `package.json`, иначе `npm publish` попытается опубликовать версию из пакета, а не из тега.
 
 Перед созданием нового тега:
 
@@ -21,7 +21,7 @@ npm view spectrum-cli@X.Y.Z dist-tags
 
 В текущем workflow текст GitHub Release извлекается из заголовка `## 🚀 [X.Y.Z]` или `## [X.Y.Z]` в `CHANGELOG.md`. Заголовок `## 🩹 [X.Y.Z]` этим шагом не распознается; при таком теге проверьте и при необходимости вручную исправьте описание GitHub Release. Workflow также не сверяет версию тега с `package.json` до публикации.
 
-Тестовый workflow [`.github/workflows/test.yml`](./.github/workflows/test.yml) проверяет Node.js 20 на Ubuntu, Windows и macOS. В нем пока осталась команда `node index.js version up --help` из старого интерфейса. Сейчас она выводит общую справку с кодом `0`, поэтому не проверяет существование `version up`. Смотрите результат всего CI job, а не только этого шага.
+Тестовый workflow [`.github/workflows/test.yml`](./.github/workflows/test.yml) проверяет Node.js 20 на Ubuntu, Windows и macOS, включая справку новой команды `chart start`. Отдельный job проверяет синтаксис всех модулей `src` на Node.js 20.
 
 ## Релиз приложения командой `spectrum release`
 

@@ -1,7 +1,7 @@
-const { parseStableTag, stableTagNames } = require('../src/stable-tags');
+const { parseStableTag, stableTagNames } = require('../src/release/stable-tags');
 const preflight = require('../src/preflight');
-jest.mock('../src/utils', () => ({ ...jest.requireActual('../src/utils'), execSilent: jest.fn(), getMainBranch: () => 'main' }));
-const { execSilent } = require('../src/utils');
+jest.mock('../src/common/utils', () => ({ ...jest.requireActual('../src/common/utils'), execSilent: jest.fn(), getMainBranch: () => 'main' }));
+const { execSilent } = require('../src/common/utils');
 
 afterEach(() => jest.resetAllMocks());
 

@@ -38,8 +38,8 @@ jobs:
       - name: "🚀 Test release help"
         run: node index.js release --help
         
-      - name: "🧭 Test version help"
-        run: node index.js version up --help
+      - name: "📈 Test chart start help"
+        run: node index.js chart start --help
         
       - name: "🧱 Create test project"
         run: |
@@ -69,7 +69,7 @@ jobs:
       - name: "🔧 Setup Node.js"
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
           
       - name: "📦 Install dependencies"
@@ -78,11 +78,4 @@ jobs:
       - name: "🔍 Check syntax"
         run: |
           node -c index.js
-          node -c src/utils.js
-          node -c src/git.js
-          node -c src/version.js
-          node -c src/changelog-config.js
-          node -c src/changelog.js
-          node -c src/development.js
-          node -c src/release.js
-          node -c src/chart.js
+          find src -name '*.js' -print0 | xargs -0 -n1 node --check

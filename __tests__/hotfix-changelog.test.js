@@ -1,4 +1,4 @@
-const { prepareChangelog, pendingDocument } = require('../src/hotfix-changelog');
+const { prepareChangelog, pendingDocument } = require('../src/changelog/hotfix');
 
 const stableText = '# Changelog\n\n## 🚀 [1.2.3] - 2026-01-01\n\n### 🪲 Fixed\n\n- Published.\n';
 const fragment = { type: 'fixed', bump: 'patch', entries: ['- New correction.'] };

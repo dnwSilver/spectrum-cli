@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const { execSync } = require('child_process');
-const utils = require('../src/utils');
+const utils = require('../src/common/utils');
 
 // Mock fs and execSync
 jest.mock('fs');

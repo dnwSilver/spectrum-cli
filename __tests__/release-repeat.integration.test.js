@@ -4,17 +4,17 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 // Git operations are real; avoid downloading a formatter in the fixture repository.
-jest.mock('../src/utils', () => {
-  const actual = jest.requireActual('../src/utils');
+jest.mock('../src/common/utils', () => {
+  const actual = jest.requireActual('../src/common/utils');
   return {
     ...actual,
     execSilent: jest.fn((command) => command === 'npx --yes prettier --version' ? '3.0.0' : actual.execSilent(command)),
     execCommand: jest.fn((command) => command.startsWith('npx --yes prettier ') ? true : actual.execCommand(command)),
   };
 });
-const utils = require('../src/utils');
+const utils = require('../src/common/utils');
 const { releaseStart } = require('../src/release');
-const { resolveReleaseState } = require('../src/open-release');
+const { resolveReleaseState } = require('../src/changelog/open-release');
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -46,7 +46,7 @@ describe('repeated release start against a real temporary origin', () => {
     git(work, 'switch', '-c', 'dev');
     git(work, 'push', '-u', 'origin', 'dev');
     process.chdir(work);
-    utils.execCommand.mockImplementation((command) => command.startsWith('npx --yes prettier ') ? true : jest.requireActual('../src/utils').execCommand(command));
+    utils.execCommand.mockImplementation((command) => command.startsWith('npx --yes prettier ') ? true : jest.requireActual('../src/common/utils').execCommand(command));
   });
   afterEach(() => { process.chdir(cwd); fs.rmSync(root, { recursive: true, force: true }); });
 
@@ -107,11 +107,11 @@ describe('repeated release start against a real temporary origin', () => {
 
   test('retries a failed push after fragments have already been collapsed', async () => {
     fragment('fix.fixed.md', 'Fix.');
-    utils.execCommand.mockImplementation(command => command.startsWith('git push --atomic') ? false : command.startsWith('npx --yes prettier ') ? true : jest.requireActual('../src/utils').execCommand(command));
+    utils.execCommand.mockImplementation(command => command.startsWith('git push --atomic') ? false : command.startsWith('npx --yes prettier ') ? true : jest.requireActual('../src/common/utils').execCommand(command));
     expect(await releaseStart()).toBe(false);
     expect(fs.readdirSync('.changelog')).toEqual([]);
     const head = git(work, 'rev-parse', 'HEAD');
-    utils.execCommand.mockImplementation(command => command.startsWith('npx --yes prettier ') ? true : jest.requireActual('../src/utils').execCommand(command));
+    utils.execCommand.mockImplementation(command => command.startsWith('npx --yes prettier ') ? true : jest.requireActual('../src/common/utils').execCommand(command));
     expect(await releaseStart()).toBe(true);
     expect(git(work, 'rev-parse', 'HEAD')).toBe(head);
     expect(git(origin, 'rev-parse', 'master')).toBe(head);
@@ -119,7 +119,7 @@ describe('repeated release start against a real temporary origin', () => {
 
   test('does not delete fragments when formatting fails', async () => {
     fragment('fix.fixed.md', 'Fix.');
-    utils.execCommand.mockImplementation(command => command.startsWith('npx --yes prettier --write') ? false : command.startsWith('npx --yes prettier ') ? true : jest.requireActual('../src/utils').execCommand(command));
+    utils.execCommand.mockImplementation(command => command.startsWith('npx --yes prettier --write') ? false : command.startsWith('npx --yes prettier ') ? true : jest.requireActual('../src/common/utils').execCommand(command));
     expect(await releaseStart()).toBe(false);
     expect(fs.existsSync('.changelog/fix.fixed.md')).toBe(true);
     expect(git(origin, 'show', 'master:CHANGELOG.md')).not.toContain('[1.0.1]');

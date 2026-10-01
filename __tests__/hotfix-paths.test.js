@@ -1,12 +1,12 @@
 jest.mock('fs', () => ({ ...jest.requireActual('fs'), realpathSync: jest.fn() }));
 jest.mock('path', () => ({ ...jest.requireActual('path'), relative: jest.fn() }));
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFileSync: jest.fn() }));
-jest.mock('../src/utils', () => ({ ...jest.requireActual('../src/utils'), logError: jest.fn() }));
+jest.mock('../src/common/utils', () => ({ ...jest.requireActual('../src/common/utils'), logError: jest.fn() }));
 
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { logError } = require('../src/utils');
+const { logError } = require('../src/common/utils');
 const { hotfixStart, hotfixDeploy, hotfixClose } = require('../src/hotfix');
 
 describe.each([hotfixStart, hotfixDeploy, hotfixClose])('%p repository root check', (command) => {

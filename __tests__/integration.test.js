@@ -55,7 +55,7 @@ All notable changes to this project will be documented in this file.
 
     describe('Utils Functions', () => {
         test('should detect npm package manager', () => {
-            const utils = require('../src/utils');
+            const utils = require('../src/common/utils');
             fs.writeFileSync('package-lock.json', '{}');
             expect(utils.getPackageManager()).toBe('npm');
         });
@@ -63,7 +63,7 @@ All notable changes to this project will be documented in this file.
 
     describe('Version Functions', () => {
         test('should increment version numbers correctly', () => {
-            const version = require('../src/version');
+            const version = require('../src/common/version');
             expect(version.upVersion('1.2.3', 'major')).toBe('2.0.0');
             expect(version.upVersion('1.2.3', 'minor')).toBe('1.3.0');
             expect(version.upVersion('1.2.3', 'patch')).toBe('1.2.4');
@@ -126,12 +126,12 @@ All notable changes to this project will be documented in this file.
 
 describe('Basic Functionality Tests', () => {
     test('should export all required functions', () => {
-        const utils = require('../src/utils');
+        const utils = require('../src/common/utils');
         expect(typeof utils.logSuccess).toBe('function');
         expect(typeof utils.logError).toBe('function');
         expect(typeof utils.getCurrentBranch).toBe('function');
 
-        const version = require('../src/version');
+        const version = require('../src/common/version');
         expect(typeof version.upVersion).toBe('function');
         expect(typeof version.compareVersions).toBe('function');
 
@@ -155,7 +155,7 @@ describe('Basic Functionality Tests', () => {
     });
 
     test('should have correct colors object', () => {
-        const utils = require('../src/utils');
+        const utils = require('../src/common/utils');
         expect(utils.colors).toHaveProperty('red');
         expect(utils.colors).toHaveProperty('green');
         expect(utils.colors).toHaveProperty('yellow');

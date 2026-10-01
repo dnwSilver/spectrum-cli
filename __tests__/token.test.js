@@ -7,7 +7,7 @@ jest.mock("fs");
 jest.mock("os", () => ({
   homedir: jest.fn(() => "/tmp/spectrum-home"),
 }));
-jest.mock("../src/utils", () => ({
+jest.mock("../src/common/utils", () => ({
   logSuccess: jest.fn(),
   logError: jest.fn(),
   colors: {
@@ -16,9 +16,9 @@ jest.mock("../src/utils", () => ({
   },
 }));
 
-const utils = require("../src/utils");
+const utils = require("../src/common/utils");
 const token = require("../src/token");
-const { withDryRun } = require("../src/command-executor");
+const { withDryRun } = require("../src/cli/command-executor");
 
 function jsonResponse(status, data, headers = {}) {
   return {

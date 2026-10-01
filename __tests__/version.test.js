@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const version = require("../src/version");
+const version = require("../src/common/version");
 
 describe("version", () => {
   test("upVersion handles major/minor/patch/default", () => {

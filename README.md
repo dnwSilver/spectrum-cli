@@ -128,23 +128,28 @@ spectrum token --help
 
 ```
 spectrum-cli/
-├── index.js           # 🚀 Главный CLI интерфейс
-├── .changelog/        # 🧩 Независимые записи для следующего релиза
-├── src/               # 📁 Исходный код
-│   ├── utils.js       # 🛠️ Утилиты и логирование
-│   ├── git.js         # 📝 Git операции
-│   ├── version.js     # 📦 SemVer-хелперы (парсинг, сравнение, бамп)
-│   ├── changelog-config.js # 🧩 Типы и правила changelog fragments
-│   ├── changelog.js   # 📋 Создание и сборка changelog fragments
-│   ├── chart.js       # 📈 Создание и push chart тегов
-│   ├── token.js       # 🔑 Ротация GitLab PAT и CI variables
-│   ├── development.js # ⚡ Dev команды (внутренние)
-│   └── release.js     # 🚀 Release процесс
-├── package.json       # 📦 Конфигурация проекта
-├── install.sh         # 🔧 Автоматический установщик
-├── INSTALL.md         # 📋 Инструкции по установке
-└── README.md          # 📖 Документация
+├── index.js             # Точка входа CLI
+├── .changelog/          # Записи для следующего релиза
+├── src/
+│   ├── cli/             # Команды, справка и запуск действий
+│   ├── common/          # Общие утилиты и версии
+│   ├── git/             # Git операции
+│   ├── preflight/       # Независимые предпроверки по областям
+│   ├── changelog/       # Fragments, конфиг и релизные разделы
+│   ├── chart/           # Метаданные, теги, registry, verify и deploy
+│   ├── release/         # Версии и этапы обычного релиза
+│   ├── hotfix/          # Проверки и этапы hotfix
+│   ├── token/           # Конфиг, GitLab API и ротация
+│   ├── integrations/    # Общие функции внешних сервисов
+├── __tests__/           # Модульные и интеграционные тесты
+├── package.json
+├── install.sh
+├── INSTALL.md
+└── README.md
 ```
+
+Входы модулей находятся в `index.js` соответствующих каталогов. Например,
+`require('./src/chart')` загружает `src/chart/index.js`; в корне `src` файлов нет.
 
 ### Команды
 

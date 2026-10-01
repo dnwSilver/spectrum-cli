@@ -10,7 +10,7 @@ jest.mock("../src/changelog", () => ({
   changelogRemoveFragments: jest.fn(),
 }));
 
-jest.mock("../src/utils", () => ({
+jest.mock("../src/common/utils", () => ({
   logSuccess: jest.fn(),
   logError: jest.fn(),
   execCommand: jest.fn(),
@@ -21,20 +21,20 @@ jest.mock("../src/utils", () => ({
   colors: {},
 }));
 
-jest.mock("../src/command-executor", () => ({
+jest.mock("../src/cli/command-executor", () => ({
   runCommand: jest.fn(),
 }));
 
-jest.mock("../src/version", () => ({
-  ...jest.requireActual("../src/version"),
+jest.mock("../src/common/version", () => ({
+  ...jest.requireActual("../src/common/version"),
   upVersion: jest.fn(),
 }));
 
 const git = require("../src/git");
 const changelog = require("../src/changelog");
-const utils = require("../src/utils");
-const version = require("../src/version");
-const { runCommand } = require("../src/command-executor");
+const utils = require("../src/common/utils");
+const version = require("../src/common/version");
+const { runCommand } = require("../src/cli/command-executor");
 const release = require("../src/release");
 
 describe("release", () => {

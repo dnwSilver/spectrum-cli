@@ -37,7 +37,7 @@ jobs:
       - name: Resolve stable version
         id: version
         run: |
-          VERSION=$(node -e 'const tag = require("./src/stable-tags").parseStableTag(process.env.GITHUB_REF_NAME); if (!tag) process.exit(1); process.stdout.write(tag.version);')
+          VERSION=$(node -e 'const tag = require("./src/release/stable-tags").parseStableTag(process.env.GITHUB_REF_NAME); if (!tag) process.exit(1); process.stdout.write(tag.version);')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create release archive

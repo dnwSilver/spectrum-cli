@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-jest.mock("../src/utils", () => ({
+jest.mock("../src/common/utils", () => ({
   logSuccess: jest.fn(),
   logError: jest.fn(),
   execSilent: jest.fn(),
@@ -9,7 +9,7 @@ jest.mock("../src/utils", () => ({
   getDevelopBranch: jest.fn(),
   getVersion: jest.fn(),
 }));
-jest.mock("../src/command-executor", () => ({
+jest.mock("../src/cli/command-executor", () => ({
   runCommand: jest.fn(),
 }));
 
@@ -22,8 +22,8 @@ const {
   getMainBranch,
   getDevelopBranch,
   getVersion,
-} = require("../src/utils");
-const { runCommand } = require("../src/command-executor");
+} = require("../src/common/utils");
+const { runCommand } = require("../src/cli/command-executor");
 const git = require("../src/git");
 
 describe("git", () => {
