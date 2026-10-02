@@ -34,7 +34,7 @@ function normalizePath(p) {
 describe('Chart deploy', () => {
     const originalLog = console.log;
     const originalFetch = global.fetch;
-    const originalToken = process.env.GITLAB_PRIVATE_TOKEN;
+    const originalToken = process.env.SC_OWNER_PAT;
     beforeEach(() => {
         jest.clearAllMocks();
         console.log = jest.fn();
@@ -43,9 +43,9 @@ describe('Chart deploy', () => {
         console.log = originalLog;
         global.fetch = originalFetch;
         if (originalToken === undefined) {
-            delete process.env.GITLAB_PRIVATE_TOKEN;
+            delete process.env.SC_OWNER_PAT;
         } else {
-            process.env.GITLAB_PRIVATE_TOKEN = originalToken;
+            process.env.SC_OWNER_PAT = originalToken;
         }
     });
 
@@ -137,7 +137,7 @@ describe('Chart deploy', () => {
 
         test('should verify chart version in registry before update', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({
                 ok: true,
                 status: 200,
@@ -153,13 +153,13 @@ describe('Chart deploy', () => {
             await expect(chart.chartDeploy()).resolves.toBe(true);
             expect(global.fetch).toHaveBeenCalledWith(
                 'https://gitlab.example.com/api/v4/projects/group%2Fproject/packages/helm/stable/index.yaml',
-                { headers: { 'PRIVATE-TOKEN': 'secret' } }
+                { headers: { Authorization: `Basic ${Buffer.from('token:secret').toString('base64')}` } }
             );
         });
 
         test('should fail registry step when version is absent', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({
                 ok: true,
                 status: 200,
@@ -233,6 +233,18 @@ describe('Chart deploy', () => {
         test('should split, trim and deduplicate names', () => {
             expect(chart.parseInstancesOption('sd, cbch,sd,,')).toEqual(['sd', 'cbch']);
             expect(chart.parseInstancesOption(undefined)).toEqual([]);
+        });
+    });
+
+    describe('printDeployChanges', () => {
+        test('should indent each helmrelease change line', () => {
+            const { printDeployChanges } = require('../../src/chart/helmrelease');
+            printDeployChanges([
+                { filePath: 'instances/bas/helmrelease.yaml', oldVersion: '1.8.2', newVersion: '1.9.0', changed: true },
+                { filePath: 'instances/sbas/helmrelease.yaml', oldVersion: '1.9.0', newVersion: '1.9.0', changed: false }
+            ]);
+            expect(console.log).toHaveBeenCalledTimes(2);
+            console.log.mock.calls.forEach(([line]) => expect(line).toMatch(/^ {2}\S/));
         });
     });
 

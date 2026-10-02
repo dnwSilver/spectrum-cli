@@ -166,13 +166,13 @@ describe("token rotate", () => {
         return jsonResponse(200, { id: 2 });
       }
       if (url.includes("/variables") && options.method === "GET") {
-        return jsonResponse(200, [{ key: "GITLAB_PRIVATE_TOKEN" }]);
+        return jsonResponse(200, [{ key: "SC_BOT_PAT" }]);
       }
-      if (url.includes("/variables/GITLAB_PRIVATE_TOKEN") && options.method === "DELETE") {
+      if (url.includes("/variables/SC_BOT_PAT") && options.method === "DELETE") {
         return emptyResponse(204);
       }
       if (url.includes("/variables") && options.method === "POST") {
-        return jsonResponse(201, { key: "GITLAB_PRIVATE_TOKEN" });
+        return jsonResponse(201, { key: "SC_BOT_PAT" });
       }
       return jsonResponse(404, { message: "not found" });
     });
@@ -185,7 +185,7 @@ describe("token rotate", () => {
     const createVar = calls.filter((call) => call.method === "POST" && call.url.includes("/variables"));
     expect(createVar).toHaveLength(2);
     expect(JSON.parse(createVar[0].body)).toEqual({
-      key: "GITLAB_PRIVATE_TOKEN",
+      key: "SC_BOT_PAT",
       value: "glpat-ci-token",
       masked_and_hidden: true,
       description: "PAT от бота example-bot, владелец Колосов. Истекает 2027-02-17.",
@@ -217,7 +217,7 @@ describe("token rotate", () => {
         return jsonResponse(200, []);
       }
       if (url.includes("/variables") && options.method === "POST") {
-        return jsonResponse(201, { key: "GITLAB_PRIVATE_TOKEN" });
+        return jsonResponse(201, { key: "SC_BOT_PAT" });
       }
       return jsonResponse(404, {});
     });
@@ -237,7 +237,7 @@ describe("token rotate", () => {
     token.promptHidden = jest.fn().mockResolvedValueOnce("glpat-owner-token").mockResolvedValueOnce("");
     await expect(token.askTokens({ tokenTtlMonths: 6, bot: "example-bot" })).resolves.toEqual({
       ok: false,
-      reason: "GITLAB_PRIVATE_TOKEN не указан.",
+      reason: "SC_BOT_PAT не указан.",
     });
   });
 });

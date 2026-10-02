@@ -34,7 +34,7 @@ function normalizePath(p) {
 describe('Chart start', () => {
     const originalLog = console.log;
     const originalFetch = global.fetch;
-    const originalToken = process.env.GITLAB_PRIVATE_TOKEN;
+    const originalToken = process.env.SC_OWNER_PAT;
     beforeEach(() => {
         jest.clearAllMocks();
         console.log = jest.fn();
@@ -43,9 +43,9 @@ describe('Chart start', () => {
         console.log = originalLog;
         global.fetch = originalFetch;
         if (originalToken === undefined) {
-            delete process.env.GITLAB_PRIVATE_TOKEN;
+            delete process.env.SC_OWNER_PAT;
         } else {
-            process.env.GITLAB_PRIVATE_TOKEN = originalToken;
+            process.env.SC_OWNER_PAT = originalToken;
         }
     });
 
@@ -80,7 +80,7 @@ describe('Chart start', () => {
             utils.execSilent.mockReturnValue('');
             utils.execCommand.mockReturnValue(true);
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({
                 ok: true, status: 200,
                 text: async () => 'entries:\n  app:\n    - version: 1.2.3\n'
@@ -147,7 +147,7 @@ describe('Chart start', () => {
 
         test('should reject a version already in Helm-registry even with --force', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({
                 ok: true, status: 200,
                 text: async () => 'entries:\n  app:\n    - version: 1.2.3\n'
@@ -186,7 +186,7 @@ describe('Chart start', () => {
 
         test('should accept a version absent from Helm-registry', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({
                 ok: true, status: 200,
                 text: async () => 'entries:\n  app:\n    - version: 1.2.2\n'
@@ -200,14 +200,14 @@ describe('Chart start', () => {
 
         test('should fail closed when Helm-registry cannot be checked', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            delete process.env.GITLAB_PRIVATE_TOKEN;
+            delete process.env.SC_OWNER_PAT;
             runCommand.mockImplementation(async (spec) => spec.checks
                 .find((item) => item.name === 'registry-version-missing')
                 .run({ chartName: 'app', version: '1.2.3' }));
 
             const result = await chart.chartStart();
             expect(result.ok).toBe(false);
-            expect(result.reason).toContain('GITLAB_PRIVATE_TOKEN');
+            expect(result.reason).toContain('SC_OWNER_PAT');
         });
     });
 

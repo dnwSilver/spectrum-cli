@@ -127,7 +127,7 @@ const tokenCmd = program
 
 tokenCmd
   .command("rotate")
-  .description("Пролить GITLAB_PRIVATE_TOKEN в CI variables через owner PAT")
+  .description("Пролить SC_BOT_PAT в CI variables через owner PAT")
   .option("-d, --dry", "Запустить только предпроверки")
   .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
   .action((command) => runAction(token.tokenRotate, command));

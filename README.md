@@ -66,7 +66,7 @@ spectrum changelog check               # Проверить CHANGELOG.md и вс
 spectrum changelog write               # Выравнять заголовки CHANGELOG.md и запустить Prettier
 
 # 🔑 GitLab токены
-spectrum token rotate  # Пролить GITLAB_PRIVATE_TOKEN в CI variables
+spectrum token rotate  # Пролить SC_BOT_PAT в CI variables
 ```
 
 Все команды с действием показывают, какая предпроверка успешно пройдена;
@@ -163,7 +163,7 @@ spectrum-cli/
 | `spectrum chart start`      | Создать и запушить chart тег        |
 | `spectrum chart deploy`     | Обновить chart версию в helmrelease |
 | `spectrum chart verify`     | Проверить ingress paths chart       |
-| `spectrum token rotate`     | Пролить GITLAB_PRIVATE_TOKEN в CI   |
+| `spectrum token rotate`     | Пролить SC_BOT_PAT в CI             |
 
 ### 🛡️ Preflight-проверки по командам
 
@@ -172,10 +172,10 @@ spectrum-cli/
 - `spectrum release close`: чистая и актуальная main/master, версия из верхнего заголовка `CHANGELOG.md` и remote stable-тег поддерживаемой формы, указывающий на текущий commit.
 - `spectrum changelog append <message>`: `git-repo`, `changelog-exists`, валидные ID задачи, git identity и тип fragment. Команда не изменяет общий `CHANGELOG.md`.
 - `spectrum changelog check`: `git-repo`, `changelog-exists`, `changelog-prettier-check`, наличие и формат всех changelog fragments.
-- `spectrum chart start`: `git-repo`, `clean-working-tree`, `on-main-branch`, `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), валидный верхний SemVer-заголовок в `charts/<chart-name>/CHANGELOG.md`, отсутствие тега `chart-<name>-<version>` локально и на `origin`, отсутствие этой версии чарта в Helm-registry. Для запроса registry нужен `GITLAB_PRIVATE_TOKEN`; ошибка доступа блокирует команду. `-f, --force` обходит только проверку повышения версии относительно последнего remote-тега. После push команда по умолчанию ждёт версию в registry; `-n, --no-wait` отключает ожидание.
+- `spectrum chart start`: `git-repo`, `clean-working-tree`, `on-main-branch`, `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), валидный верхний SemVer-заголовок в `charts/<chart-name>/CHANGELOG.md`, отсутствие тега `chart-<name>-<version>` локально и на `origin`, отсутствие этой версии чарта в Helm-registry. Для запроса registry нужен `SC_OWNER_PAT`; ошибка доступа блокирует команду. `-f, --force` обходит только проверку повышения версии относительно последнего remote-тега. После push команда по умолчанию ждёт версию в registry; `-n, --no-wait` отключает ожидание.
 - `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
 - `spectrum chart verify <source_path>`: `git-repo`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
-- `spectrum token rotate`: `load-config` (есть валидный `~/.config/spectrum-cli/config.yaml`), `ask-tokens` (owner PAT и `GITLAB_PRIVATE_TOKEN` только в памяти), `check-access` (все группы и проекты доступны owner PAT).
+- `spectrum token rotate`: `load-config` (есть валидный `~/.config/spectrum-cli/config.yaml`), `ask-tokens` (owner PAT и `SC_BOT_PAT` только в памяти), `check-access` (все группы и проекты доступны owner PAT).
 
 ## 🔄 Workflow релиза
 
@@ -324,7 +324,7 @@ CI-часть реализует подключенный release component, а 
 
 ### `spectrum token rotate`
 
-Пролив уже созданного PAT `GITLAB_PRIVATE_TOKEN` в CI/CD variables групп и проектов. Команда токен не выпускает.
+Пролив уже созданного PAT `SC_BOT_PAT` в CI/CD variables групп и проектов. Команда токен не выпускает.
 
 **Конфиг:** `~/.config/spectrum-cli/config.yaml`
 
@@ -340,13 +340,13 @@ projects: []
 - `bot` и `token_ttl_months` читаются только из конфига.
 - Скрытым вводом запрашиваются два токена. Оба живут только в памяти.
 - Owner PAT: ходит в API, проверяет доступ, читает/удаляет/создает CI variables. Для групп нужен Owner, для проектов — Maintainer+.
-- `GITLAB_PRIVATE_TOKEN`: только значение, которое пишется в CI variable.
-- Для каждой группы и проекта CI variable `GITLAB_PRIVATE_TOKEN` удаляется (если есть) и создается заново как masked and hidden.
+- `SC_BOT_PAT`: только значение, которое пишется в CI variable.
+- Для каждой группы и проекта CI variable `SC_BOT_PAT` удаляется (если есть) и создается заново как masked and hidden.
 - Description переменной: `PAT от бота <bot>, владелец Колосов. Истекает YYYY-MM-DD.` Дата = сегодня + `token_ttl_months`.
 
 1. Загружает или создает конфиг
 2. Запрашивает owner PAT
-3. Запрашивает `GITLAB_PRIVATE_TOKEN`
+3. Запрашивает `SC_BOT_PAT`
 4. Проверяет доступ ко всем группам и проектам owner PAT
 5. Обновляет CI variables во всех целях
 

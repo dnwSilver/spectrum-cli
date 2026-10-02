@@ -60,7 +60,8 @@ function helmIndexHasChartVersion(indexYamlContent, chartName, version) {
             continue;
         }
 
-        if (inChart && indent <= chartIndent) {
+        const isChartSequenceItem = indent === chartIndent && trimmed.startsWith('-');
+        if (inChart && indent <= chartIndent && !isChartSequenceItem) {
             inChart = false;
         }
 
@@ -77,24 +78,28 @@ function helmIndexHasChartVersion(indexYamlContent, chartName, version) {
     return false;
 }
 
+function buildBasicAuthHeader(accessToken) {
+    return `Basic ${Buffer.from(`token:${accessToken}`).toString('base64')}`;
+}
+
 async function fetchChartVersionFromRegistry(chartName, version) {
     const project = getGitlabProject();
     if (!project) {
         return { ok: false, reason: 'Не удалось определить GitLab-проект из remote "origin".' };
     }
 
-    const accessToken = process.env.GITLAB_PRIVATE_TOKEN;
+    const accessToken = process.env.SC_OWNER_PAT;
     if (!accessToken) {
         return {
             ok: false,
-            reason: 'Не задана переменная окружения GITLAB_PRIVATE_TOKEN. Она нужна для проверки публикации чарта в Helm-registry.'
+            reason: 'Не задана переменная окружения SC_OWNER_PAT. Она нужна для проверки публикации чарта в Helm-registry.'
         };
     }
 
     const indexUrl = `${project.origin}/api/v4/projects/${project.encodedPath}/packages/helm/${HELM_REGISTRY_CHANNEL}/index.yaml`;
     let response;
     try {
-        response = await fetch(indexUrl, { headers: { 'PRIVATE-TOKEN': accessToken } });
+        response = await fetch(indexUrl, { headers: { Authorization: buildBasicAuthHeader(accessToken) } });
     } catch (error) {
         return { ok: false, reason: `Не удалось запросить Helm-registry (${indexUrl}): ${error.message}.` };
     }

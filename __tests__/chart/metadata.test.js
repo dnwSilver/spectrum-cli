@@ -34,7 +34,7 @@ function normalizePath(p) {
 describe('Chart metadata', () => {
     const originalLog = console.log;
     const originalFetch = global.fetch;
-    const originalToken = process.env.GITLAB_PRIVATE_TOKEN;
+    const originalToken = process.env.SC_OWNER_PAT;
     beforeEach(() => {
         jest.clearAllMocks();
         console.log = jest.fn();
@@ -43,9 +43,9 @@ describe('Chart metadata', () => {
         console.log = originalLog;
         global.fetch = originalFetch;
         if (originalToken === undefined) {
-            delete process.env.GITLAB_PRIVATE_TOKEN;
+            delete process.env.SC_OWNER_PAT;
         } else {
-            process.env.GITLAB_PRIVATE_TOKEN = originalToken;
+            process.env.SC_OWNER_PAT = originalToken;
         }
     });
 

@@ -45,4 +45,4 @@ bash install.sh --uninstall
 
 `release start` требует ветку `dev`/`develop`, настроенный `origin`, production-ветку `main`/`master` и опубликованный стабильный тег `release/X.Y.Z`, `hotfix/X.Y.Z` либо старый `vX.Y.Z`. Команда создает коммит и пушит его в обе ветки. Сначала ознакомьтесь с [процессом релиза](./RELEASE.md) и [проверками команд](./README.md#preflight-проверки-по-командам).
 
-Для `chart start` нужен Helm chart в `charts/<chart-name>/Chart.yaml`, верхний заголовок версии в его `CHANGELOG.md` и `GITLAB_PRIVATE_TOKEN` для проверки Helm-registry. Остальные требования конкретных команд описаны в [README.md](./README.md).
+Для `chart start` нужен Helm chart в `charts/<chart-name>/Chart.yaml`, верхний заголовок версии в его `CHANGELOG.md` и `SC_OWNER_PAT` для проверки Helm-registry. Остальные требования конкретных команд описаны в [README.md](./README.md).

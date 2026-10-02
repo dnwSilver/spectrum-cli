@@ -4,7 +4,7 @@ const path = require('path');
 const { logSuccess } = require('../common/utils');
 const { isDryRun } = require('../cli/command-executor');
 const { parseGitlabUrl } = require('../integrations/gitlab-url');
-const TOKEN_NAME = 'GITLAB_PRIVATE_TOKEN';
+const TOKEN_NAME = 'SC_BOT_PAT';
 
 function getConfigPath() {
     return path.join(os.homedir(), '.config', 'spectrum-cli', 'config.yaml');

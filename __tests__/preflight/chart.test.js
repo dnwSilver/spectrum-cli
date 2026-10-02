@@ -43,6 +43,9 @@ describe("preflight chart", () => {
     fs.readFileSync.mockReturnValue("## 🚀 [0.0.11] - 2026-08-28\n");
     expect(preflight.requireChartChangelogVersion("charts/elksite").data.version).toBe("0.0.11");
 
+    fs.readFileSync.mockReturnValue("## [1.9.0](https://mysyte.ru/release-2) - 2026-09-30\n");
+    expect(preflight.requireChartChangelogVersion("charts/elksite").data.version).toBe("1.9.0");
+
     fs.readFileSync.mockReturnValue("## [Unreleased]\n\n## [0.0.11]\n");
     expect(preflight.requireChartChangelogVersion("charts/elksite").ok).toBe(false);
 

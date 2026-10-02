@@ -34,7 +34,7 @@ function normalizePath(p) {
 describe('Chart registry', () => {
     const originalLog = console.log;
     const originalFetch = global.fetch;
-    const originalToken = process.env.GITLAB_PRIVATE_TOKEN;
+    const originalToken = process.env.SC_OWNER_PAT;
     beforeEach(() => {
         jest.clearAllMocks();
         console.log = jest.fn();
@@ -43,9 +43,9 @@ describe('Chart registry', () => {
         console.log = originalLog;
         global.fetch = originalFetch;
         if (originalToken === undefined) {
-            delete process.env.GITLAB_PRIVATE_TOKEN;
+            delete process.env.SC_OWNER_PAT;
         } else {
-            process.env.GITLAB_PRIVATE_TOKEN = originalToken;
+            process.env.SC_OWNER_PAT = originalToken;
         }
     });
 
@@ -76,6 +76,30 @@ describe('Chart registry', () => {
             expect(chart.helmIndexHasChartVersion(indexYaml, 'other', '1.2.3')).toBe(false);
             expect(chart.helmIndexHasChartVersion('', 'app', '1.2.3')).toBe(false);
         });
+
+        test('should find chart version in GitLab index with non-indented sequences', () => {
+            const gitlabIndexYaml = [
+                '---',
+                'apiVersion: v1',
+                'entries:',
+                '  app:',
+                '  - apiVersion: v2',
+                '    name: app',
+                '    version: 1.9.0',
+                '  - apiVersion: v2',
+                '    name: app',
+                '    version: 1.8.2',
+                '  other:',
+                '  - name: other',
+                '    version: 9.9.9',
+                'generated: "2026-10-02T00:00:00Z"'
+            ].join('\n');
+
+            expect(chart.helmIndexHasChartVersion(gitlabIndexYaml, 'app', '1.9.0')).toBe(true);
+            expect(chart.helmIndexHasChartVersion(gitlabIndexYaml, 'app', '1.8.2')).toBe(true);
+            expect(chart.helmIndexHasChartVersion(gitlabIndexYaml, 'app', '9.9.9')).toBe(false);
+            expect(chart.helmIndexHasChartVersion(gitlabIndexYaml, 'other', '1.9.0')).toBe(false);
+        });
     });
 
     describe('fetchChartVersionFromRegistry', () => {
@@ -86,17 +110,17 @@ describe('Chart registry', () => {
             expect(result.reason).toContain('origin');
         });
 
-        test('should fail without GITLAB_PRIVATE_TOKEN', async () => {
+        test('should fail without SC_OWNER_PAT', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            delete process.env.GITLAB_PRIVATE_TOKEN;
+            delete process.env.SC_OWNER_PAT;
             const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
             expect(result.ok).toBe(false);
-            expect(result.reason).toContain('GITLAB_PRIVATE_TOKEN');
+            expect(result.reason).toContain('SC_OWNER_PAT');
         });
 
         test('should fail on http error', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 });
             const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
             expect(result.ok).toBe(false);
@@ -105,7 +129,7 @@ describe('Chart registry', () => {
 
         test('should fail on network error', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn().mockRejectedValue(new Error('offline'));
             const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
             expect(result.ok).toBe(false);
@@ -114,7 +138,7 @@ describe('Chart registry', () => {
 
         test('should report found version', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({
                 ok: true,
                 status: 200,
@@ -132,7 +156,7 @@ describe('Chart registry', () => {
     describe('waitForChartInRegistry', () => {
         test('should succeed once version appears', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn()
                 .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'entries:\n  app: []\n' })
                 .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'entries:\n  app:\n    - version: 1.2.3\n' });
@@ -144,7 +168,7 @@ describe('Chart registry', () => {
 
         test('should fail on timeout', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.GITLAB_PRIVATE_TOKEN = 'secret';
+            process.env.SC_OWNER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => 'entries:\n  app: []\n' });
 
             const sleep = jest.fn().mockResolvedValue(undefined);

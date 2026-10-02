@@ -72,7 +72,7 @@ function printDeployChanges(changes) {
         const icon = item.changed ? '●' : '○';
         const color = item.changed ? colors.green : '\x1b[90m';
         console.log(
-            `${color}${icon} ${item.filePath}: ${item.oldVersion} -> ${item.newVersion}${colors.reset}`
+            `  ${color}${icon} ${item.filePath}: ${item.oldVersion} -> ${item.newVersion}${colors.reset}`
         );
     });
 }

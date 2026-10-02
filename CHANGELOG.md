@@ -9,6 +9,20 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [5.0.1] - 2026-10-02
+
+### 🛠 Changed
+
+- Команды `spectrum chart` читают токен для Helm-registry из переменной окружения `SC_OWNER_PAT` вместо `GITLAB_PRIVATE_TOKEN`.
+- Команда `spectrum token rotate` запрашивает и записывает в CI/CD variables `SC_BOT_PAT` вместо `GITLAB_PRIVATE_TOKEN`.
+- `spectrum chart deploy` выводит строки изменений helmrelease-файлов с отступом.
+
+### 🪲 Fixed
+
+- Запрос к Helm-registry GitLab авторизуется через HTTP Basic auth; заголовок `PRIVATE-TOKEN` приводил к HTTP 401.
+- Проверка публикации чарта находит версию в `index.yaml` GitLab, где элементы списка записаны без дополнительного отступа; `chart start` больше не ждёт бесконечно уже опубликованную версию.
+- Версия чарта читается из заголовка changelog со ссылкой вида `## [X.Y.Z](url) - YYYY-MM-DD`.
+
 ## 🚀 [5.0.0] - 2026-10-01
 
 ### 💥 Breaking change

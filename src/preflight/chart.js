@@ -15,7 +15,7 @@ function requireChartChangelogVersion(chartDir) {
     }
 
     const firstHeading = changelog.match(/^##(?!#)[^\r\n]*$/m)?.[0];
-    const version = firstHeading?.match(/^##\s+(?:\S+\s+)?\[([^\]]+)\](?:\s|$)/)?.[1];
+    const version = firstHeading?.match(/^##\s+(?:\S+\s+)?\[([^\]]+)\](?:\([^)\s]*\))?(?:\s|$)/)?.[1];
     if (!version || !SEMVER_PATTERN.test(version)) {
         return fail(`Верхний раздел "${changelogPath}" должен содержать версию SemVer в заголовке "## [X.Y.Z]".`);
     }
