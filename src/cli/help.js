@@ -53,4 +53,3 @@ program.configureHelp({
 }
 
 module.exports = { configureHelp };
-s

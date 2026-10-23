@@ -174,7 +174,7 @@ describe("index CLI wiring", () => {
     const close = releaseCmd._commands.find((c) => c._name === "close");
     const deploy = releaseCmd._commands.find((c) => c._name === "deploy");
 
-    expect(start._options.map((o) => o.definition)).toEqual(["-d, --dry", "-s, --silence"]);
+    expect(start._options.map((o) => o.definition)).toEqual(["--stable", "-d, --dry", "-s, --silence"]);
     await start._action();
     await close._action();
     await deploy._action();
