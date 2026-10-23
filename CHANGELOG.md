@@ -9,7 +9,7 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
-## [Unreleased]
+## 🚀 [5.0.2] - 2026-10-23
 
 ### Changed
 
