@@ -3,6 +3,7 @@ const { parseGitlabUrl } = require('../integrations/gitlab-url');
 const HELM_REGISTRY_CHANNEL = 'stable';
 const REGISTRY_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 const REGISTRY_WAIT_INTERVAL_MS = 15 * 1000;
+let legacyTokenWarningShown = false;
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -88,11 +89,15 @@ async function fetchChartVersionFromRegistry(chartName, version) {
         return { ok: false, reason: 'Не удалось определить GitLab-проект из remote "origin".' };
     }
 
-    const accessToken = process.env.SC_OWNER_PAT;
+    const accessToken = process.env.SC_DEVELOPER_PAT || process.env.SC_OWNER_PAT;
+    if (!process.env.SC_DEVELOPER_PAT && accessToken && !legacyTokenWarningShown) {
+        logError('⚠️', 'SC_OWNER_PAT устарела (deprecated) и будет удалена в следующей версии spectrum-cli. Замените её на SC_DEVELOPER_PAT.');
+        legacyTokenWarningShown = true;
+    }
     if (!accessToken) {
         return {
             ok: false,
-            reason: 'Не задана переменная окружения SC_OWNER_PAT. Она нужна для проверки публикации чарта в Helm-registry.'
+            reason: 'Не задана переменная окружения SC_DEVELOPER_PAT. Она нужна для проверки публикации чарта в Helm-registry.'
         };
     }
 

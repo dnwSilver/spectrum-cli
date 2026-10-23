@@ -34,18 +34,26 @@ function normalizePath(p) {
 describe('Chart registry', () => {
     const originalLog = console.log;
     const originalFetch = global.fetch;
-    const originalToken = process.env.SC_OWNER_PAT;
+    const originalToken = process.env.SC_DEVELOPER_PAT;
+    const originalLegacyToken = process.env.SC_OWNER_PAT;
     beforeEach(() => {
         jest.clearAllMocks();
+        delete process.env.SC_DEVELOPER_PAT;
+        delete process.env.SC_OWNER_PAT;
         console.log = jest.fn();
     });
     afterAll(() => {
         console.log = originalLog;
         global.fetch = originalFetch;
-        if (originalToken === undefined) {
+        if (originalLegacyToken === undefined) {
             delete process.env.SC_OWNER_PAT;
         } else {
-            process.env.SC_OWNER_PAT = originalToken;
+            process.env.SC_OWNER_PAT = originalLegacyToken;
+        }
+        if (originalToken === undefined) {
+            delete process.env.SC_DEVELOPER_PAT;
+        } else {
+            process.env.SC_DEVELOPER_PAT = originalToken;
         }
     });
 
@@ -110,17 +118,48 @@ describe('Chart registry', () => {
             expect(result.reason).toContain('origin');
         });
 
-        test('should fail without SC_OWNER_PAT', async () => {
+        test('should fail without SC_DEVELOPER_PAT', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            delete process.env.SC_OWNER_PAT;
+            delete process.env.SC_DEVELOPER_PAT;
             const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
             expect(result.ok).toBe(false);
-            expect(result.reason).toContain('SC_OWNER_PAT');
+            expect(result.reason).toContain('SC_DEVELOPER_PAT');
+        });
+
+        test('should prefer SC_DEVELOPER_PAT without a legacy warning', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            process.env.SC_DEVELOPER_PAT = 'new-secret';
+            process.env.SC_OWNER_PAT = 'old-secret';
+            global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => 'entries: {}' });
+            await chart.fetchChartVersionFromRegistry('app', '1.2.3');
+            expect(global.fetch).toHaveBeenCalledWith(expect.any(String), {
+                headers: { Authorization: `Basic ${Buffer.from('token:new-secret').toString('base64')}` }
+            });
+            expect(utils.logError).not.toHaveBeenCalled();
+        });
+
+        test('should use deprecated token and warn once, including an empty new token', async () => {
+            utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
+            process.env.SC_OWNER_PAT = 'legacy-secret';
+            global.fetch = jest.fn().mockResolvedValue({ ok: true, text: async () => 'entries: {}' });
+            expect((await chart.fetchChartVersionFromRegistry('app', '1.2.3')).ok).toBe(true);
+            process.env.SC_DEVELOPER_PAT = '';
+            expect((await chart.fetchChartVersionFromRegistry('app', '1.2.3')).ok).toBe(true);
+            expect(global.fetch).toHaveBeenLastCalledWith(expect.any(String), {
+                headers: { Authorization: `Basic ${Buffer.from('token:legacy-secret').toString('base64')}` }
+            });
+            expect(utils.logError).toHaveBeenCalledTimes(1);
+            const warning = utils.logError.mock.calls[0].join(' ');
+            expect(warning).toContain('SC_OWNER_PAT');
+            expect(warning).toContain('deprecated');
+            expect(warning).toContain('в следующей версии');
+            expect(warning).toContain('SC_DEVELOPER_PAT');
+            expect(warning).not.toContain('legacy-secret');
         });
 
         test('should fail on http error', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.SC_OWNER_PAT = 'secret';
+            process.env.SC_DEVELOPER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 403 });
             const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
             expect(result.ok).toBe(false);
@@ -129,7 +168,7 @@ describe('Chart registry', () => {
 
         test('should fail on network error', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.SC_OWNER_PAT = 'secret';
+            process.env.SC_DEVELOPER_PAT = 'secret';
             global.fetch = jest.fn().mockRejectedValue(new Error('offline'));
             const result = await chart.fetchChartVersionFromRegistry('app', '1.2.3');
             expect(result.ok).toBe(false);
@@ -138,7 +177,7 @@ describe('Chart registry', () => {
 
         test('should report found version', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.SC_OWNER_PAT = 'secret';
+            process.env.SC_DEVELOPER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({
                 ok: true,
                 status: 200,
@@ -156,7 +195,7 @@ describe('Chart registry', () => {
     describe('waitForChartInRegistry', () => {
         test('should succeed once version appears', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.SC_OWNER_PAT = 'secret';
+            process.env.SC_DEVELOPER_PAT = 'secret';
             global.fetch = jest.fn()
                 .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'entries:\n  app: []\n' })
                 .mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'entries:\n  app:\n    - version: 1.2.3\n' });
@@ -168,7 +207,7 @@ describe('Chart registry', () => {
 
         test('should fail on timeout', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.SC_OWNER_PAT = 'secret';
+            process.env.SC_DEVELOPER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, text: async () => 'entries:\n  app: []\n' });
 
             const sleep = jest.fn().mockResolvedValue(undefined);

@@ -34,18 +34,26 @@ function normalizePath(p) {
 describe('Chart deploy', () => {
     const originalLog = console.log;
     const originalFetch = global.fetch;
-    const originalToken = process.env.SC_OWNER_PAT;
+    const originalToken = process.env.SC_DEVELOPER_PAT;
+    const originalLegacyToken = process.env.SC_OWNER_PAT;
     beforeEach(() => {
         jest.clearAllMocks();
+        delete process.env.SC_DEVELOPER_PAT;
+        delete process.env.SC_OWNER_PAT;
         console.log = jest.fn();
     });
     afterAll(() => {
         console.log = originalLog;
         global.fetch = originalFetch;
-        if (originalToken === undefined) {
+        if (originalLegacyToken === undefined) {
             delete process.env.SC_OWNER_PAT;
         } else {
-            process.env.SC_OWNER_PAT = originalToken;
+            process.env.SC_OWNER_PAT = originalLegacyToken;
+        }
+        if (originalToken === undefined) {
+            delete process.env.SC_DEVELOPER_PAT;
+        } else {
+            process.env.SC_DEVELOPER_PAT = originalToken;
         }
     });
 
@@ -137,7 +145,7 @@ describe('Chart deploy', () => {
 
         test('should verify chart version in registry before update', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.SC_OWNER_PAT = 'secret';
+            process.env.SC_DEVELOPER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({
                 ok: true,
                 status: 200,
@@ -159,7 +167,7 @@ describe('Chart deploy', () => {
 
         test('should fail registry step when version is absent', async () => {
             utils.getRemoteUrl.mockReturnValue('https://gitlab.example.com/group/project');
-            process.env.SC_OWNER_PAT = 'secret';
+            process.env.SC_DEVELOPER_PAT = 'secret';
             global.fetch = jest.fn().mockResolvedValue({
                 ok: true,
                 status: 200,

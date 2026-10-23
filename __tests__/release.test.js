@@ -99,6 +99,44 @@ describe("release", () => {
     expect(git.goToMainBranch).not.toHaveBeenCalled();
   });
 
+  test.each([
+    ["0.0.0", [{ bump: "major" }], "minor", "0.1.0"],
+    ["0.3.7", [{ bump: "major" }, { bump: "minor" }], "minor", "0.4.0"],
+    ["0.3.7", [{ type: "removed", bump: FRAGMENT_TYPES.removed.bump }], "minor", "0.4.0"],
+    ["0.3.7", [{ bump: "minor" }], "minor", "0.4.0"],
+    ["0.3.7", [{ bump: "patch" }], "patch", "0.3.8"],
+    ["0.3.7", [], "patch", "0.3.8"],
+  ])("keeps initial development %s in 0.x", (baseline, fragments, bumpType, newVersion) => {
+    expect(release.resolveReleaseVersion(baseline, fragments)).toEqual({ bumpType, newVersion });
+  });
+
+  test("promotes to 1.0.0 only with an explicit stable option", () => {
+    expect(release.resolveReleaseVersion("0.3.7", [{ bump: "patch" }], { stable: true }))
+      .toEqual({ bumpType: "major", newVersion: "1.0.0" });
+    expect(release.resolveReleaseVersion("1.3.7", [], { stable: true })).toBeNull();
+    expect(release.resolveReleaseVersion("invalid", [])).toBeNull();
+  });
+
+  test("releaseStart applies explicit promotion and rejects conflicting open releases", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseStart({ stable: true });
+    const check = spec.checks.find(({ name }) => name === "detect-bump-type");
+    const context = { stableVersion: "0.3.7", changelogFragments: [{ bump: "patch" }] };
+    expect(check.run(context)).toEqual({ ok: true, data: { bumpType: "major", newVersion: "1.0.0" } });
+    expect(check.run({ ...context, openReleaseVersion: "0.4.0" }).ok).toBe(false);
+    expect(check.run({ ...context, stableVersion: "1.0.0" }).ok).toBe(false);
+    expect(check.run({ ...context, openReleaseVersion: "1.0.0" }).data.newVersion).toBe("1.0.0");
+  });
+
+  test("releaseStart keeps a pre-1.0 open release during repeated preparation", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseStart();
+    const check = spec.checks.find(({ name }) => name === "detect-bump-type");
+    expect(check.run({ stableVersion: "0.3.7", openReleaseVersion: "0.4.0", changelogFragments: [{ bump: "major" }] }))
+      .toEqual({ ok: true, data: { bumpType: "major", newVersion: "0.4.0" } });
+    expect(version.upVersion).not.toHaveBeenCalled();
+  });
+
   test("releasePush handles push failures and missing branch context", () => {
     utils.getMainBranch.mockReturnValue("main");
     const context = { devBranch: "dev", mainBranch: "main", newVersion: "1.2.3" };

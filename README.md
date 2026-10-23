@@ -43,7 +43,7 @@ spectrum --help
 spectrum -v  # или spectrum --version
 
 # 🚀 Управление релизами
-spectrum release start               # Схлопнуть fragments и атомарно отправить release commit в dev и main/master
+spectrum release start [--stable]    # Схлопнуть fragments и атомарно отправить release commit в dev и main/master
 spectrum release deploy              # Создать стабильный тег release/X.Y.Z из заголовка CHANGELOG
 spectrum release close               # Свести stable main/master в dev
 
@@ -172,7 +172,14 @@ spectrum-cli/
 - `spectrum release close`: чистая и актуальная main/master, версия из верхнего заголовка `CHANGELOG.md` и remote stable-тег поддерживаемой формы, указывающий на текущий commit.
 - `spectrum changelog append <message>`: `git-repo`, `changelog-exists`, валидные ID задачи, git identity и тип fragment. Команда не изменяет общий `CHANGELOG.md`.
 - `spectrum changelog check`: `git-repo`, `changelog-exists`, `changelog-prettier-check`, наличие и формат всех changelog fragments.
-- `spectrum chart start`: `git-repo`, `clean-working-tree`, `on-main-branch`, `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), валидный верхний SemVer-заголовок в `charts/<chart-name>/CHANGELOG.md`, отсутствие тега `chart-<name>-<version>` локально и на `origin`, отсутствие этой версии чарта в Helm-registry. Для запроса registry нужен `SC_OWNER_PAT`; ошибка доступа блокирует команду. `-f, --force` обходит только проверку повышения версии относительно последнего remote-тега. После push команда по умолчанию ждёт версию в registry; `-n, --no-wait` отключает ожидание.
+- `spectrum chart start`: `git-repo`, `clean-working-tree`, `on-main-branch`, `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), валидный верхний SemVer-заголовок в `charts/<chart-name>/CHANGELOG.md`, отсутствие тега `chart-<name>-<version>` локально и на `origin`, отсутствие этой версии чарта в Helm-registry. Для запроса registry нужен `SC_DEVELOPER_PAT` (PAT со scope `api` и доступом к проекту; роль Owner не требуется); ошибка доступа блокирует команду. Право отправки chart-тега определяется отдельно правилами protected tags. `-f, --force` обходит только проверку повышения версии относительно последнего remote-тега. После push команда по умолчанию ждёт версию в registry; `-n, --no-wait` отключает ожидание.
+
+Для обратной совместимости chart-команды принимают `SC_OWNER_PAT`, если
+`SC_DEVELOPER_PAT` не задана или пуста. `SC_OWNER_PAT` deprecated: поддержка
+будет удалена в следующей версии. При её использовании CLI один раз за процесс
+выводит предупреждение с просьбой перейти на `SC_DEVELOPER_PAT`. Если заданы обе
+переменные, используется `SC_DEVELOPER_PAT` без предупреждения.
+
 - `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
 - `spectrum chart verify <source_path>`: `git-repo`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
 - `spectrum token rotate`: `load-config` (есть валидный `~/.config/spectrum-cli/config.yaml`), `ask-tokens` (owner PAT и `SC_BOT_PAT` только в памяти), `check-access` (все группы и проекты доступны owner PAT).
@@ -185,9 +192,22 @@ spectrum-cli/
 
 1. Проверяет чистую актуальную dev-ветку, включающую `origin/main` или `origin/master`, changelog и fragments.
 2. После `git fetch origin --prune --tags` находит максимальный stable-тег среди `release/X.Y.Z`, `hotfix/X.Y.Z` и `vX.Y.Z`, достижимый из production-ветки.
-3. Если открытого релиза нет, вычисляет версию по fragments: `breaking` и `removed` → major, `added` → minor, остальные → patch. Если раздел уже открыт в main/master, сохраняет его версию и дату, объединяет прежние записи с новыми по разделам без дублей. Тип новых fragments не повышает уже выбранную версию.
+3. Если открытого релиза нет, вычисляет версию по fragments. До `1.0.0`: `breaking`, `removed` и `added` → minor, остальные → patch. Начиная с `1.0.0`: `breaking` и `removed` → major, `added` → minor, остальные → patch. Если раздел уже открыт в main/master, сохраняет его версию и дату, объединяет прежние записи с новыми по разделам без дублей. Тип новых fragments не повышает уже выбранную версию.
 4. Форматирует и проверяет `CHANGELOG.md`, затем удаляет использованные fragments.
 5. Коммитит изменения и атомарно пушит dev в `origin/dev` и `origin/main` или `origin/master`, без Merge Request. Если новых записей нет, пустой коммит не создаётся; можно повторить отправку после её сбоя.
+
+Первый стабильный выпуск создаётся явно: `spectrum release start --stable`
+вычисляет ровно `1.0.0` от опубликованного `0.x`. Другой открытый релиз блокирует
+переход; повтор подготовки открытого `1.0.0` допустим. Флаг запрещён после
+перехода на `1.x`. Он выполняет обычный workflow `release start`, включая commit
+и push; `--dry` запускает только предпроверки. Обычный запуск от `0.3.7` с
+breaking/removed даёт `0.4.0`, с исправлением — `0.3.8`; исходные типы записей
+сохраняются. Alpha CI должен применять ту же политику к своей базовой версии.
+
+Сброс прежней высокой нумерации на `0.x` не выполняется этой командой: это
+отдельная миграция с архивом changelog и ссылок тегов, согласованием dev/master и
+исключением старых тегов из расчёта версии. Нельзя запускать `release start`,
+пока опубликованная история в dev и production различается.
 
 Например, повторный `release start` дополняет открытый `1.4.0`; после публикации
 `release/1.4.0` новые fragments уже формируют следующий релиз. Изменение
@@ -378,13 +398,13 @@ projects: []
 
 **📋 Типы fragment и SemVer:**
 
-| Суффикс | Раздел | Повышение версии |
-| --- | --- | --- |
-| `breaking` | Breaking change | major |
-| `removed` | Removed | major |
-| `added` | Added | minor |
-| `changed`, `deprecated` | Соответствующий раздел | patch |
-| `fixed`, `security`, `support` | Соответствующий раздел | patch |
+| Суффикс | Раздел | До `1.0.0` | С `1.0.0` |
+| --- | --- | --- | --- |
+| `breaking` | Breaking change | minor | major |
+| `removed` | Removed | minor | major |
+| `added` | Added | minor | minor |
+| `changed`, `deprecated` | Соответствующий раздел | patch | patch |
+| `fixed`, `security`, `support` | Соответствующий раздел | patch | patch |
 
 **📌 Пример использования:**
 

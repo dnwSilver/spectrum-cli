@@ -5,7 +5,7 @@ const { requireGitRepo, requireCleanWorkingTree, requireCurrentBranchUpToDateWit
 const { CHANGELOG_FILE } = require('../changelog/config');
 const { detectBumpType, resolveReleaseVersion } = require('./version');
 const { releaseFormatChangelog, releaseCheckChangelogLint, releaseCommit, releasePush } = require('./steps');
-function releaseStart() {
+function releaseStart(options = {}) {
     return runCommand({
         name: 'release start',
         checks: [
@@ -24,9 +24,13 @@ function releaseStart() {
                 name: 'detect-bump-type',
                 requires: ['changelogFragments', 'stableVersion'],
                 run: (ctx) => {
+                    if (options.stable && (!ctx.stableVersion.startsWith('0.') ||
+                        (ctx.openReleaseVersion && ctx.openReleaseVersion !== '1.0.0'))) {
+                        return { ok: false, reason: '--stable разрешён только для перехода с 0.x на 1.0.0 без другого открытого релиза.' };
+                    }
                     const resolved = ctx.openReleaseVersion
                         ? { bumpType: detectBumpType(ctx.changelogFragments), newVersion: ctx.openReleaseVersion }
-                        : resolveReleaseVersion(ctx.stableVersion, ctx.changelogFragments);
+                        : resolveReleaseVersion(ctx.stableVersion, ctx.changelogFragments, options);
                     if (!resolved) {
                         return { ok: false, reason: 'Не удалось вычислить release-версию от последнего стабильного тега.' };
                     }

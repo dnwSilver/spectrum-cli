@@ -9,6 +9,14 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## [Unreleased]
+
+### Changed
+
+- При baseline `0.x` обычные релизы с breaking/removed повышают minor, сохраняя тип записей; исправления повышают patch. Первый `1.0.0` требует явного `release start --stable`; другой открытый релиз блокирует переход. После `1.0.0` действует прежний SemVer.
+
+- Команды `spectrum chart` используют `SC_DEVELOPER_PAT` вместо `SC_OWNER_PAT` для Helm-registry. Новое имя имеет приоритет. `SC_OWNER_PAT` сохранена как deprecated fallback с предупреждением при использовании; поддержка старого имени будет удалена в следующей версии. Owner для проверки registry не требуется. Запрос owner PAT в `token rotate` для управления групповыми CI/CD variables не изменён.
+
 ## 🚀 [5.0.1] - 2026-10-02
 
 ### 🛠 Changed

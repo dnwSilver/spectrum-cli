@@ -25,7 +25,7 @@ npm view spectrum-cli@X.Y.Z dist-tags
 
 ## Релиз приложения командой `spectrum release`
 
-Предусловия команд и ограничения веток приведены в [README.md](./README.md#preflight-проверки-по-командам). Для `changelog append` используйте ветку `<type>/<YOUTRACK-ID>[-slug]` и создавайте fragments в `.changelog/`. Поддерживаемые суффиксы: `breaking`, `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`, `support`. Каждая непустая строка начинается с `- `. `hotfix` — название процесса, не суффикс fragment. `breaking` и `removed` требуют major, `added` — minor, остальные типы — patch.
+Предусловия команд и ограничения веток приведены в [README.md](./README.md#preflight-проверки-по-командам). Для `changelog append` используйте ветку `<type>/<YOUTRACK-ID>[-slug]` и создавайте fragments в `.changelog/`. Поддерживаемые суффиксы: `breaking`, `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`, `support`. Каждая непустая строка начинается с `- `. `hotfix` — название процесса, не суффикс fragment. До первого `1.0.0` типы `breaking`, `removed` и `added` требуют minor, остальные — patch. С `1.0.0` `breaking` и `removed` требуют major, `added` — minor, остальные — patch. Классификация breaking и описание миграции сохраняются.
 
 ```bash
 spectrum changelog append "Описание изменения"
@@ -35,6 +35,8 @@ spectrum changelog check
 `changelog check` проверяет формат `CHANGELOG.md` через Prettier и все fragments. `changelog write` нормализует поддерживаемые заголовки релизов и форматирует `CHANGELOG.md` через Prettier; он не создает fragment и не собирает релиз.
 
 На чистой и актуальной integration-ветке `dev`/`develop` выполните `spectrum release start`. Команда требует опубликованный stable-тег `release/X.Y.Z`, `hotfix/X.Y.Z` либо старый `vX.Y.Z`, достижимый из `origin/main`/`origin/master`. Она вычисляет следующую версию по fragments, собирает верхний раздел `CHANGELOG.md`, удаляет использованные fragments, создает коммит и атомарно пушит его в integration и production. Открытый неопубликованный раздел при повторном запуске дополняется без нового повышения версии. Для прямого push в production должны подходить правила защиты ветки.
+
+Для явного перехода с `0.x` на первый стабильный `1.0.0` используйте `spectrum release start --stable`. Другой открытый релиз блокирует переход. Флаг не принимает произвольную версию и не используется после `1.0.0`. Обычная подготовка и alpha CI должны сохранять major равным нулю до этого решения.
 
 После проверки обновленного production запустите `spectrum release deploy` на чистой и актуальной `main`/`master`. Команда создает и отправляет только тег `release/X.Y.Z` по верхнему заголовку changelog. После успешного внешнего stable pipeline выполните `spectrum release close`: команда сливает production в integration и пушит integration. CLI не подтверждает успешность внешнего CI, публикации образов или деплоя.
 

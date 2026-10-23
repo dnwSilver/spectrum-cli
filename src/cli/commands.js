@@ -29,6 +29,7 @@ const releaseCmd = program
 releaseCmd
   .command("start")
   .description("Схлопнуть fragments и атомарно отправить release commit в dev и main/master")
+  .option("--stable", "Явно перейти с 0.x на первый стабильный релиз 1.0.0")
   .option("-d, --dry", "Запустить только предпроверки")
   .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
   .action((command) => runAction(release.releaseStart, command));

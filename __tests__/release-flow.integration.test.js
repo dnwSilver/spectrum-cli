@@ -155,4 +155,22 @@ describe("tag-based release flow with a temporary origin", () => {
     });
     expect(preflight.requireNoPendingRelease("0.1.0").ok).toBe(true);
   });
+
+  test("assembles breaking and removal notes in 0.x without losing their classification", () => {
+    fs.writeFileSync(path.join(workDir, '.changelog/SPEC-2.breaking.md'), '- SPEC-2 Changed API contract.\n');
+    fs.writeFileSync(path.join(workDir, '.changelog/SPEC-3.removed.md'), '- SPEC-3 Removed old API.\n');
+    const fragments = preflight.requireChangelogFragments().data.changelogFragments;
+    const resolved = release.resolveReleaseVersion('0.0.1', fragments);
+    expect(resolved).toEqual({ bumpType: 'minor', newVersion: '0.1.0' });
+    const context = { ...resolved, changelogFragments: fragments };
+    expect(changelog.changelogBuildRelease(context, '2026-10-23')).toBe(true);
+    expect(changelog.changelogRemoveFragments(context)).toBe(true);
+    const text = fs.readFileSync(path.join(workDir, 'CHANGELOG.md'), 'utf8');
+    expect(text).toContain('## 🚀 [0.1.0]');
+    expect(text).toContain('### 💥 Breaking change');
+    expect(text).toContain('### 🗑 Removed');
+    expect(text).not.toContain('[1.0.0]');
+    expect(fs.readdirSync(path.join(workDir, '.changelog'))).toEqual([]);
+    expect(JSON.parse(fs.readFileSync(path.join(workDir, 'package.json'), 'utf8')).version).toBe('0.0.0');
+  });
 });

@@ -43,6 +43,13 @@ bash install.sh --uninstall
 
 Запускайте команды из корня Git-репозитория проекта. Для `changelog append` нужен `CHANGELOG.md` и ветка вида `<type>/<YOUTRACK-ID>[-slug]`, например `feature/ABC-123-login`. Команда создает файл `.changelog/<name>.<type>.md`; `changelog check` проверяет его и формат `CHANGELOG.md`.
 
-`release start` требует ветку `dev`/`develop`, настроенный `origin`, production-ветку `main`/`master` и опубликованный стабильный тег `release/X.Y.Z`, `hotfix/X.Y.Z` либо старый `vX.Y.Z`. Команда создает коммит и пушит его в обе ветки. Сначала ознакомьтесь с [процессом релиза](./RELEASE.md) и [проверками команд](./README.md#preflight-проверки-по-командам).
+`release start` требует ветку `dev`/`develop`, настроенный `origin`, production-ветку `main`/`master` и опубликованный стабильный тег `release/X.Y.Z`, `hotfix/X.Y.Z` либо старый `vX.Y.Z`. Команда создает коммит и пушит его в обе ветки. До `1.0.0` breaking/removed повышают minor; первый стабильный выпуск требует явного `spectrum release start --stable`. Для alpha-сборок нужен shared `ci-version` с той же политикой `0.x`. Сначала ознакомьтесь с [процессом релиза](./RELEASE.md) и [проверками команд](./README.md#preflight-проверки-по-командам).
 
-Для `chart start` нужен Helm chart в `charts/<chart-name>/Chart.yaml`, верхний заголовок версии в его `CHANGELOG.md` и `SC_OWNER_PAT` для проверки Helm-registry. Остальные требования конкретных команд описаны в [README.md](./README.md).
+Для `chart start` нужен Helm chart в `charts/<chart-name>/Chart.yaml`, верхний заголовок версии в его `CHANGELOG.md` и `SC_DEVELOPER_PAT` для проверки Helm-registry (PAT со scope `api` и доступом к проекту; Owner не требуется). Остальные требования конкретных команд описаны в [README.md](./README.md).
+
+Для обратной совместимости chart-команды принимают `SC_OWNER_PAT`, если
+`SC_DEVELOPER_PAT` не задана или пуста. `SC_OWNER_PAT` deprecated: поддержка
+будет удалена в следующей версии. При её использовании CLI один раз за процесс
+выводит предупреждение с просьбой перейти на `SC_DEVELOPER_PAT`. Если заданы обе
+переменные, используется `SC_DEVELOPER_PAT` без предупреждения.
+
