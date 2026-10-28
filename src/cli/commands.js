@@ -4,9 +4,12 @@ const hotfix = require('../hotfix');
 const changelog = require('../changelog');
 const chart = require('../chart');
 const token = require('../token');
+const nextjs = require('../nextjs');
+const sbom = require('../sbom');
+const security = require('../security');
 const { upgrade } = require('./update-check');
 const { version: pkgVersion } = require('../../package.json');
-const { runAction } = require('./run-action');
+const { runAction, runAutomationAction } = require('./run-action');
 
 function registerCommands(program) {
 program
@@ -20,6 +23,81 @@ program
   .option("-d, --dry", "Запустить только предпроверки")
   .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
   .action((command) => runAction(upgrade, command));
+
+// Команды Next.js
+const nextjsCmd = program
+  .command("nextjs")
+  .description("Обработка Next.js build artifacts");
+
+nextjsCmd
+  .command("licenses")
+  .description("Сохранить LICENSE встроенных пакетов в standalone")
+  .allowExcessArguments(false)
+  .option("-d, --dry", "Запустить только предпроверки")
+  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
+  .action((command) => runAutomationAction(nextjs.licenses, command));
+
+// Команды SBOM
+const sbomCmd = program
+  .command("sbom")
+  .description("Работа с SBOM");
+
+const catalogCmd = sbomCmd
+  .command("catalog")
+  .description("Каталоги встроенных зависимостей Next.js");
+
+catalogCmd
+  .command("resolve")
+  .description("Найти проверенные OCI-каталоги для образа приложения")
+  .allowExcessArguments(false)
+  .option("-d, --dry", "Запустить только предпроверки")
+  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
+  .action((command) => runAutomationAction(sbom.resolve, command));
+
+catalogCmd
+  .command("populate")
+  .description("Построить и опубликовать каталог из официальных исходников")
+  .allowExcessArguments(false)
+  .option("-d, --dry", "Запустить только предпроверки")
+  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
+  .action((command) => runAutomationAction(sbom.populate, command));
+
+// Команды security
+const securityCmd = program
+  .command("security")
+  .description("Ночная проверка и исправление HIGH/CRITICAL");
+
+securityCmd
+  .command("scan")
+  .description("Проверить production npm-зависимости и runtime-образ")
+  .allowExcessArguments(false)
+  .option("-d, --dry", "Запустить только предпроверки")
+  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
+  .action((command) => runAutomationAction(security.scan, command));
+
+securityCmd
+  .command("track")
+  .description("Создать или найти YouTrack-задачи в центральном pipeline")
+  .allowExcessArguments(false)
+  .option("-d, --dry", "Запустить только предпроверки")
+  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
+  .action((command) => runAutomationAction(security.track, command));
+
+securityCmd
+  .command("reconcile")
+  .description("Дождаться центрального tracker и получить номера задач")
+  .allowExcessArguments(false)
+  .option("-d, --dry", "Запустить только предпроверки")
+  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
+  .action((command) => runAutomationAction(security.reconcile, command));
+
+securityCmd
+  .command("repair")
+  .description("Исправить, проверить и создать отдельный MR на проектную задачу")
+  .allowExcessArguments(false)
+  .option("-d, --dry", "Запустить только предпроверки")
+  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
+  .action((command) => runAutomationAction(security.repair, command));
 
 // Команды релиза
 const releaseCmd = program

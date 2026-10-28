@@ -7,6 +7,10 @@ const mockToken = { tokenRotate: jest.fn() };
 const mockHotfix = { hotfixStart: jest.fn(), hotfixDeploy: jest.fn(), hotfixClose: jest.fn() };
 const mockUpdate = { checkForUpdates: jest.fn(), upgrade: jest.fn() };
 
+const mockNextjs = { licenses: jest.fn() };
+const mockSbom = { resolve: jest.fn(), populate: jest.fn() };
+const mockSecurity = { scan: jest.fn(), track: jest.fn(), reconcile: jest.fn(), repair: jest.fn() };
+
 const mockState = {
   root: null,
   helpConfig: null,
@@ -101,19 +105,30 @@ jest.mock("../src/chart", () => mockChart);
 jest.mock("../src/token", () => mockToken);
 jest.mock("../src/hotfix", () => mockHotfix);
 jest.mock("../src/cli/update-check", () => mockUpdate);
+jest.mock("../src/nextjs", () => mockNextjs);
+jest.mock("../src/sbom", () => mockSbom);
+jest.mock("../src/security", () => mockSecurity);
 jest.mock("../package.json", () => ({ version: "9.9.9" }), { virtual: true });
 
 describe("index CLI wiring", () => {
   const originalExit = process.exit;
   const originalError = console.error;
+  const originalExitCode = process.exitCode;
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.resetModules();
     mockUpdate.checkForUpdates.mockResolvedValue(undefined);
+    for (const module of [mockNextjs, mockSbom, mockSecurity]) {
+      Object.values(module).forEach(handler => handler.mockReset().mockResolvedValue(0));
+    }
     process.exit = jest.fn();
     console.error = jest.fn();
     require("../index.js");
+  });
+
+  afterEach(() => {
+    process.exitCode = originalExitCode;
   });
 
   afterAll(() => {
@@ -125,18 +140,86 @@ describe("index CLI wiring", () => {
     expect(mockState.root._parse).toHaveBeenCalled();
   });
 
-  test("every action has short dry and silence flags", () => {
+  test("all actions support dry/silence and automation rejects excess arguments", () => {
     const actions = [];
     const collect = (command) => {
       if (command._action) actions.push(command);
       command._commands.forEach(collect);
     };
     collect(mockState.root);
-    expect(actions).toHaveLength(14);
+    expect(actions).toHaveLength(21);
+    const automation = new Set(["licenses", "resolve", "populate", "scan", "track", "reconcile", "repair"]);
+    const workflow = actions.filter(command => !automation.has(command._name));
+    expect(workflow).toHaveLength(14);
+    for (const command of actions.filter(command => automation.has(command._name))) {
+      expect(command._allowExcessArguments).toBe(false);
+    }
     for (const command of actions) {
       expect(command._options.map((option) => option.definition)).toContain("-d, --dry");
       expect(command._options.map((option) => option.definition)).toContain("-s, --silence");
     }
+  });
+
+  test.each([
+    ["nextjs licenses", mockNextjs, "licenses"],
+    ["sbom catalog resolve", mockSbom, "resolve"],
+    ["sbom catalog populate", mockSbom, "populate"],
+    ["security scan", mockSecurity, "scan"],
+    ["security track", mockSecurity, "track"],
+    ["security reconcile", mockSecurity, "reconcile"],
+    ["security repair", mockSecurity, "repair"],
+  ])("%s invokes its handler without an update check", async (path, module, method) => {
+    const command = path.split(" ").reduce(
+      (parent, name) => parent._commands.find(child => child._name === name),
+      mockState.root
+    );
+    await command._action();
+    expect(module[method]).toHaveBeenCalledTimes(1);
+    expect(module[method]).toHaveBeenCalledWith({});
+    expect(mockUpdate.checkForUpdates).not.toHaveBeenCalled();
+    expect(process.exit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+  });
+
+  test.each(["nextjs licenses", "sbom catalog resolve", "sbom catalog populate", "security scan", "security track", "security reconcile", "security repair"])("%s forwards dry/silence in async command context", async path => {
+    const { isDryRun, reportPreflight } = require('../src/cli/command-executor');
+    const command = path.split(" ").reduce((parent, name) => parent._commands.find(child => child._name === name), mockState.root);
+    const target = path.startsWith('nextjs') ? mockNextjs : path.startsWith('sbom') ? mockSbom : mockSecurity;
+    const method = path.split(' ').pop();
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      target[method].mockImplementation(async options => {
+        await Promise.resolve();
+        expect(options).toEqual({ dry: true, silence: true });
+        expect(isDryRun()).toBe(true);
+        reportPreflight('fixture', 'fixture');
+        return 0;
+      });
+      await command._action({ opts: () => ({ dry: true, silence: true }) });
+      expect(log.mock.calls.flat().join(' ')).not.toContain('Проверено');
+      expect(mockUpdate.checkForUpdates).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
+    } finally { log.mockRestore(); }
+  });
+
+  test.each([0, 1, 2])("automation preserves exit code %s", async code => {
+    mockNextjs.licenses.mockResolvedValue(code);
+    const command = mockState.root._commands.find(child => child._name === "nextjs")
+      ._commands.find(child => child._name === "licenses");
+    await command._action();
+    expect(process.exitCode).toBe(code);
+    expect(process.exit).not.toHaveBeenCalled();
+  });
+
+  test("automation reports rejected handler and sets exit 1", async () => {
+    mockSbom.resolve.mockRejectedValue(new Error("failed fixture"));
+    const command = mockState.root._commands.find(child => child._name === "sbom")
+      ._commands.find(child => child._name === "catalog")
+      ._commands.find(child => child._name === "resolve");
+    await command._action();
+    expect(console.error).toHaveBeenCalledWith("ERROR: failed fixture");
+    expect(process.exitCode).toBe(1);
+    expect(process.exit).not.toHaveBeenCalled();
   });
 
   test("dry option from Commander opts skips the update check and reaches the handler", async () => {

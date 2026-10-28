@@ -9,6 +9,19 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [5.1.0]
+
+### Changed
+
+- Deployment-адреса и GitLab-проекты задаются окружением: встроенные URL/namespace удалены, примеры и fixtures используют example-домены. Добавлены preflight наличия настроек, доступности, GitLab token scope/роли, YouTrack identity/проектов/полей и registry login/чтения. Права записи не объявляются доказанными по успешному GET.
+
+### Added
+
+- Все новые automation-команды поддерживают `-d, --dry` и `-s, --silence`: dry выполняет только предпроверки без изменения исходников, отчётов и удалённых сущностей; silence скрывает успешные предпроверки, сохраняя ошибки и результаты.
+
+- Команды `nextjs licenses`, `sbom catalog resolve/populate` и `security scan/track/reconcile/repair` перенесены из CI-компонентов в JavaScript-модули CLI. Сохранены OCI provenance/integrity, CVE и проектные задачи, Priority, изоляция проверок, проверки исправлений и отчёты для Mattermost.
+- Автоматизация работает без интерактивных запросов и проверки обновлений; версии CLI в CI закрепляются служебными образами. Python для новых команд не требуется.
+
 ## 🚀 [5.0.2] - 2026-10-23
 
 ### Changed

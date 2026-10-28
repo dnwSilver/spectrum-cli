@@ -14,7 +14,7 @@ npm install -g spectrum-cli
 spectrum --help
 ```
 
-Перед выполнением каждой команды CLI проверяет опубликованную версию `spectrum-cli`
+Перед выполнением команд workflow CLI проверяет опубликованную версию `spectrum-cli`
 в npm Registry. Если доступна новая версия, показывает текущую и новую версии и
 команду `spectrum upgrade`. Она запускает `npm install -g spectrum-cli`.
 Проверка ограничена 200 мс; недоступность Registry не влияет на выполнение
@@ -476,3 +476,134 @@ MIT License - см. [LICENSE](./LICENSE)
 ---
 
 _Создано для автоматизации повседневных задач разработки_ 🛠️
+
+## Команды для CI: Next.js, SBOM и security
+
+Начиная с 5.1.0 логика команд написана на JavaScript и входит в npm-пакет.
+Команды не задают вопросов и не проверяют обновления CLI. Они не запускают
+release/hotfix preflight, рассчитанный на интерактивную работу разработчика.
+
+| Команда | Назначение | Результат |
+| --- | --- | --- |
+| `spectrum nextjs licenses` | Сохранить исходные LICENSE уже включённых compiled-пакетов Next.js | JSON summary в stdout; код 2 при неполном результате |
+| `spectrum sbom catalog resolve` | Найти Next в immutable образе, проверить OCI-каталоги, запросить отсутствующие версии | `sbom-catalog/<prefix>/{selection.json,report.json,report.md}` |
+| `spectrum sbom catalog populate` | Построить каталог по официальному npm tarball и историческому Git tree | `sbom-catalog-updater/{report.json,report.md}` |
+| `spectrum security scan` | Проверить `npm audit --omit=dev`, runtime и фактическую версию Node | `security-report/findings.json`, raw evidence, `scan.env` |
+| `spectrum security reconcile` | Запустить центральный tracker и получить ссылки на задачи | `security-report/tracked.json` |
+| `spectrum security track` | Найти/создать общие CVE и проектные задачи | `security-report/tracked.json` в центральном pipeline |
+| `spectrum security repair` | Исправить одну проектную задачу за MR, выполнить проверки и повторный аудит | `security-report/{final.json,message.json}` |
+
+Код 0 означает успешное выполнение, 1 — ошибку security/запуска, 2 — неполный
+результат SBOM или LICENSE. Команды работают в текущем каталоге. Отсутствующие
+credentials/некорректные отчёты приводят к ошибке, а не к чистому аудиту.
+Автоматическое слияние MR отключено; сетевые записи не повторяются вслепую.
+
+Компоненты передают свои inputs через job-local окружение. `security scan`
+читает `NIGHTLY_YOUTRACK_PROJECT`, `NIGHTLY_YOUTRACK_TIME_TRACKING_ARTICLE`,
+`NIGHTLY_YOUTRACK_TESTER`, необязательный `NIGHTLY_YOUTRACK_SUBSYSTEM`,
+`NIGHTLY_DOCKERFILE`, `NIGHTLY_PLATFORMS` и `NIGHTLY_CHECK_COMMANDS` (JSON argv).
+Токены `GLAB_BOT_PAT` и `YOUTRACK_PRIVATE_TOKEN` остаются секретными CI variables;
+YouTrack-токен нужен только центральному tracker. Для registry используются
+`NEXUS_USER`/`NEXUS_PASSWORD` либо стандартные CI registry credentials.
+Секреты автоматизации исключаются из окружения выполняемых проверок проекта.
+
+`sbom catalog resolve` читает `SBOM_CATALOG_CLIENT_ENABLED=true`,
+`SBOM_CATALOG_FRAMEWORK=nextjs`, `SBOM_CATALOG_PREFIX` (по умолчанию `site:`),
+`SBOM_CATALOG_REPOSITORY`, `DOCKER_IMAGE`, `APP_VERSION` и стандартные GitLab
+`CI_*` variables. Чтение каталога использует `SBOM_CATALOG_USER` и
+`SBOM_CATALOG_PASSWORD`, если заданы. `populate` требует защищённый `main`,
+`NEXT_CATALOG_VERSIONS` (JSON-массив 1..10 точных версий) и центральные
+`NEXUS_USER`/`NEXUS_PASSWORD`. Namespace записи задаёт только доверенная
+project variable `SBOM_CATALOG_PUBLISH_REPOSITORY`.
+
+Внешние инструменты: Linux amd64 для SBOM bootstrap; Git для каталога,
+Trivy/Skopeo/Buildah для runtime-аудита и исправлений. SBOM-команды скачивают
+закреплённые ORAS/Syft с проверкой SHA-256, ограничениями размера и времени.
+Python для этих команд не требуется. Они не выполняют код из npm tarball
+или upstream build-рецептов. Неоднозначное происхождение остаётся unresolved.
+Поля CVE, Severity, Priority и Type=Group проверяются до создания подзадач;
+CRITICAL получает Stopper (Неотложная), HIGH — Critical (Критическая).
+
+Образы и адреса сервисов задаёт CI-конфигурация конкретной установки.
+CLI не содержит дефолтов для YouTrack, registry или внутренних GitLab-проектов.
+Само наличие команды `track` не сериализует процессы: job должен оставаться
+в одном центральном проекте с `resource_group: nightly-youtrack-global`.
+Отдельный consumer lock `nightly-security-fix` защищает исправления проекта.
+
+Для проверки миграции:
+
+```sh
+npm ci
+npm test -- --runInBand
+npm pack --dry-run
+```
+
+Тесты используют локальные Git-репозитории и fake API. Зафиксированные parity
+fixtures получены из прежнего Python-кода; исполняемый Python в пакет не входит.
+Публикация CLI, образов, компонентов и запуск живого pipeline — отдельные шаги.
+
+### Preflight для команд автоматизации
+
+Обязательные deployment-настройки задаются явно:
+
+| Команда | Настройки |
+| --- | --- |
+| `security track` | `YOUTRACK_URL`, `YOUTRACK_PRIVATE_TOKEN`, `CI_API_V4_URL`, `GLAB_BOT_PAT`, идентификаторы consumer job/project и component SHA |
+| `security reconcile` | `NIGHTLY_TRACKER_PROJECT`, `NIGHTLY_COMPONENT_SHA`, `NIGHTLY_SCAN_JOB_ID`, `CI_PROJECT_ID`, GitLab API/token; при пустом отчёте сеть не нужна |
+| `security repair` | GitLab API/token и результаты scan/tracking; при пустом отчёте запись и проверка токена не нужны |
+| `sbom catalog resolve` | `SBOM_CATALOG_REPOSITORY`, `DOCKER_IMAGE`, `APP_VERSION`; `SBOM_CATALOG_UPDATER_PROJECT` для запроса отсутствующих версий |
+| `sbom catalog populate` | `SBOM_CATALOG_PUBLISH_REPOSITORY`, `NEXUS_USER`, `NEXUS_PASSWORD`, защищённый main и точные `NEXT_CATALOG_VERSIONS` |
+| `security scan/repair` с `NEXUS_*` | Дополнительно явный `NIGHTLY_REGISTRY_HOSTS`; один логин без пароля или наоборот считается ошибкой |
+
+В GitLab выполняются GET `/user`, `/personal_access_tokens/self` и чтение
+целевых проектов. Проверяются активность токена, scope `api` для записи
+(`api`/`read_api` для чтения), эффективная роль Developer/Reporter и состояние
+проекта. Fine-grained/прочие токены, для которых introspection не подтверждает
+эти scope, не считаются проверенными. Защита веток/тегов дополнительно
+проверяется сервером при конкретной операции.
+
+В YouTrack выполняются GET `/users/me`, чтение двух проектов, их полей и
+поиск задач. До создания первой задачи проверяются активность пользователя,
+доступность проектов и обязательные поля. Ответы 401/403, недоступность и
+неверный TLS приводят к ошибке с названием проверки; секреты/тела ответов
+не выводятся. Инспекция полей не требует тестового изменения проекта.
+
+Writer выполняет ORAS login и чтение точного namespace до скачивания исходников
+и построения каталога. Preflight сохраняется в отчёте. Чтение/логин не доказывают
+права Create/Update/Link Issue, доступ к приватным полям, workflow-переходам или
+registry push: эти права проверяются соответствующими операциями. Они явно
+помечены `checked_by_operations`/`checked_by_publish`, без ложного статуса
+«запись проверена». Preflight не создаёт задач, MR, upload-сессий или пробных
+каталогов. Ошибка preflight останавливает следующие изменения и остаётся
+в JSON/Markdown/notification-артефактах, когда исходный отчёт уже доступен.
+
+Источник контрактов: [GitLab token scopes](https://docs.gitlab.com/security/tokens/access_token_scopes/),
+[YouTrack My User Profile](https://www.jetbrains.com/help/youtrack/devportal/resource-api-users-me.html),
+[YouTrack project fields](https://www.jetbrains.com/help/youtrack/devportal/resource-api-admin-projects-projectID-customFields.html).
+
+### Dry и silence для команд автоматизации
+
+Все семь команд `nextjs licenses`, `sbom catalog resolve/populate` и
+`security scan/track/reconcile/repair` поддерживают `-d, --dry` и
+`-s, --silence`, включая сочетание `-ds`.
+
+```sh
+spectrum nextjs licenses --dry
+spectrum sbom catalog populate --dry --silence
+spectrum security repair -ds
+```
+
+`--dry` выполняет предпроверки настроек, файлов, инструментов и доступов,
+после чего останавливается перед действиями команды. Он не копирует LICENSE,
+не выполняет npm audit/Trivy/Syft scan или исправления, не создаёт задачи,
+MR и downstream pipeline, не публикует каталоги и не перезаписывает отчёты.
+Для проверки используются GET-запросы, чтение image descriptor и metadata
+Git/проектов; SBOM preflight может загрузить закреплённые инструменты во
+временную папку и выполнить registry login с временным auth-файлом.
+Временные файлы удаляются; исходники, lockfiles и существующие артефакты
+сохраняются. При неполных входных отчётах dry завершается с ошибкой.
+
+`--silence` скрывает только сообщения об успешно пройденных предпроверках.
+Ошибки, предупреждения, результаты команды и итог dry остаются видимыми.
+Это тот же смысл флага, что у release/hotfix команд. Без dry выполняются
+обычные действия и сохраняются прежние коды завершения 0/1/2.

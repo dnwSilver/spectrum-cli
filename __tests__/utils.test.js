@@ -194,27 +194,27 @@ describe('Utils', () => {
 
     describe('getRemoteUrl', () => {
         test('should parse SSH remote url', () => {
-            execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project.git');
+            execSync.mockReturnValue('git@gitlab.example.com:group/project.git');
             const result = utils.getRemoteUrl();
-            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+            expect(result).toBe('https://gitlab.example.com/group/project');
         });
 
         test('should parse SSH remote url without .git suffix', () => {
-            execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project');
+            execSync.mockReturnValue('git@gitlab.example.com:group/project');
             const result = utils.getRemoteUrl();
-            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+            expect(result).toBe('https://gitlab.example.com/group/project');
         });
 
         test('should parse HTTPS remote url', () => {
-            execSync.mockReturnValue('https://gitlab.spectrumdata.tech/group/project.git');
+            execSync.mockReturnValue('https://gitlab.example.com/group/project.git');
             const result = utils.getRemoteUrl();
-            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+            expect(result).toBe('https://gitlab.example.com/group/project');
         });
 
         test('should parse HTTPS remote url without .git suffix', () => {
-            execSync.mockReturnValue('https://gitlab.spectrumdata.tech/group/project');
+            execSync.mockReturnValue('https://gitlab.example.com/group/project');
             const result = utils.getRemoteUrl();
-            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+            expect(result).toBe('https://gitlab.example.com/group/project');
         });
 
         test('should return null when git command fails', () => {
@@ -232,10 +232,10 @@ describe('Utils', () => {
 
     describe('getMergeRequestUrl', () => {
         test('should build MR url with encoded branches', () => {
-            execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project.git');
+            execSync.mockReturnValue('git@gitlab.example.com:group/project.git');
             const result = utils.getMergeRequestUrl('release/1.2.3', 'main');
             expect(result).toBe(
-                'https://gitlab.spectrumdata.tech/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main'
+                'https://gitlab.example.com/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main'
             );
         });
 
