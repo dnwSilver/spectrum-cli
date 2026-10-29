@@ -23,7 +23,9 @@ program.configureHelp({
     if (commands.length > 0) {
       output += "Команды:\n";
       commands.forEach((cmd) => {
-        const nameAndArgs = cmd.name() + cmd.usage().replace(/^[^\s]+\s*/, " ");
+        const nameAndArgs = helper.subcommandTerm
+          ? helper.subcommandTerm(cmd)
+          : cmd.name() + cmd.usage().replace(/^[^\s]+\s*/, " ");
         const aliases = cmd.aliases();
         const description = cmd.description();
 
@@ -50,6 +52,7 @@ program.configureHelp({
     return output;
   },
 });
+for (const command of program.commands || []) configureHelp(command);
 }
 
 module.exports = { configureHelp };

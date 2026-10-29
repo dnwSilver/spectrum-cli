@@ -15,6 +15,7 @@ jest.mock('../src/common/utils', () => {
 const utils = require('../src/common/utils');
 const { releaseStart } = require('../src/release');
 const { resolveReleaseState } = require('../src/changelog/open-release');
+const { withCommandOptions } = require('../src/cli/command-executor');
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -49,6 +50,33 @@ describe('repeated release start against a real temporary origin', () => {
     utils.execCommand.mockImplementation((command) => command.startsWith('npx --yes prettier ') ? true : jest.requireActual('../src/common/utils').execCommand(command));
   });
   afterEach(() => { process.chdir(cwd); fs.rmSync(root, { recursive: true, force: true }); });
+
+  test('no-verify assembles and extends a release despite dirty files and changed production history', async () => {
+    fragment('fix.fixed.md', 'First fix.');
+    fs.writeFileSync('CHANGELOG.md', fs.readFileSync('CHANGELOG.md', 'utf8').replace('Published.', 'Edited history.'));
+    fs.writeFileSync('local-untracked', 'unrelated work');
+    git(work, 'branch', 'hotfix/TASK-1-1.0.1');
+    utils.execCommand.mockClear();
+    utils.execSilent.mockClear();
+    expect(await withCommandOptions({ verify: false }, releaseStart)).toBe(true);
+    expect(fs.readFileSync('CHANGELOG.md', 'utf8')).toContain('## 🚀 [1.0.1]');
+    expect(fs.readFileSync('CHANGELOG.md', 'utf8')).toContain('Edited history.');
+    expect(git(origin, 'rev-parse', 'master')).toBe(git(origin, 'rev-parse', 'dev'));
+    expect(fs.readFileSync('local-untracked', 'utf8')).toBe('unrelated work');
+    expect(utils.execCommand.mock.calls.some(([command]) => command.startsWith('git fetch'))).toBe(false);
+    expect(utils.execSilent.mock.calls.some(([command]) => command.includes('ls-remote') || command.startsWith('git show'))).toBe(false);
+
+    fs.writeFileSync('.changelog/second.fixed.md', '- Second fix.\n');
+    expect(await withCommandOptions({ verify: false }, releaseStart)).toBe(true);
+    const text = fs.readFileSync('CHANGELOG.md', 'utf8');
+    expect(text).toContain('First fix.');
+    expect(text).toContain('Second fix.');
+    expect(text).not.toContain('[1.0.2]');
+    expect(fs.readdirSync('.changelog')).toEqual([]);
+    const head = git(work, 'rev-parse', 'HEAD');
+    expect(await withCommandOptions({ verify: false }, releaseStart)).toBe(true);
+    expect(git(work, 'rev-parse', 'HEAD')).toBe(head);
+  });
 
   test('appends new notes to master release, keeps version/date, removes fragments, then starts next version after tag', async () => {
     fragment('feature.added.md', 'Original feature.');

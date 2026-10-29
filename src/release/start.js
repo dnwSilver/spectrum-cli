@@ -1,6 +1,8 @@
 const { changelogBuildRelease, changelogRemoveFragments } = require('../changelog');
-const { requireReleaseState, requireReleaseFragments, appendOpenRelease } = require('../changelog/open-release');
-const { runCommand } = require('../cli/command-executor');
+const { requireReleaseState, readLocalReleaseState, requireReleaseFragments, appendOpenRelease } = require('../changelog/open-release');
+const { runCommand, isVerificationSkipped } = require('../cli/command-executor');
+const { getMainBranch, getDevelopBranch } = require('../common/utils');
+const { readLocalStableVersion } = require('../preflight/tags');
 const { requireGitRepo, requireCleanWorkingTree, requireCurrentBranchUpToDateWithRemote, requireMainAndDevBranches, requireOnDevBranch, requireDevContainsRemoteMain, requireReleaseVersionAvailable, requireLatestStableVersion, requireFileExists, requireChangelogFormatted } = require('../preflight');
 const { CHANGELOG_FILE } = require('../changelog/config');
 const { detectBumpType, resolveReleaseVersion } = require('./version');
@@ -12,16 +14,17 @@ function releaseStart(options = {}) {
             { name: 'git-repo', run: requireGitRepo },
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
-            { name: 'main-and-dev-branches', run: requireMainAndDevBranches },
+            { name: 'main-and-dev-branches', run: requireMainAndDevBranches,
+                prepare: () => ({ ok: true, data: { mainBranch: getMainBranch(), devBranch: getDevelopBranch() } }) },
             { name: 'on-dev-branch', run: requireOnDevBranch },
             { name: 'dev-contains-main', run: requireDevContainsRemoteMain },
-            { name: 'stable-version', run: requireLatestStableVersion },
+            { name: 'stable-version', prepare: readLocalStableVersion, run: requireLatestStableVersion },
             { name: 'changelog-exists', run: () => requireFileExists(CHANGELOG_FILE) },
-            { name: 'release-state', requires: ['mainBranch', 'stableVersion'], run: requireReleaseState },
+            { name: 'release-state', prepare: readLocalReleaseState, requires: ['mainBranch', 'stableVersion'], run: requireReleaseState },
             { name: 'changelog-prettier-check', run: requireChangelogFormatted },
-            { name: 'changelog-fragments', run: requireReleaseFragments },
+            { name: 'changelog-fragments', prepare: true, run: requireReleaseFragments },
             {
-                name: 'detect-bump-type',
+                name: 'detect-bump-type', prepare: true,
                 requires: ['changelogFragments', 'stableVersion'],
                 run: (ctx) => {
                     if (options.stable && (!ctx.stableVersion.startsWith('0.') ||
@@ -35,8 +38,10 @@ function releaseStart(options = {}) {
                         return { ok: false, reason: 'Не удалось вычислить release-версию от последнего стабильного тега.' };
                     }
 
-                    const versionCheck = requireReleaseVersionAvailable(resolved.newVersion);
-                    if (!versionCheck.ok) return versionCheck;
+                    if (!isVerificationSkipped()) {
+                        const versionCheck = requireReleaseVersionAvailable(resolved.newVersion);
+                        if (!versionCheck.ok) return versionCheck;
+                    }
                     return { ok: true, data: resolved };
                 }
             }

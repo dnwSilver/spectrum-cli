@@ -58,6 +58,27 @@ describe('Chart start', () => {
     });
 
     describe('chartStart', () => {
+        test('no-verify reads the tag inputs and pushes without Git or registry preflights', async () => {
+            const executor = jest.requireActual('../../src/cli/command-executor');
+            fs.existsSync.mockReturnValue(true);
+            fs.readdirSync.mockReturnValue([{ name: 'app', isDirectory: () => true }]);
+            fs.readFileSync.mockImplementation((file) => String(file).endsWith('Chart.yaml')
+                ? 'name: app\n' : '## [1.2.4]\n');
+            utils.execCommand.mockReturnValue(true);
+            global.fetch = jest.fn(() => { throw new Error('must not probe registry'); });
+            runCommand.mockImplementation(executor.runCommand);
+
+            await expect(executor.withCommandOptions({ verify: false },
+                () => chart.chartStart({ wait: false }))).resolves.toBe(true);
+            expect(utils.execCommand.mock.calls).toEqual([
+                ['git tag "chart-app-1.2.4"'],
+                ['git push origin "chart-app-1.2.4"']
+            ]);
+            expect(utils.execSilent).not.toHaveBeenCalled();
+            expect(global.fetch).not.toHaveBeenCalled();
+            expect(utils.logError).not.toHaveBeenCalled();
+        });
+
         test('should call shared executor', async () => {
             runCommand.mockResolvedValue(true);
             await expect(chart.chartStart()).resolves.toBe(true);

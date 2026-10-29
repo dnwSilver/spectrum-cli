@@ -72,6 +72,25 @@ describe('hotfix deploy-close with real Git origins', () => {
         fs.rmSync(temp, { recursive: true, force: true });
     });
 
+    test('no-verify executes the hotfix lifecycle from a feature branch without preflight fetch', () => {
+        git(work, 'switch', '-c', 'feature/TASK-1');
+        fragment('TASK-1.fixed.md');
+        // Cached refs and local tags suffice for preparation; origin is offline.
+        git(work, 'remote', 'set-url', 'origin', path.join(temp, 'unavailable'));
+        expect(withCommandOptions({ verify: false }, hotfixStart)).toBe(true);
+        expect(contents()).toContain('## 🩹 [1.2.4]');
+        expect(log.mock.calls.flat().join(' ')).not.toContain('Проверено');
+        git(work, 'remote', 'set-url', 'origin', origin);
+        commit('Prepared without branch preflight');
+        const head = git(work, 'rev-parse', 'HEAD');
+        expect(withCommandOptions({ verify: false }, hotfixDeploy)).toBe(true);
+        expect(git(origin, 'rev-parse', 'hotfix/1.2.4')).toBe(head);
+        expect(withCommandOptions({ verify: false }, hotfixClose)).toBe(true);
+        expect(git(work, 'branch', '--show-current')).toBe('dev');
+        expect(git(origin, 'merge-base', '--is-ancestor', head, 'refs/heads/dev')).toBe('');
+        expect(log.mock.calls.flat().join(' ')).not.toContain('Проверено');
+    });
+
     test('deploy rejects missing preparation, wrong branch, local-only commits, and dirty files', () => {
         expect(hotfixDeploy()).toBe(false);
         git(work, 'switch', 'master');

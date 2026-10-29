@@ -1,8 +1,8 @@
 const { logSuccess } = require('../common/utils');
-const { isDryRun, reportDryRun } = require('../cli/command-executor');
+const { isDryRun, isVerificationSkipped, reportDryRun } = require('../cli/command-executor');
 const { parseChangelog } = require('../changelog/hotfix');
 const { git, exists, ancestor } = require('./git');
-const { preflightReport, context, assertOriginUnchanged, run } = require('./checks');
+const { preflightReport, context, integrationContext, assertOriginUnchanged, run } = require('./checks');
 function hotfixClose() {
     return run(() => {
         const checks = preflightReport('hotfix close');
@@ -15,7 +15,7 @@ function hotfixClose() {
             }
         }, `опубликованный тег ${tag} указывает на текущий commit`,
         ctx.stable && ctx.productionText && ctx.remoteTags && ctx.head ? null : 'не определены stable-тег или production commit');
-        const integration = checks.check('integration-history', () => {
+        const integration = isVerificationSkipped() ? { value: integrationContext() } : checks.check('integration-history', () => {
             const dev = ['develop', 'dev'].find((name) => exists(`refs/remotes/origin/${name}`));
             if (!dev) throw new Error('Не найдена integration-ветка origin/dev или origin/develop.');
             const devRef = `refs/remotes/origin/${dev}`;

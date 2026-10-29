@@ -18,7 +18,8 @@ spectrum --help
 в npm Registry. Если доступна новая версия, показывает текущую и новую версии и
 команду `spectrum upgrade`. Она запускает `npm install -g spectrum-cli`.
 Проверка ограничена 200 мс; недоступность Registry не влияет на выполнение
-команды и не выводит ошибку.
+команды и не выводит ошибку. С `--dry` или `--no-verify` проверка обновлений
+не выполняется.
 
 ### 🔧 Из исходников
 
@@ -42,6 +43,9 @@ spectrum --help
 # Показать текущую версию CLI
 spectrum -v  # или spectrum --version
 
+# Обновить установленный CLI
+spectrum upgrade
+
 # 🚀 Управление релизами
 spectrum release start [--stable]    # Схлопнуть fragments и атомарно отправить release commit в dev и main/master
 spectrum release deploy              # Создать стабильный тег release/X.Y.Z из заголовка CHANGELOG
@@ -54,7 +58,7 @@ spectrum hotfix close                # После stable pipeline: main/master �
 
 # 📈 Теги chart
 spectrum chart start         # Создать тег по CHANGELOG.md чарта и дождаться публикации в Helm-registry
-spectrum chart start -n      # Не ждать публикации после отправки тега
+spectrum chart start --no-wait # Не ждать публикации после отправки тега
 spectrum chart start --force # Разрешить версию не выше последнего remote-тега, если ее еще нет в registry и Git
 spectrum chart deploy  # Обновить helmrelease.yaml до последнего chart-тега и запушить
 spectrum chart deploy --instances sd,cbch  # Обновить только выбранные инстансы instances/<name>
@@ -67,12 +71,42 @@ spectrum changelog write               # Выравнять заголовки C
 
 # 🔑 GitLab токены
 spectrum token rotate  # Пролить SC_BOT_PAT в CI variables
+
+# CI: Next.js, SBOM и security
+spectrum nextjs licenses
+spectrum sbom catalog resolve
+spectrum sbom catalog populate
+spectrum security scan
+spectrum security track
+spectrum security reconcile
+spectrum security repair
 ```
 
-Все команды с действием показывают, какая предпроверка успешно пройдена;
+По умолчанию команды с действием показывают, какая предпроверка успешно пройдена;
 при ошибке выводят её имя и причину. Независимые предпроверки продолжают
 выполняться после ошибки; зависимые проверки без нужных данных помечаются как
 невыполненные. Шаги команды запускаются, только если все проверки прошли.
+
+`-n, --no-verify` доступен во всех 21 командах с действием: пропускает
+preflight и проверку обновлений CLI, затем запускает действия команды.
+Чтение необходимых входных данных (версии, fragments, пути, конфигурация,
+токены) остаётся частью подготовки к действию. Ошибки чтения и самих операций
+по-прежнему останавливают выполнение. Флаг не отменяет выбор типа fragment,
+запрос токенов, подтверждение публикации chart или ожидание registry.
+Для отключения ожидания у `chart start` отдельно укажите `--no-wait`.
+Прежний короткий флаг `chart start -n` теперь означает `--no-verify`.
+Release/hotfix используют локальные теги и сохранённые refs `origin/*`
+для определения базовой версии, без preflight fetch и сверки с сервером.
+
+```bash
+spectrum release start -n
+spectrum chart start --no-verify --no-wait
+spectrum security repair -ns
+```
+
+`--dry` и `--no-verify` несовместимы: CLI завершится с ошибкой до действий.
+Без `--no-verify` сохраняются обычные предпроверки.
+
 `-s, --silence` скрывает сообщения об успешно пройденных предпроверках.
 Ошибки проверок и итоговое сообщение команды остаются видны; флаг можно
 совмещать с `-d, --dry`.
@@ -88,8 +122,10 @@ GitLab; `token rotate -d` запрашивает токены и проверя�
 | --- | --- | --- |
 | `-d` | `--dry` | Все команды с действием: только предпроверки |
 | `-s` | `--silence` | Все команды с действием: скрыть успешные предпроверки |
-| `-f` | `--force` | `chart start`: разрешить версию не больше последнего тега на `origin`; проверки Git-тега и Helm-registry обязательны |
-| `-n` | `--no-wait` | `chart start`: не ждать появления версии в Helm-registry после push; по умолчанию команда ждёт |
+| `-f` | `--force` | `chart start`: разрешить версию не больше последнего тега на `origin`; остальные preflight сохраняются, если не задан `--no-verify` |
+| `-n` | `--no-verify` | Все команды с действием: пропустить preflight и сразу выполнить действия |
+| — | `--no-wait` | `chart start`: не ждать появления версии в Helm-registry после push; по умолчанию команда ждёт |
+| — | `--stable` | `release start`: переход с 0.x на 1.0.0 |
 | `-i <names>` | `--instances <names>` | `chart deploy`: выбрать инстансы через запятую |
 | `-h` | `--help` | Справка CLI и команд |
 | `-v` | `--version` | Версия CLI |
@@ -100,6 +136,9 @@ GitLab; `token rotate -d` запрашивает токены и проверя�
 # Справка по релизам
 spectrum release --help
 
+# Справка по хотфиксам
+spectrum hotfix --help
+
 # Справка по changelog
 spectrum changelog --help
 
@@ -108,6 +147,11 @@ spectrum chart --help
 
 # Справка по токенам
 spectrum token --help
+
+# Справка по CI-командам
+spectrum nextjs --help
+spectrum sbom catalog --help
+spectrum security --help
 ```
 
 ## ✨ Особенности
@@ -141,6 +185,10 @@ spectrum-cli/
 │   ├── hotfix/          # Проверки и этапы hotfix
 │   ├── token/           # Конфиг, GitLab API и ротация
 │   ├── integrations/    # Общие функции внешних сервисов
+│   ├── automation/      # Общие операции ввода-вывода для CI
+│   ├── nextjs/          # LICENSE standalone-пакетов
+│   ├── sbom/            # Поиск и публикация OCI-каталогов
+│   └── security/        # Аудит, задачи и исправления
 ├── __tests__/           # Модульные и интеграционные тесты
 ├── package.json
 ├── install.sh
@@ -153,26 +201,45 @@ spectrum-cli/
 
 ### Команды
 
-| Команда                     | Описание                            |
-| --------------------------- | ----------------------------------- |
-| `spectrum release start`    | Схлопнуть и опубликовать fragments  |
-| `spectrum release deploy`   | Создать стабильный тег release/X.Y.Z       |
-| `spectrum release close`    | Закрыть релиз                       |
-| `spectrum changelog append` | Создать changelog fragment          |
-| `spectrum changelog check`  | Проверить changelog и fragments     |
-| `spectrum chart start`      | Создать и запушить chart тег        |
-| `spectrum chart deploy`     | Обновить chart версию в helmrelease |
-| `spectrum chart verify`     | Проверить ingress paths chart       |
-| `spectrum token rotate`     | Пролить SC_BOT_PAT в CI             |
+Ниже перечислены все команды с действием из `spectrum --help` и справки
+вложенных групп. Каждая поддерживает `-n, --no-verify`, `-d, --dry` и
+`-s, --silence`.
+
+| Команда | Аргументы и дополнительные опции | Назначение |
+| --- | --- | --- |
+| `spectrum upgrade` | — | Обновить CLI через npm |
+| `spectrum release start` | `--stable` | Собрать fragments и отправить release commit в dev и main/master |
+| `spectrum release deploy` | — | Создать и отправить стабильный тег `release/X.Y.Z` |
+| `spectrum release close` | — | Свести main/master в dev |
+| `spectrum hotfix start` | — | Подготовить hotfix CHANGELOG локально |
+| `spectrum hotfix deploy` | — | Отправить тег `hotfix/X.Y.Z` после merge в production |
+| `spectrum hotfix close` | — | Свести production в dev после stable pipeline |
+| `spectrum changelog append` | `<message>` | Создать changelog fragment |
+| `spectrum changelog check` | — | Проверить CHANGELOG.md и fragments |
+| `spectrum changelog write` | — | Нормализовать заголовки и отформатировать CHANGELOG.md |
+| `spectrum chart start` | `-f, --force`, `--no-wait` | Создать и отправить chart-тег, дождаться registry |
+| `spectrum chart deploy` | `-i, --instances <names>` | Обновить helmrelease и опубликовать изменения |
+| `spectrum chart verify` | `<source_path>` | Сравнить ingress paths с маршрутами Next.js |
+| `spectrum token rotate` | — | Пролить `SC_BOT_PAT` в CI variables |
+| `spectrum nextjs licenses` | — | Сохранить LICENSE compiled-пакетов в standalone |
+| `spectrum sbom catalog resolve` | — | Найти OCI-каталоги зависимостей образа |
+| `spectrum sbom catalog populate` | — | Построить и опубликовать OCI-каталоги |
+| `spectrum security scan` | — | Проверить npm-зависимости и runtime |
+| `spectrum security track` | — | Найти или создать задачи YouTrack |
+| `spectrum security reconcile` | — | Запустить tracker и получить номера задач |
+| `spectrum security repair` | — | Исправить зависимости, проверить и создать MR |
 
 ### 🛡️ Preflight-проверки по командам
+
+Этот список описывает запуск без `--no-verify`.
 
 - `spectrum release start`: чистая и актуальная dev-ветка, `dev` содержит `origin/main` или `origin/master`, стабильный тег, достижимый из production-ветки, согласованная опубликованная история `CHANGELOG.md` и не более одного открытого релиза. При первом запуске нужны валидные fragments и свободная версия; повторный дополняет открытый раздел без повышения версии. `package.json` не читается.
 - `spectrum release deploy`: чистая и актуальная main/master, стабильная версия `X.Y.Z` из верхнего заголовка `CHANGELOG.md`, отсутствие этой версии среди локальных и remote-тегов всех трёх форм. Команда не создает RC-теги.
 - `spectrum release close`: чистая и актуальная main/master, версия из верхнего заголовка `CHANGELOG.md` и remote stable-тег поддерживаемой формы, указывающий на текущий commit.
 - `spectrum changelog append <message>`: `git-repo`, `changelog-exists`, валидные ID задачи, git identity и тип fragment. Команда не изменяет общий `CHANGELOG.md`.
-- `spectrum changelog check`: `git-repo`, `changelog-exists`, `changelog-prettier-check`, наличие и формат всех changelog fragments.
-- `spectrum chart start`: `git-repo`, `clean-working-tree`, `on-main-branch`, `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), валидный верхний SemVer-заголовок в `charts/<chart-name>/CHANGELOG.md`, отсутствие тега `chart-<name>-<version>` локально и на `origin`, отсутствие этой версии чарта в Helm-registry. Для запроса registry нужен `SC_DEVELOPER_PAT` (PAT со scope `api` и доступом к проекту; роль Owner не требуется); ошибка доступа блокирует команду. Право отправки chart-тега определяется отдельно правилами protected tags. `-f, --force` обходит только проверку повышения версии относительно последнего remote-тега. После push команда по умолчанию ждёт версию в registry; `-n, --no-wait` отключает ожидание.
+- `spectrum changelog check`: `git-repo`, `changelog-exists`, `changelog-prettier-check`, наличие и формат всех changelog fragments. С `--no-verify` команда завершается без проверок.
+- `spectrum changelog write`: `git-repo`, `changelog-exists`, доступность Prettier.
+- `spectrum chart start`: `git-repo`, `clean-working-tree`, `on-main-branch`, `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), валидный верхний SemVer-заголовок в `charts/<chart-name>/CHANGELOG.md`, отсутствие тега `chart-<name>-<version>` локально и на `origin`, отсутствие этой версии чарта в Helm-registry. Для запроса registry нужен `SC_DEVELOPER_PAT` (PAT со scope `api` и доступом к проекту; роль Owner не требуется); ошибка доступа блокирует команду. Право отправки chart-тега определяется отдельно правилами protected tags. `-f, --force` обходит только проверку повышения версии относительно последнего remote-тега. После push команда по умолчанию ждёт версию в registry; `--no-wait` отключает ожидание.
 
 Для обратной совместимости chart-команды принимают `SC_OWNER_PAT`, если
 `SC_DEVELOPER_PAT` не задана или пуста. `SC_OWNER_PAT` deprecated: поддержка
@@ -180,8 +247,8 @@ spectrum-cli/
 выводит предупреждение с просьбой перейти на `SC_DEVELOPER_PAT`. Если заданы обе
 переменные, используется `SC_DEVELOPER_PAT` без предупреждения.
 
-- `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
-- `spectrum chart verify <source_path>`: `git-repo`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
+- `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main/master`), `branch-up-to-date`, `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
+- `spectrum chart verify <source_path>`: `git-repo`, `branch-up-to-date`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
 - `spectrum token rotate`: `load-config` (есть валидный `~/.config/spectrum-cli/config.yaml`), `ask-tokens` (owner PAT и `SC_BOT_PAT` только в памяти), `check-access` (все группы и проекты доступны owner PAT).
 
 ## 🔄 Workflow релиза
@@ -323,7 +390,7 @@ CI-часть реализует подключенный release component, а 
 3. Читает версию из верхнего заголовка `charts/<chart-name>/CHANGELOG.md` и проверяет SemVer
 4. Собирает тег `chart-<name>-<version>`
 5. Проверяет, что такого тега еще нет локально и на `origin`, а версия отсутствует в Helm-registry
-6. Создает тег и пушит его в `origin`, затем ждёт появления версии в registry; `-n, --no-wait` отключает ожидание
+6. Создает тег и пушит его в `origin`, затем ждёт появления версии в registry; `--no-wait` отключает ожидание
 
 ### `spectrum chart deploy`
 
@@ -581,16 +648,17 @@ registry push: эти права проверяются соответствую
 [YouTrack My User Profile](https://www.jetbrains.com/help/youtrack/devportal/resource-api-users-me.html),
 [YouTrack project fields](https://www.jetbrains.com/help/youtrack/devportal/resource-api-admin-projects-projectID-customFields.html).
 
-### Dry и silence для команд автоматизации
+### No-verify, dry и silence для команд автоматизации
 
 Все семь команд `nextjs licenses`, `sbom catalog resolve/populate` и
-`security scan/track/reconcile/repair` поддерживают `-d, --dry` и
-`-s, --silence`, включая сочетание `-ds`.
+`security scan/track/reconcile/repair` поддерживают `-n, --no-verify`, `-d, --dry` и
+`-s, --silence`, включая сочетания `-ns` и `-ds`.
 
 ```sh
 spectrum nextjs licenses --dry
 spectrum sbom catalog populate --dry --silence
 spectrum security repair -ds
+spectrum security repair --no-verify --silence
 ```
 
 `--dry` выполняет предпроверки настроек, файлов, инструментов и доступов,
@@ -607,3 +675,10 @@ Git/проектов; SBOM preflight может загрузить закреп�
 Ошибки, предупреждения, результаты команды и итог dry остаются видимыми.
 Это тот же смысл флага, что у release/hotfix команд. Без dry выполняются
 обычные действия и сохраняются прежние коды завершения 0/1/2.
+
+`--no-verify` пропускает предварительные проверки доступов GitLab/YouTrack,
+registry и соответствия tracker ref. Команда сразу переходит к своим действиям:
+аудиту, копированию LICENSE, работе с каталогами, задачами или исправлениям.
+Загрузка входных отчётов, аутентификация для операций, проверка целостности
+артефактов и проверочные команды после исправления остаются частью действия.
+Пропущенные preflight не получают статус «проверено» в отчёте.

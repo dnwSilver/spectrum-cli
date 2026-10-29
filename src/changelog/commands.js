@@ -9,7 +9,7 @@ function changelogAppend(message) {
         checks: [
             { name: 'git-repo', run: requireGitRepo },
             { name: 'changelog-exists', run: () => requireFileExists(CHANGELOG_FILE) },
-            { name: 'prepare-fragment', dependsOn: ['git-repo', 'changelog-exists'], run: () => prepareChangelogEntry(message) }
+            { name: 'prepare-fragment', prepare: true, dependsOn: ['git-repo', 'changelog-exists'], run: () => prepareChangelogEntry(message) }
         ],
         steps: [
             { name: 'write-fragment', run: appendPreparedChangelogEntry }

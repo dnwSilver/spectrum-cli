@@ -30,10 +30,10 @@ function chartDeploy(options = {}) {
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
             { name: 'remote-origin', run: requireRemoteOrigin },
             { name: 'remote-reachable', run: requireRemoteReachable },
-            { name: 'single-chart', run: requireSingleChart },
-            { name: 'helmrelease-files', run: requireHelmReleaseFiles },
+            { name: 'single-chart', prepare: true, run: requireSingleChart },
+            { name: 'helmrelease-files', prepare: true, run: requireHelmReleaseFiles },
             {
-                name: 'filter-instances',
+                name: 'filter-instances', prepare: true,
                 run: (ctx) => {
                     const requested = parseInstancesOption(instancesOption);
                     if (requested.length === 0) {

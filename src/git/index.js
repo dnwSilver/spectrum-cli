@@ -86,7 +86,7 @@ function gitCreateTagAndPush() {
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'on-main-branch', run: requireOnMainBranch },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
-            { name: 'changelog-release-version', run: requireChangelogReleaseVersion },
+            { name: 'changelog-release-version', prepare: true, run: requireChangelogReleaseVersion },
             {
                 name: 'tag-missing',
                 requires: ['version'],

@@ -41,6 +41,14 @@ function requireReleaseState(context) {
     }
 }
 
+function readLocalReleaseState(context) {
+    const local = splitOpenRelease(fs.readFileSync(CHANGELOG_FILE, 'utf8'), context.stableVersion);
+    return { ok: true, data: {
+        openReleaseVersion: local.open?.version || null,
+        releaseChangelogState: { local, production: { ...local, open: null, entries: [] } }
+    } };
+}
+
 function requireReleaseFragments(context) {
     try {
         // Empty is valid only for an already prepared release, including retry after a failed push.
@@ -77,4 +85,4 @@ function appendOpenRelease(context) {
     }
 }
 
-module.exports = { resolveReleaseState, requireReleaseState, requireReleaseFragments, appendOpenRelease };
+module.exports = { resolveReleaseState, readLocalReleaseState, requireReleaseState, requireReleaseFragments, appendOpenRelease };

@@ -1,6 +1,6 @@
 // Central catalogue writer. Protected pipeline/resource_group remain in CI.
 const io = require("../automation");
-const { isDryRun } = require("../cli/command-executor");
+const { isDryRun, isVerificationSkipped } = require("../cli/command-executor");
 const { required, checkRegistryAccess } = require("../preflight/automation");
 const {
   fs,
@@ -489,7 +489,7 @@ class Publisher {
     let code = 2;
     try {
       const requested = versions(this.env.NEXT_CATALOG_VERSIONS || "[]");
-      ensure(
+      if (!isVerificationSkipped()) ensure(
         this.env.CI_COMMIT_BRANCH === "main" &&
           this.env.CI_COMMIT_REF_PROTECTED === "true",
         "Updater requires protected main",
@@ -526,7 +526,7 @@ class Publisher {
           ],
           { input: this.env.NEXUS_PASSWORD },
         );
-        report.preflight = await (
+        if (!isVerificationSkipped()) report.preflight = await (
           this.deps.checkRegistryAccess || checkRegistryAccess
         )(this.repository, {
           probe: () => this.descriptor(this.tagFor(requested[0])),

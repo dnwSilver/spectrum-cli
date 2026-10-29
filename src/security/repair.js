@@ -18,7 +18,7 @@ const {
   checkGitlabAccess,
   checkExecutables,
 } = require("../preflight/automation");
-const { isDryRun, reportPreflight } = require("../cli/command-executor");
+const { isDryRun, isVerificationSkipped, reportPreflight } = require("../cli/command-executor");
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const pkgName = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+(?![\s\S])/;
 const tuple = (value) => value.split(".").map(Number);
@@ -506,7 +506,7 @@ class Repairer extends Scanner {
         "Incomplete scan/tracking; automatic repair is blocked",
       );
       const api = this.deps.api || glab(this.env);
-      report.preflight = {
+      if (!isVerificationSkipped()) report.preflight = {
         ...report.preflight,
         gitlab_repair: await (this.deps.checkGitlabAccess || checkGitlabAccess)(
           this.env,

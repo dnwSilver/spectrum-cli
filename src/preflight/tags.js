@@ -65,6 +65,14 @@ function requireLatestStableVersion() {
     return ok({ stableVersion });
 }
 
+// Read the cached baseline for execution without fetching or verifying origin.
+function readLocalStableVersion() {
+    const names = execSilent(`git tag --merged origin/${getMainBranch()} --list "release/*" "hotfix/*" "v*"`);
+    const versions = String(names || '').split('\n').map((tag) => parseStableTag(tag.trim())?.version)
+        .filter(Boolean).sort(compareStableVersions);
+    return versions.length ? ok({ stableVersion: versions.at(-1) }) : fail('Не удалось прочитать локальную stable-версию.');
+}
+
 function requireStableTagAtHead(version) {
     if (!STABLE_SEMVER_PATTERN.test(String(version || ''))) return fail('Требуется stable-версия X.Y.Z.');
     const head = execSilent('git rev-parse HEAD');
@@ -136,4 +144,4 @@ function requireReleaseVersionAvailable(version) {
     return ok();
 }
 
-module.exports = { requireNoPendingRelease, requireLatestStableVersion, requireStableTagAtHead, requireYouTrackTask, requireTagMissing, requireReleaseVersionAvailable };
+module.exports = { requireNoPendingRelease, requireLatestStableVersion, readLocalStableVersion, requireStableTagAtHead, requireYouTrackTask, requireTagMissing, requireReleaseVersionAvailable };

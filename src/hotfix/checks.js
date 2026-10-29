@@ -1,15 +1,19 @@
 const fs = require('fs');
 const path = require('path');
 const preflight = require('../preflight');
-const { logError } = require('../common/utils');
-const { reportPreflight } = require('../cli/command-executor');
+const { logError, getMainBranch, getDevelopBranch } = require('../common/utils');
+const { reportPreflight, isVerificationSkipped } = require('../cli/command-executor');
 const { upVersion, compareVersions } = require('../common/version');
 const { STABLE_TAG_PATTERNS, parseStableTag, stableTagNames } = require('../release/stable-tags');
 const { git, exists, ancestor, readAt } = require('./git');
 function preflightReport(commandName) {
     let failures = 0;
     return {
-        check(name, action, description, unavailableReason) {
+        check(name, action, description, unavailableReason, prepare = false) {
+            if (isVerificationSkipped()) {
+                // Reading/assembling action inputs is still required.
+                return { ok: true, value: prepare ? action() : undefined };
+            }
             if (unavailableReason) {
                 logError('❌', 'Предпроверка не выполнена (%s): %s', name, unavailableReason);
                 failures += 1;
@@ -30,6 +34,20 @@ function preflightReport(commandName) {
 }
 
 function context(mode, checks) {
+    if (isVerificationSkipped()) {
+        const mainBranch = getMainBranch();
+        const head = git('rev-parse', 'HEAD').trim();
+        if (mode !== 'start') {
+            const version = preflight.getChangelogReleaseVersion();
+            if (!version) throw new Error('Не удалось прочитать версию из CHANGELOG.md.');
+            return { repositoryRootOk: true, mainBranch, head, stable: version, target: version };
+        }
+        const result = preflight.readLocalStableVersion();
+        if (!result.ok) throw new Error(result.reason);
+        const stable = result.data.stableVersion;
+        return { repositoryRootOk: true, mainBranch, head, stable,
+            productionText: fs.readFileSync('CHANGELOG.md', 'utf8'), target: upVersion(stable, 'patch') };
+    }
     const root = checks.check('repository-root', () => {
         const root = git('rev-parse', '--show-toplevel').trim();
         if (path.relative(fs.realpathSync(root), fs.realpathSync(process.cwd())) !== '') {
@@ -122,6 +140,11 @@ function assertOriginUnchanged(ctx) {
     }
 }
 
+function integrationContext() {
+    const dev = getDevelopBranch();
+    return { dev, devRef: `refs/remotes/origin/${dev}` };
+}
+
 function currentFragments() {
     if (!preflight.findChangelogFragmentFiles().length) return [];
     const result = preflight.requireChangelogFragments();
@@ -141,4 +164,4 @@ function run(action) {
     }
 }
 
-module.exports = { preflightReport, context, assertTagAvailable, assertOriginUnchanged, currentFragments, run };
+module.exports = { preflightReport, context, integrationContext, assertTagAvailable, assertOriginUnchanged, currentFragments, run };

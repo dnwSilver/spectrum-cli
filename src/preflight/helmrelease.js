@@ -167,7 +167,7 @@ function extractYamlList(content, sectionName) {
     return values;
 }
 
-function requireIngressPathSections(valuesYamlPath) {
+function readIngressPathSections(valuesYamlPath) {
     if (!valuesYamlPath || !fs.existsSync(valuesYamlPath)) {
         return fail(`Обязательный файл "${valuesYamlPath}" не существует.`);
     }
@@ -183,6 +183,14 @@ function requireIngressPathSections(valuesYamlPath) {
     const pages = extractYamlList(content, 'pages');
     const assets = extractYamlList(content, 'assets');
 
+    return ok({ valuesIngressPaths: { api, pages, assets } });
+}
+
+function requireIngressPathSections(valuesYamlPath) {
+    const result = readIngressPathSections(valuesYamlPath);
+    if (!result.ok) return result;
+    const { api, pages, assets } = result.data.valuesIngressPaths;
+
     if (api.length === 0) {
         return fail(`Отсутствует или пуст ingress.paths.api в "${valuesYamlPath}".`);
     }
@@ -193,9 +201,7 @@ function requireIngressPathSections(valuesYamlPath) {
         return fail(`Отсутствует или пуст ingress.paths.assets в "${valuesYamlPath}".`);
     }
 
-    return ok({
-        valuesIngressPaths: { api, pages, assets }
-    });
+    return result;
 }
 
-module.exports = { findValuesYamlFiles, findHelmReleaseFiles, requireHelmReleaseFiles, requireSingleValuesYaml, extractYamlList, requireIngressPathSections };
+module.exports = { findValuesYamlFiles, findHelmReleaseFiles, requireHelmReleaseFiles, requireSingleValuesYaml, extractYamlList, readIngressPathSections, requireIngressPathSections };

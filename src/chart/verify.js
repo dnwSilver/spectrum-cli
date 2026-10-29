@@ -3,7 +3,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { logSuccess, logError, colors } = require('../common/utils');
 const { runCommand } = require('../cli/command-executor');
-const { requireGitRepo, requireCurrentBranchUpToDateWithRemote, requireSingleValuesYaml, requireIngressPathSections, requireSourcePathDirectory, requireNextProject, requireBuildCommandSupport } = require('../preflight');
+const { requireGitRepo, requireCurrentBranchUpToDateWithRemote, requireSingleValuesYaml, readIngressPathSections, requireIngressPathSections, requireSourcePathDirectory, readSourceProject, requireNextProject, requireBuildCommandSupport } = require('../preflight');
 const { normalizeList, normalizeToBeList, collectRoutesFromFilesystem, collectRoutesFromBuildArtifacts } = require('./routes');
 const FIXED_ASSET_PATHS = [
     '/_next/image$',
@@ -96,10 +96,10 @@ function chartVerify(sourcePath) {
         checks: [
             { name: 'git-repo', run: requireGitRepo },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
-            { name: 'single-values-yaml', run: requireSingleValuesYaml },
-            { name: 'values-ingress-sections', requires: ['valuesYamlPath'], run: (ctx) => requireIngressPathSections(ctx.valuesYamlPath) },
-            { name: 'source-path-directory', run: () => requireSourcePathDirectory(sourcePath) },
-            { name: 'next-project', requires: ['sourcePath'], run: (ctx) => requireNextProject(ctx.sourcePath) },
+            { name: 'single-values-yaml', prepare: true, run: requireSingleValuesYaml },
+            { name: 'values-ingress-sections', prepare: (ctx) => readIngressPathSections(ctx.valuesYamlPath), requires: ['valuesYamlPath'], run: (ctx) => requireIngressPathSections(ctx.valuesYamlPath) },
+            { name: 'source-path-directory', prepare: true, run: () => requireSourcePathDirectory(sourcePath) },
+            { name: 'next-project', prepare: (ctx) => readSourceProject(ctx.sourcePath), requires: ['sourcePath'], run: (ctx) => requireNextProject(ctx.sourcePath) },
             { name: 'build-command-support', requires: ['sourcePath'], run: (ctx) => requireBuildCommandSupport(ctx.sourcePath) }
         ],
         steps: [

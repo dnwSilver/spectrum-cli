@@ -377,6 +377,83 @@ test("silence suppresses successful service preflight messages while retaining e
   expect(error).toHaveBeenCalledWith("ERROR: preflight denied");
   expect(process.exitCode).toBe(1);
 });
+
+test('track no-verify reads its report and creates tasks without access or pipeline preflights', async () => {
+  const cwd = directory();
+  const checkGitlabAccess = jest.fn(() => { throw Error('preflight called'); });
+  const checkYouTrackAccess = jest.fn(() => { throw Error('preflight called'); });
+  const tracker = { ensure: jest.fn(async () => ({ task: { key: 'APP-1' }, parent: { key: 'CVE-1' } })) };
+  const api = { get: jest.fn(async () => Buffer.from(JSON.stringify({
+    schemaVersion: 1, config: CFG, findings: [FINDING], errors: []
+  }))) };
+  await runAutomationAction(() => security.track({
+    cwd,
+    env: { YOUTRACK_URL: 'https://issues.example.com', YOUTRACK_PRIVATE_TOKEN: 'fake',
+      NIGHTLY_CONSUMER_PROJECT: '123', NIGHTLY_CONSUMER_SCAN_JOB: '10' },
+    deps: { api, tracker, checkGitlabAccess, checkYouTrackAccess }
+  }), { verify: false });
+  expect(process.exitCode).toBe(0);
+  expect(checkGitlabAccess).not.toHaveBeenCalled();
+  expect(checkYouTrackAccess).not.toHaveBeenCalled();
+  expect(api.get).toHaveBeenCalledTimes(1);
+  expect(api.get.mock.calls[0][0]).toContain('/artifacts/');
+  expect(tracker.ensure).toHaveBeenCalledTimes(1);
+  expect(read(path.join(cwd, 'security-report/tracked.json')).preflight).toBeUndefined();
+});
+
+test('reconcile no-verify starts the tracker without introspection or ref verification', async () => {
+  const cwd = directory();
+  const report = { config: CFG, findings: [FINDING], errors: [] };
+  save(path.join(cwd, 'security-report/findings.json'), report);
+  const checkGitlabAccess = jest.fn(() => { throw Error('preflight called'); });
+  const api = {
+    post: jest.fn(async () => ({ id: 1, sha: CFG.sha, status: 'success' })),
+    get: jest.fn(async (location) => location.includes('/artifacts/')
+      ? Buffer.from(JSON.stringify(report)) : [{ id: 2, name: 'nightly:track' }])
+  };
+  await runAutomationAction(() => security.reconcile({ cwd,
+    env: { NIGHTLY_TRACKER_PROJECT: 'automation/security', NIGHTLY_COMPONENT_SHA: CFG.sha,
+      NIGHTLY_TRACKER_REF: 'v2.0.0', NIGHTLY_SCAN_JOB_ID: '10', CI_PROJECT_ID: '123' },
+    deps: { api, checkGitlabAccess }
+  }), { verify: false });
+  expect(process.exitCode).toBe(0);
+  expect(checkGitlabAccess).not.toHaveBeenCalled();
+  expect(api.post).toHaveBeenCalledTimes(1);
+  expect(api.get.mock.calls.every(([location]) => !location.includes('/repository/'))).toBe(true);
+  expect(read(path.join(cwd, 'security-report/tracked.json'))).toEqual(report);
+});
+
+test('repair no-verify enters repairOne without an access preflight', async () => {
+  const cwd = directory();
+  save(path.join(cwd, 'security-report/tracked.json'), { config: CFG, findings: [FINDING], errors: [] });
+  const checkGitlabAccess = jest.fn(() => { throw Error('preflight called'); });
+  const repairOne = jest.spyOn(Repairer.prototype, 'repairOne').mockResolvedValue({ status: 'verified' });
+  await runAutomationAction(() => security.repair({ cwd, env: ENV,
+    deps: { api: {}, checkGitlabAccess }
+  }), { verify: false });
+  expect(process.exitCode).toBe(0);
+  expect(checkGitlabAccess).not.toHaveBeenCalled();
+  expect(repairOne).toHaveBeenCalledTimes(1);
+  expect(read(path.join(cwd, 'security-report/final.json')).preflight).toBeUndefined();
+});
+
+test('populate no-verify logs in and executes without protected-main or registry preflights', async () => {
+  const cwd = directory();
+  const checkRegistryAccess = jest.fn(() => { throw Error('preflight called'); });
+  const publisher = new Publisher({ NEXT_CATALOG_VERSIONS: '["99.1.2"]',
+    SBOM_CATALOG_PUBLISH_REPOSITORY: 'registry.example.com/catalog',
+    NEXUS_USER: 'bot', NEXUS_PASSWORD: 'fake'
+  }, { bootstrap: async () => {}, checkRegistryAccess });
+  publisher.oras = jest.fn();
+  publisher.descriptor = jest.fn(() => 'sha256:' + '1'.repeat(64));
+  publisher.readback = jest.fn(() => ({ unresolved: [], components: [] }));
+  await runAutomationAction(() => publisher.main({ cwd }), { verify: false });
+  expect(process.exitCode).toBe(0);
+  expect(checkRegistryAccess).not.toHaveBeenCalled();
+  expect(publisher.oras.mock.calls[0][0][0]).toBe('login');
+  expect(publisher.readback).toHaveBeenCalledTimes(1);
+  expect(read(path.join(cwd, 'sbom-catalog-updater/report.json')).preflight).toBeUndefined();
+});
 test.each([
   "nextjs licenses",
   "sbom catalog resolve",

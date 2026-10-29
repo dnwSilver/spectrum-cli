@@ -12,6 +12,61 @@ describe("command-executor", () => {
     jest.clearAllMocks();
   });
 
+  test('no-verify skips failing checks and their dependencies, then executes steps', async () => {
+    const check = jest.fn(() => { throw new Error('must not run'); });
+    const step = jest.fn(() => true);
+    const result = await withCommandOptions({ verify: false }, () => runCommand({
+      name: 'demo',
+      checks: [
+        { name: 'failing', run: check },
+        { name: 'dependent', dependsOn: ['failing'], requires: ['missing'], run: check }
+      ],
+      steps: [{ name: 'write', run: step }]
+    }));
+    expect(result).toBe(true);
+    expect(check).not.toHaveBeenCalled();
+    expect(step).toHaveBeenCalledTimes(1);
+    expect(logError).not.toHaveBeenCalled();
+    expect(logSuccess).not.toHaveBeenCalledWith('🔎', expect.anything(), expect.anything(), expect.anything());
+  });
+
+  test('no-verify prepares action inputs without executing the corresponding checks', async () => {
+    const check = jest.fn(() => false);
+    const step = jest.fn((ctx) => ctx.tag === 'release/1.2.3');
+    const result = await withCommandOptions({ verify: false }, () => runCommand({
+      name: 'demo',
+      checks: [
+        { name: 'version', run: check, prepare: () => ({ ok: true, data: { version: '1.2.3' } }) },
+        { name: 'tag', run: check, prepare: (ctx) => ({ ok: true, data: { tag: `release/${ctx.version}` } }) }
+      ],
+      steps: [{ name: 'publish', run: step }]
+    }));
+    expect(result).toBe(true);
+    expect(check).not.toHaveBeenCalled();
+    expect(step).toHaveBeenCalledWith({ version: '1.2.3', tag: 'release/1.2.3' });
+  });
+
+  test('no-verify still fails on unavailable action inputs and step failures', async () => {
+    const step = jest.fn(() => false);
+    await expect(withCommandOptions({ verify: false }, () => runCommand({
+      name: 'demo',
+      checks: [{ name: 'input', prepare: true, run: () => { throw new Error('missing file'); } }],
+      steps: [{ run: step }]
+    }))).resolves.toBe(false);
+    expect(step).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith('❌', 'Не удалось подготовить команду (%s): %s', 'input', 'missing file');
+    await expect(withCommandOptions({ verify: false }, () => runCommand({
+      name: 'demo', steps: [{ run: step }]
+    }))).resolves.toBe(false);
+    expect(step).toHaveBeenCalledTimes(1);
+  });
+
+  test('dry and no-verify conflict before the action runs', () => {
+    const action = jest.fn();
+    expect(() => withCommandOptions({ dry: true, verify: false }, action)).toThrow('--dry и --no-verify');
+    expect(action).not.toHaveBeenCalled();
+  });
+
   test("runs remaining preflights after a failure and skips steps", async () => {
     const step = jest.fn();
     const laterCheck = jest.fn(() => true);

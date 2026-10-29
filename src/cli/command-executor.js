@@ -59,7 +59,14 @@ function describePreflight(checkName, context) {
 }
 
 function withCommandOptions(options, action) {
-    return commandContext.run({ dry: Boolean(options?.dry), silence: Boolean(options?.silence) }, action);
+    if (options?.dry && options?.verify === false) {
+        throw new Error('--dry и --no-verify нельзя использовать вместе.');
+    }
+    return commandContext.run({
+        dry: Boolean(options?.dry),
+        silence: Boolean(options?.silence),
+        verify: options?.verify !== false
+    }, action);
 }
 
 function withDryRun(dry, action) {
@@ -70,18 +77,22 @@ function isDryRun() {
     return Boolean(commandContext.getStore()?.dry);
 }
 
+function isVerificationSkipped() {
+    return commandContext.getStore()?.verify === false;
+}
+
 function reportDryRun(_name) {
     logSuccess('✅', 'Все предпроверки пройдены, проблем нет. Действия не выполнялись.');
 }
 
 function reportPreflight(_commandName, checkName, description = PREFLIGHT_DESCRIPTIONS[checkName] || checkName) {
-    if (!commandContext.getStore()?.silence) {
+    if (!isVerificationSkipped() && !commandContext.getStore()?.silence) {
         logSuccess('🔎', 'Проверено (%s): %s.', checkName, description);
     }
 }
 
 function reportNoPreflights(_name) {
-    logSuccess('🔎', 'Предпроверок нет.');
+    if (!isVerificationSkipped()) logSuccess('🔎', 'Предпроверок нет.');
 }
 
 function normalizeCheckResult(result, fallbackReason) {
@@ -120,6 +131,24 @@ async function runCommand(spec) {
     let failedPreflights = 0;
     const results = new Map();
     for (const check of checks) {
+        // Some checks also read inputs needed by the action. In no-verify mode
+        // only their explicit preparation runs, without policy checks or reports.
+        if (isVerificationSkipped()) {
+            if (!check.prepare) continue;
+            const prepare = check.prepare === true ? check.run : check.prepare;
+            let result;
+            try {
+                result = normalizeCheckResult(await prepare(context), 'Не удалось получить данные команды.');
+            } catch (error) {
+                result = { ok: false, reason: error?.message || String(error) };
+            }
+            if (!result.ok) {
+                logError('❌', 'Не удалось подготовить команду (%s): %s', check.name, result.reason);
+                return false;
+            }
+            if (result.data) Object.assign(context, result.data);
+            continue;
+        }
         const checkName = check.name || 'unknown-check';
         const failedDependencies = (check.dependsOn || []).filter((dependency) => results.get(dependency) !== true);
         const missingInputs = (check.requires || []).filter((key) => context[key] === undefined || context[key] === null);
@@ -178,4 +207,4 @@ async function runCommand(spec) {
     return true;
 }
 
-module.exports = { runCommand, withCommandOptions, withDryRun, isDryRun, reportDryRun, reportPreflight, reportNoPreflights };
+module.exports = { runCommand, withCommandOptions, withDryRun, isDryRun, isVerificationSkipped, reportDryRun, reportPreflight, reportNoPreflights };

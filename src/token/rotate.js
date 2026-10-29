@@ -144,8 +144,8 @@ function tokenRotate() {
     return runCommand({
         name: 'token rotate',
         checks: [
-            { name: 'load-config', run: loadOrCreateConfig },
-            { name: 'ask-tokens', requires: ['tokenTtlMonths', 'bot'], run: askTokens },
+            { name: 'load-config', prepare: true, run: loadOrCreateConfig },
+            { name: 'ask-tokens', prepare: true, requires: ['tokenTtlMonths', 'bot'], run: askTokens },
             { name: 'check-access', requires: ['targets', 'origin', 'ownerToken'], run: checkTargetsAccess }
         ],
         steps: [

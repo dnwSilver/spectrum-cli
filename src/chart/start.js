@@ -15,9 +15,9 @@ function chartStart(options = {}) {
             { name: 'clean-working-tree', run: requireCleanWorkingTree },
             { name: 'on-main-branch', run: requireOnMainBranch },
             { name: 'branch-up-to-date', run: requireCurrentBranchUpToDateWithRemote },
-            { name: 'single-chart', run: requireSingleChart },
+            { name: 'single-chart', prepare: true, run: requireSingleChart },
             {
-                name: 'chart-changelog-version',
+                name: 'chart-changelog-version', prepare: true,
                 requires: ['chartFilePath'],
                 run: (ctx) => requireChartChangelogVersion(path.dirname(ctx.chartFilePath))
             },

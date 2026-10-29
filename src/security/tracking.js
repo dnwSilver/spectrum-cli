@@ -12,7 +12,7 @@ const { encoded } = require("../sbom/schema");
 const { glab, projectPath, pages, API } = require("./runtime");
 const { HIGH } = require("./findings");
 const { Tracker } = require("./tracker");
-const { isDryRun, reportPreflight } = require("../cli/command-executor");
+const { isDryRun, isVerificationSkipped, reportPreflight } = require("../cli/command-executor");
 const {
   required,
   httpsEndpoint,
@@ -25,7 +25,7 @@ async function track({
   deps = {},
   dry = isDryRun(),
 } = {}) {
-  ensure(
+  if (!isVerificationSkipped()) ensure(
     env.NIGHTLY_EXPECTED_COMPONENT_SHA &&
       env.NIGHTLY_EXPECTED_COMPONENT_SHA === env.CI_COMMIT_SHA,
     "Tracker must run the same commit as the included component",
@@ -38,7 +38,7 @@ async function track({
   ]);
   httpsEndpoint(env.YOUTRACK_URL, "YOUTRACK_URL");
   const api = deps.api || glab(env);
-  await (deps.checkGitlabAccess || checkGitlabAccess)(
+  if (!isVerificationSkipped()) await (deps.checkGitlabAccess || checkGitlabAccess)(
     env,
     [env.NIGHTLY_CONSUMER_PROJECT],
     { api },
@@ -46,8 +46,6 @@ async function track({
   const consumer = projectPath(env.NIGHTLY_CONSUMER_PROJECT),
     jobId = env.NIGHTLY_CONSUMER_SCAN_JOB;
   ensure(/^\d+(?![\s\S])/.test(jobId || ""), "Invalid consumer job ID");
-  const job = await api.get(consumer + "/jobs/" + jobId),
-    pipeline = await api.get(consumer + "/pipelines/" + job.pipeline.id);
   const report = json(
       await api.get(
         consumer +
@@ -58,32 +56,36 @@ async function track({
       ),
     ),
     cfg = report.config;
-  ensure(
+  if (!isVerificationSkipped()) ensure(
     report.schemaVersion === 1 &&
       String(cfg.project_id) === env.NIGHTLY_CONSUMER_PROJECT,
     "Consumer report identity mismatch",
   );
-  ensure(
-    pipeline.source === "schedule" &&
-      pipeline.ref === cfg.branch &&
-      pipeline.sha === cfg.sha &&
-      String(pipeline.id) === String(cfg.pipeline_id),
-    "Tracking is restricted to matching scheduled branch pipelines",
-  );
-  const branch = await api.get(
-    consumer + "/repository/branches/" + encoded(cfg.branch),
-  );
-  ensure(
-    branch.protected,
-    "Nightly automation requires a protected production branch",
-  );
+  if (!isVerificationSkipped()) {
+    const job = await api.get(consumer + "/jobs/" + jobId);
+    const pipeline = await api.get(consumer + "/pipelines/" + job.pipeline.id);
+    ensure(
+      pipeline.source === "schedule" &&
+        pipeline.ref === cfg.branch &&
+        pipeline.sha === cfg.sha &&
+        String(pipeline.id) === String(cfg.pipeline_id),
+      "Tracking is restricted to matching scheduled branch pipelines",
+    );
+    const branch = await api.get(
+      consumer + "/repository/branches/" + encoded(cfg.branch),
+    );
+    ensure(
+      branch.protected,
+      "Nightly automation requires a protected production branch",
+    );
+  }
   const base = httpsEndpoint(env.YOUTRACK_URL, "YOUTRACK_URL");
   const youtrack = new API(base + "/api", {
     Authorization: "Bearer " + env.YOUTRACK_PRIVATE_TOKEN,
   });
   const tracker = deps.tracker || new Tracker(youtrack, base, env);
   try {
-    report.preflight = {
+    if (!isVerificationSkipped()) report.preflight = {
       youtrack: await (deps.checkYouTrackAccess || checkYouTrackAccess)(
         env,
         cfg,
@@ -137,7 +139,7 @@ async function reconcile({
       "CI_PROJECT_ID",
     ]);
     const api = deps.api || glab(env);
-    report.preflight = {
+    if (!isVerificationSkipped()) report.preflight = {
       gitlab: await (deps.checkGitlabAccess || checkGitlabAccess)(
         env,
         [env.NIGHTLY_TRACKER_PROJECT],
@@ -164,13 +166,15 @@ async function reconcile({
       );
       ref = names.at(-1);
     }
-    const commit = await api.get(
-      target + "/repository/commits/" + encoded(ref),
-    );
-    ensure(
-      commit.id === sha,
-      "Tracker reference does not match the included component",
-    );
+    if (!isVerificationSkipped()) {
+      const commit = await api.get(
+        target + "/repository/commits/" + encoded(ref),
+      );
+      ensure(
+        commit.id === sha,
+        "Tracker reference does not match the included component",
+      );
+    }
     reportPreflight(
       "security reconcile",
       "tracker-reference",

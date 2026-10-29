@@ -21,13 +21,13 @@ function hotfixStart() {
             ctx.target ? null : 'не определена целевая версия хотфикса');
         const fragmentsResult = checks.check('changelog-fragments', currentFragments,
             (value) => `проверены ${value.length} patch fragments`,
-            ctx.repositoryRootOk ? null : 'не пройдена проверка корня репозитория');
+            ctx.repositoryRootOk ? null : 'не пройдена проверка корня репозитория', true);
         let original;
         const changelog = checks.check('changelog-state', () => {
             original = fs.readFileSync(CHANGELOG_FILE, 'utf8');
             return prepareChangelog({ text: original, ...ctx, fragments: fragmentsResult.value });
         }, `CHANGELOG.md допускает подготовку хотфикса ${ctx.target}`,
-        ctx.target && fragmentsResult.ok ? null : 'не определена версия хотфикса или не проверены fragments');
+        ctx.target && fragmentsResult.ok ? null : 'не определена версия хотфикса или не проверены fragments', true);
         checks.check('origin-unchanged', () => assertOriginUnchanged(ctx),
             'production-ветка на origin не изменилась во время проверки',
             ctx.mainBranch && ctx.mainSha ? null : 'не проверена история production');

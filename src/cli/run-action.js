@@ -7,7 +7,7 @@ function commandOptions(command) {
 
 async function runAction(action, command) {
   const options = commandOptions(command);
-  if (!options.dry) {
+  if (!options.dry && options.verify !== false) {
     try {
       await checkForUpdates();
     } catch {

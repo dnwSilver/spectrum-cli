@@ -9,6 +9,21 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.0.0] - 2026-10-29
+
+### Breaking change
+
+- У `spectrum chart start` короткий флаг `-n` теперь означает `--no-verify` и отключает preflight. Для запуска без ожидания публикации чарта используйте `--no-wait`.
+
+### Added
+
+- Во всех 21 командах с действием доступен `-n, --no-verify`: команда пропускает preflight и проверку обновлений CLI, сохраняя чтение необходимых входных данных и обработку ошибок операций. Поддерживается сочетание `-ns`; `--dry` и `--no-verify` несовместимы.
+
+### Changed
+
+- README содержит полный список команд, аргументов и опций; справка вложенных команд использует общий формат и показывает актуальные флаги.
+- Добавлены проверки разбора флагов у всех команд, соответствия README регистрации команд и выполнения release/hotfix без preflight на временных Git origins, а также обхода preflight автоматизации.
+
 ## 🚀 [5.1.0]
 
 ### Changed

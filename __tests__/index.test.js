@@ -257,7 +257,7 @@ describe("index CLI wiring", () => {
     const close = releaseCmd._commands.find((c) => c._name === "close");
     const deploy = releaseCmd._commands.find((c) => c._name === "deploy");
 
-    expect(start._options.map((o) => o.definition)).toEqual(["--stable", "-d, --dry", "-s, --silence"]);
+    expect(start._options.map((o) => o.definition)).toEqual(["--stable", "-n, --no-verify", "-d, --dry", "-s, --silence"]);
     await start._action();
     await close._action();
     await deploy._action();
@@ -314,7 +314,7 @@ describe("index CLI wiring", () => {
     await start._action({ force: true, wait: true });
 
     expect(mockChart.chartStart).toHaveBeenCalledWith({ force: true, wait: true });
-    expect(start._options.map((o) => o.definition)).toEqual(["-f, --force", "-n, --no-wait", "-d, --dry", "-s, --silence"]);
+    expect(start._options.map((o) => o.definition)).toEqual(["-f, --force", "--no-wait", "-n, --no-verify", "-d, --dry", "-s, --silence"]);
     expect(start._allowExcessArguments).toBe(false);
     expect(chartCmd._commands.some((c) => c._name === "create")).toBe(false);
   });
@@ -326,6 +326,16 @@ describe("index CLI wiring", () => {
       ._action({ opts: () => ({ wait: false, dry: true }) });
     expect(mockChart.chartStart).toHaveBeenCalledWith({ wait: false, dry: true });
     expect(mockUpdate.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  test('no-verify forwards options and bypasses the update check', async () => {
+    mockChart.chartStart.mockReturnValue(true);
+    const group = mockState.root._commands.find((c) => c._name === 'chart');
+    await group._commands.find((c) => c._name === 'start')
+      ._action({ opts: () => ({ verify: false, wait: false }) });
+    expect(mockChart.chartStart).toHaveBeenCalledWith({ verify: false, wait: false });
+    expect(mockUpdate.checkForUpdates).not.toHaveBeenCalled();
+    expect(process.exit).not.toHaveBeenCalled();
   });
 
   test("chart verify command calls chart verify handler", async () => {
@@ -353,7 +363,7 @@ describe("index CLI wiring", () => {
     await deploy._action({ instances: "sd,cbch" });
 
     expect(mockChart.chartDeploy).toHaveBeenCalledWith({ instances: "sd,cbch" });
-    expect(deploy._options.map((o) => o.definition)).toEqual(["-i, --instances <names>", "-d, --dry", "-s, --silence"]);
+    expect(deploy._options.map((o) => o.definition)).toEqual(["-i, --instances <names>", "-n, --no-verify", "-d, --dry", "-s, --silence"]);
   });
 
   test("changelog append command handles success", async () => {

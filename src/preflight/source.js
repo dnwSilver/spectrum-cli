@@ -28,6 +28,17 @@ function hasNextConfig(sourcePath) {
     return files.some((fileName) => fs.existsSync(path.join(sourcePath, fileName)));
 }
 
+function readSourceProject(sourcePath) {
+    return ok({
+        sourcePackageJsonPath: path.join(sourcePath, 'package.json'),
+        sourcePackageManager: fs.existsSync(path.join(sourcePath, 'yarn.lock'))
+            ? 'yarn'
+            : fs.existsSync(path.join(sourcePath, 'bun.lockb')) ? 'bun' : 'npm',
+        sourceHasLockfile: ['package-lock.json', 'yarn.lock', 'bun.lockb']
+            .some((file) => fs.existsSync(path.join(sourcePath, file)))
+    });
+}
+
 function requireNextProject(sourcePath) {
     if (!sourcePath) {
         return fail('Требуется путь к исходникам.');
@@ -53,19 +64,7 @@ function requireNextProject(sourcePath) {
         return fail(`"${sourcePath}" не похож на проект Next.js.`);
     }
 
-    return ok({
-        sourcePackageJsonPath: pkgPath,
-        sourcePackageManager: fs.existsSync(path.join(sourcePath, 'yarn.lock'))
-            ? 'yarn'
-            : fs.existsSync(path.join(sourcePath, 'bun.lockb'))
-                ? 'bun'
-                : 'npm',
-        sourceHasLockfile: Boolean(
-            fs.existsSync(path.join(sourcePath, 'package-lock.json')) ||
-            fs.existsSync(path.join(sourcePath, 'yarn.lock')) ||
-            fs.existsSync(path.join(sourcePath, 'bun.lockb'))
-        )
-    });
+    return readSourceProject(sourcePath);
 }
 
 function requireBuildCommandSupport(sourcePath) {
@@ -92,4 +91,4 @@ function requireBuildCommandSupport(sourcePath) {
     return ok({ sourceBuildScript: pkg.scripts.build });
 }
 
-module.exports = { requireSourcePathDirectory, requireNextProject, requireBuildCommandSupport };
+module.exports = { requireSourcePathDirectory, readSourceProject, requireNextProject, requireBuildCommandSupport };

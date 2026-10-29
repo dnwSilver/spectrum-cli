@@ -22,6 +22,7 @@ jest.mock("../src/common/utils", () => ({
 }));
 
 jest.mock("../src/cli/command-executor", () => ({
+  ...jest.requireActual("../src/cli/command-executor"),
   runCommand: jest.fn(),
 }));
 
