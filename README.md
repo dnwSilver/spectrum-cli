@@ -614,11 +614,16 @@ fixtures получены из прежнего Python-кода; исполня�
 
 ### npm registry и проверка runtime
 
-`NIGHTLY_NPM_REGISTRY` задаёт доверенный HTTPS registry для npm-команд ночного процесса. При наличии
-`NEXUS_USER` / `NEXUS_PASSWORD` CLI создаёт временный `.npmrc` с BASIC auth, ограниченной host/path этого registry.
-Существующий user config сохраняется, исходный файл не меняется. Временный файл имеет права `0600`, удаляется
-после команды и не входит в отчёт. URL registry передаётся CI-компонентом; значения инфраструктуры в CLI не зашиты.
-Ошибки npm сохраняют HTTP-код и причину, при этом credentials удаляются из диагностических сообщений.
+`security scan` и повторный audit после исправлений всегда вызывают:
+
+```sh
+npm audit --registry=https://registry.npmjs.org/ --omit=dev --audit-level=high --json
+```
+
+Публичный registry указан прямо в argv команды, как в локальном алиасе `na`. Nexus-авторизация для аудита
+не создаётся. Настройки registry в проектном `.npmrc` и user config не меняются: установка и обновление
+зависимостей продолжают использовать конфигурацию проекта. Порог ночного процесса — HIGH/CRITICAL.
+Ошибки audit сохраняют HTTP-код и причину с удалением credentials из диагностических сообщений.
 
 Для версии Node из runtime нужны Skopeo, umoci и chroot. CLI копирует выбранную платформу immutable OCI-образа,
 распаковывает rootfs в rootless-режиме и запускает только настроенный Node binary с `--version` от uid/gid 65534.

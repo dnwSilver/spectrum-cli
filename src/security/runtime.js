@@ -90,45 +90,6 @@ async function registryAuth(env, action) {
         ).toString("base64"),
       };
     const runtime = { ...env };
-    if (env.NIGHTLY_NPM_REGISTRY && env.NIGHTLY_NPM_ENABLED !== "false") {
-      let registry;
-      try {
-        registry = new URL(env.NIGHTLY_NPM_REGISTRY);
-      } catch {
-        throw new Error("NIGHTLY_NPM_REGISTRY must be an HTTPS registry URL");
-      }
-      ensure(
-        registry.protocol === "https:" &&
-          !registry.username &&
-          !registry.password &&
-          !registry.search &&
-          !registry.hash,
-        "NIGHTLY_NPM_REGISTRY must be an HTTPS registry URL",
-      );
-      runtime.NPM_CONFIG_REGISTRY = registry.href;
-      if (env.NEXUS_USER && env.NEXUS_PASSWORD) {
-        const userconfig =
-          env.NPM_CONFIG_USERCONFIG ||
-          env.npm_config_userconfig ||
-          path.join(require("node:os").homedir(), ".npmrc");
-        const existing = fs.existsSync(userconfig)
-          ? fs.readFileSync(userconfig, "utf8")
-          : "";
-        const scope =
-          "//" + registry.host + registry.pathname.replace(/\/?$/, "/");
-        const auth = Buffer.from(
-          env.NEXUS_USER + ":" + env.NEXUS_PASSWORD,
-        ).toString("base64");
-        const file = path.join(directory, "npmrc");
-        fs.writeFileSync(
-          file,
-          existing.trimEnd() + "\n" + scope + ":_auth=" + auth + "\n",
-          { mode: 0o600 },
-        );
-        runtime.NPM_CONFIG_USERCONFIG = file;
-        delete runtime.npm_config_userconfig;
-      }
-    }
     if (Object.keys(auths).length) {
       const file = path.join(directory, "config.json");
       fs.writeFileSync(file, JSON.stringify({ auths }), { mode: 0o600 });

@@ -69,7 +69,14 @@ class Scanner {
   }
   async auditNpm(root, evidence) {
     const proc = this.run(
-      ["npm", "audit", "--omit=dev", "--audit-level=high", "--json"],
+      [
+        "npm",
+        "audit",
+        "--registry=https://registry.npmjs.org/",
+        "--omit=dev",
+        "--audit-level=high",
+        "--json",
+      ],
       root,
       { allowed: [0, 1] },
     );

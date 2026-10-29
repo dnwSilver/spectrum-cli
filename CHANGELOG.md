@@ -9,6 +9,12 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.0.3] - 2026-10-29
+
+### Fixed
+
+- Начальный и повторный npm audit явно используют https://registry.npmjs.org/; удалены Nexus-авторизация аудита и глобальная подмена npm registry. Установка зависимостей сохраняет настройки проекта.
+
 ## 🚀 [6.0.2] - 2026-10-29
 
 ### Fixed

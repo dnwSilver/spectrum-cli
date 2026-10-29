@@ -28,40 +28,52 @@ const credentials = {
   NIGHTLY_REGISTRY_HOSTS: "images.example",
   NIGHTLY_NPM_REGISTRY: "https://npm.example/repository/proxy/",
 };
-test("npm authentication is scoped, private, preserves user configuration and is always removed", async () => {
+test("image authentication does not create npm auth or override installation registry", async () => {
   const home = directory(),
     original = path.join(home, "npmrc");
-  fs.writeFileSync(original, "fetch-retries=1\n");
-  let file;
-  await expect(
-    registryAuth(
-      { ...credentials, NPM_CONFIG_USERCONFIG: original },
-      async (env) => {
-        file = env.NPM_CONFIG_USERCONFIG;
-        expect(env.NPM_CONFIG_REGISTRY).toBe(credentials.NIGHTLY_NPM_REGISTRY);
-        expect(fs.statSync(file).mode & 0o777).toBe(0o600);
-        expect(fs.readFileSync(file, "utf8")).toBe(
-          "fetch-retries=1\n//npm.example/repository/proxy/:_auth=" +
-            Buffer.from("test-user:test-password").toString("base64") +
-            "\n",
-        );
-        expect(fs.readFileSync(original, "utf8")).toBe("fetch-retries=1\n");
-        throw new Error("operation failed");
-      },
-    ),
-  ).rejects.toThrow("operation failed");
-  expect(fs.existsSync(file)).toBe(false);
+  fs.writeFileSync(original, "registry=https://private.example/\n");
+  await registryAuth(
+    {
+      ...credentials,
+      NPM_CONFIG_USERCONFIG: original,
+      NPM_CONFIG_REGISTRY: "https://private.example/",
+    },
+    async (env) => {
+      expect(env.NPM_CONFIG_USERCONFIG).toBe(original);
+      expect(env.NPM_CONFIG_REGISTRY).toBe("https://private.example/");
+      expect(fs.readFileSync(original, "utf8")).toBe(
+        "registry=https://private.example/\n",
+      );
+    },
+  );
 });
-test.each([
-  "http://npm.example/",
-  "https://user:password@npm.example/",
-  "https://npm.example/?token=x",
-])("rejects unsafe npm registry %s", async (url) => {
-  const action = jest.fn();
-  await expect(
-    registryAuth({ ...credentials, NIGHTLY_NPM_REGISTRY: url }, action),
-  ).rejects.toThrow("HTTPS registry URL");
-  expect(action).not.toHaveBeenCalled();
+test("initial and repair audits explicitly select public npm despite private registry settings", async () => {
+  const { Repairer } = require("../../src/security/repair");
+  const root = directory();
+  fs.writeFileSync(
+    path.join(root, ".npmrc"),
+    "registry=https://private.example/\n",
+  );
+  const runner = jest.fn(() => ({
+    status: 0,
+    stdout: JSON.stringify({ vulnerabilities: {} }),
+  }));
+  for (const Action of [Scanner, Repairer]) {
+    const action = new Action(
+      { NIGHTLY_NPM_REGISTRY: "https://private.example/" },
+      { run: runner },
+    );
+    await expect(action.auditNpm(root)).resolves.toEqual([
+      { vulnerabilities: {} },
+      [],
+    ]);
+  }
+  expect(runner).toHaveBeenCalledTimes(2);
+  for (const [argv] of runner.mock.calls) {
+    expect(argv).toContain("--registry=https://registry.npmjs.org/");
+    expect(argv).toContain("--omit=dev");
+    expect(argv).toContain("--audit-level=high");
+  }
 });
 test("generic subprocess errors keep raw stderr private; security diagnostics redact credentials", () => {
   let generic;
@@ -95,7 +107,7 @@ test("generic subprocess errors keep raw stderr private; security diagnostics re
   expect(failure.message).toContain("denied [REDACTED] [REDACTED]");
   expect(failure.message).not.toContain("test-password");
 });
-test("Nexus 401 retains useful evidence and reports authentication failure", async () => {
+test("registry 401 retains useful evidence and reports authentication failure", async () => {
   const root = directory(),
     evidence = path.join(root, "npm.json");
   const report = {
