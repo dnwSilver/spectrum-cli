@@ -42,7 +42,26 @@ function requireReleaseState(context) {
 }
 
 function readLocalReleaseState(context) {
-    const local = splitOpenRelease(fs.readFileSync(CHANGELOG_FILE, 'utf8'), context.stableVersion);
+    const text = stripLegacyUnreleasedBlock(fs.readFileSync(CHANGELOG_FILE, 'utf8'));
+    const heading = /^##[ \t]+(?:(?:🚀|🩹)[ \t]*)?\[(\d+\.\d+\.\d+)\][^\r\n]*/m.exec(text);
+    let tailStart = heading?.index ?? text.length;
+    let open = null;
+    if (heading && compareVersions(heading[1], context.stableVersion) > 0) {
+        const afterHeading = heading.index + heading[0].length;
+        const nextHeading = /^## /m.exec(text.slice(afterHeading));
+        tailStart = nextHeading ? afterHeading + nextHeading.index : text.length;
+        // Only the block we will amend needs parsing. The rest is opaque history:
+        // do not validate pending-version counts, ordering or historical headings.
+        open = parseChangelog(text.slice(heading.index, tailStart)).releases[0];
+    }
+    const local = {
+        document: {
+            intro: text.slice(0, heading?.index ?? text.length),
+            releases: tailStart < text.length ? [{ text: text.slice(tailStart) }] : []
+        },
+        open,
+        entries: open ? releaseEntries(open) : []
+    };
     return { ok: true, data: {
         openReleaseVersion: local.open?.version || null,
         releaseChangelogState: { local, production: { ...local, open: null, entries: [] } }

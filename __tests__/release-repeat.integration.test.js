@@ -51,6 +51,34 @@ describe('repeated release start against a real temporary origin', () => {
   });
   afterEach(() => { process.chdir(cwd); fs.rmSync(root, { recursive: true, force: true }); });
 
+  test.each([
+    ['multiple versions above the cached stable tag', block('1.1.0', 'Older release.') + block('1.0.0', 'Published.')],
+    ['legacy history sections', '## Legend\n\nKeep this historical explanation.\n\n' + block('1.1.0', 'Older release.')]
+  ])('no-verify extends only the top release with %s', async (_name, tail) => {
+    const text = '# Changelog\n\n' + block('1.2.0', 'Existing top note.') + '\n' + tail;
+    fs.writeFileSync('CHANGELOG.md', text);
+    fragment('fix.fixed.md', 'New correction.');
+    const head = git(work, 'rev-parse', 'HEAD');
+    const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      expect(await releaseStart()).toBe(false);
+      expect(git(work, 'rev-parse', 'HEAD')).toBe(head);
+      expect(fs.readFileSync('CHANGELOG.md', 'utf8')).toBe(text);
+      expect(await withCommandOptions({ verify: false }, releaseStart)).toBe(true);
+      const result = fs.readFileSync('CHANGELOG.md', 'utf8');
+      expect(result).toContain('## 🚀 [1.2.0] - 2026-09-24');
+      expect(result).toContain('Existing top note.');
+      expect(result).toContain('New correction.');
+      expect(result.endsWith(tail)).toBe(true);
+      expect(fs.readdirSync('.changelog')).toEqual([]);
+      expect(git(origin, 'show', 'master:CHANGELOG.md')).toBe(result.trim());
+      expect(await withCommandOptions({ verify: false }, releaseStart)).toBe(true);
+      expect(fs.readFileSync('CHANGELOG.md', 'utf8')).toBe(result);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   test('no-verify assembles and extends a release despite dirty files and changed production history', async () => {
     fragment('fix.fixed.md', 'First fix.');
     fs.writeFileSync('CHANGELOG.md', fs.readFileSync('CHANGELOG.md', 'utf8').replace('Published.', 'Edited history.'));
@@ -76,6 +104,18 @@ describe('repeated release start against a real temporary origin', () => {
     const head = git(work, 'rev-parse', 'HEAD');
     expect(await withCommandOptions({ verify: false }, releaseStart)).toBe(true);
     expect(git(work, 'rev-parse', 'HEAD')).toBe(head);
+  });
+
+  test('no-verify does not treat a newer version below the top release as the active block', async () => {
+    const text = '# Changelog\n\n' + block('1.0.0', 'Published.') + '\n' + block('1.1.0', 'Out-of-order history.');
+    fs.writeFileSync('CHANGELOG.md', text);
+    fragment('fix.fixed.md', 'New correction.');
+    expect(await withCommandOptions({ verify: false }, releaseStart)).toBe(true);
+    const result = fs.readFileSync('CHANGELOG.md', 'utf8');
+    expect(result.match(/^## .+$/gm)[0]).toContain('[1.0.1]');
+    expect(result.endsWith(text.slice(text.indexOf('## ')))).toBe(true);
+    expect(result).toContain('New correction.');
+    expect(git(origin, 'show', 'master:CHANGELOG.md')).toBe(result.trim());
   });
 
   test('appends new notes to master release, keeps version/date, removes fragments, then starts next version after tag', async () => {

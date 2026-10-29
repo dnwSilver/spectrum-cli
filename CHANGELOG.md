@@ -9,6 +9,12 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.0.1] - 2026-10-29
+
+### Fixed
+
+- `release start -n` больше не выполняет проверку единственного открытого релиза при чтении локального CHANGELOG.md. Команда дополняет верхний релиз и сохраняет остальные разделы без проверки их количества, порядка и исторических заголовков. Обычный запуск сохраняет строгий preflight.
+
 ## 🚀 [6.0.0] - 2026-10-29
 
 ### Breaking change
