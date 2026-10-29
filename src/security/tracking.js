@@ -9,10 +9,21 @@ const {
   equal,
 } = require("../automation");
 const { encoded } = require("../sbom/schema");
-const { glab, projectPath, pages, API } = require("./runtime");
+const {
+  glab,
+  projectPath,
+  pages,
+  API,
+  diagnostic,
+  logPhaseErrors,
+} = require("./runtime");
 const { HIGH } = require("./findings");
 const { Tracker } = require("./tracker");
-const { isDryRun, isVerificationSkipped, reportPreflight } = require("../cli/command-executor");
+const {
+  isDryRun,
+  isVerificationSkipped,
+  reportPreflight,
+} = require("../cli/command-executor");
 const {
   required,
   httpsEndpoint,
@@ -25,11 +36,12 @@ async function track({
   deps = {},
   dry = isDryRun(),
 } = {}) {
-  if (!isVerificationSkipped()) ensure(
-    env.NIGHTLY_EXPECTED_COMPONENT_SHA &&
-      env.NIGHTLY_EXPECTED_COMPONENT_SHA === env.CI_COMMIT_SHA,
-    "Tracker must run the same commit as the included component",
-  );
+  if (!isVerificationSkipped())
+    ensure(
+      env.NIGHTLY_EXPECTED_COMPONENT_SHA &&
+        env.NIGHTLY_EXPECTED_COMPONENT_SHA === env.CI_COMMIT_SHA,
+      "Tracker must run the same commit as the included component",
+    );
   required(env, [
     "YOUTRACK_URL",
     "YOUTRACK_PRIVATE_TOKEN",
@@ -38,11 +50,12 @@ async function track({
   ]);
   httpsEndpoint(env.YOUTRACK_URL, "YOUTRACK_URL");
   const api = deps.api || glab(env);
-  if (!isVerificationSkipped()) await (deps.checkGitlabAccess || checkGitlabAccess)(
-    env,
-    [env.NIGHTLY_CONSUMER_PROJECT],
-    { api },
-  );
+  if (!isVerificationSkipped())
+    await (deps.checkGitlabAccess || checkGitlabAccess)(
+      env,
+      [env.NIGHTLY_CONSUMER_PROJECT],
+      { api },
+    );
   const consumer = projectPath(env.NIGHTLY_CONSUMER_PROJECT),
     jobId = env.NIGHTLY_CONSUMER_SCAN_JOB;
   ensure(/^\d+(?![\s\S])/.test(jobId || ""), "Invalid consumer job ID");
@@ -56,11 +69,12 @@ async function track({
       ),
     ),
     cfg = report.config;
-  if (!isVerificationSkipped()) ensure(
-    report.schemaVersion === 1 &&
-      String(cfg.project_id) === env.NIGHTLY_CONSUMER_PROJECT,
-    "Consumer report identity mismatch",
-  );
+  if (!isVerificationSkipped())
+    ensure(
+      report.schemaVersion === 1 &&
+        String(cfg.project_id) === env.NIGHTLY_CONSUMER_PROJECT,
+      "Consumer report identity mismatch",
+    );
   if (!isVerificationSkipped()) {
     const job = await api.get(consumer + "/jobs/" + jobId);
     const pipeline = await api.get(consumer + "/pipelines/" + job.pipeline.id);
@@ -85,17 +99,19 @@ async function track({
   });
   const tracker = deps.tracker || new Tracker(youtrack, base, env);
   try {
-    if (!isVerificationSkipped()) report.preflight = {
-      youtrack: await (deps.checkYouTrackAccess || checkYouTrackAccess)(
-        env,
-        cfg,
-        youtrack,
-      ),
-    };
+    if (!isVerificationSkipped())
+      report.preflight = {
+        youtrack: await (deps.checkYouTrackAccess || checkYouTrackAccess)(
+          env,
+          cfg,
+          youtrack,
+        ),
+      };
   } catch (error) {
     if (dry) throw error;
-    report.errors.push(error.message);
+    report.errors.push(diagnostic(error.message, env));
     save(path.join(cwd, "security-report/tracked.json"), report);
+    logPhaseErrors("security track", report, env);
     return 1;
   }
   if (dry) {
@@ -112,11 +128,12 @@ async function track({
       ensure(HIGH.has(value.severity), "Unexpected finding severity");
       Object.assign(value, await tracker.ensure(value, cfg));
     } catch (error) {
-      value.tracking_error = error.message;
-      report.errors.push(value.id + ": " + error.message);
+      value.tracking_error = diagnostic(error.message, env);
+      report.errors.push(value.id + ": " + diagnostic(error.message, env));
     }
   }
   save(path.join(cwd, "security-report/tracked.json"), report);
+  logPhaseErrors("security track", report, env);
   return report.errors.length ? 1 : 0;
 }
 async function reconcile({
@@ -139,13 +156,14 @@ async function reconcile({
       "CI_PROJECT_ID",
     ]);
     const api = deps.api || glab(env);
-    if (!isVerificationSkipped()) report.preflight = {
-      gitlab: await (deps.checkGitlabAccess || checkGitlabAccess)(
-        env,
-        [env.NIGHTLY_TRACKER_PROJECT],
-        { api, write: true, purpose: "pipeline" },
-      ),
-    };
+    if (!isVerificationSkipped())
+      report.preflight = {
+        gitlab: await (deps.checkGitlabAccess || checkGitlabAccess)(
+          env,
+          [env.NIGHTLY_TRACKER_PROJECT],
+          { api, write: true, purpose: "pipeline" },
+        ),
+      };
     const target = projectPath(env.NIGHTLY_TRACKER_PROJECT),
       sha = env.NIGHTLY_COMPONENT_SHA;
     ensure(COMMIT.test(sha), "Invalid component SHA");
@@ -229,9 +247,12 @@ async function reconcile({
     );
   } catch (error) {
     if (dry) throw error;
-    report.errors.push(error.message);
+    report.errors.push(diagnostic(error.message, env));
   } finally {
-    if (!dry) save(reportFile, report);
+    if (!dry) {
+      save(reportFile, report);
+      logPhaseErrors("security reconcile", report, env);
+    }
   }
   return report.errors.length ? 1 : 0;
 }

@@ -59,6 +59,10 @@ function diagnostic(value, env = process.env) {
     .slice(0, 2000)
     .trim();
 }
+function logPhaseErrors(phase, report, env = process.env) {
+  for (const message of new Set(report.errors || []))
+    console.error("ERROR " + phase + ": " + diagnostic(message, env));
+}
 async function registryAuth(env, action) {
   return temporary("nightly-registry-", async (directory) => {
     const auths = {};
@@ -217,6 +221,7 @@ async function pages(api, location, query = {}) {
 module.exports = {
   cleanEnv,
   diagnostic,
+  logPhaseErrors,
   run,
   registryAuth,
   artifactRedirect,

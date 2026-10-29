@@ -9,6 +9,13 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.0.5] - 2026-10-29
+
+### Fixed
+
+- Ошибки central tracking и reconcile выводятся прямо в stderr job, включая ранний выход с неполным отчётом. Credentials удаляются из логов и сохраняемых ошибок.
+- Repair выводит исходную причину блокировки из scan/tracking; ошибка отдельного исправления содержит CVE и причину. Ошибки видны и с флагом silence.
+
 ## 🚀 [6.0.4] - 2026-10-29
 
 ### Fixed

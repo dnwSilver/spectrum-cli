@@ -10,7 +10,13 @@ const {
   equal,
 } = require("../automation");
 const { encoded } = require("../sbom/schema");
-const { glab, pages, projectPath } = require("./runtime");
+const {
+  glab,
+  pages,
+  projectPath,
+  diagnostic,
+  logPhaseErrors,
+} = require("./runtime");
 const { Scanner, runtimeFromDockerfile } = require("./scan");
 const { intersects, trivyFindings, nodeFindings } = require("./findings");
 const { formatReport, messageParts } = require("./report");
@@ -18,7 +24,11 @@ const {
   checkGitlabAccess,
   checkExecutables,
 } = require("../preflight/automation");
-const { isDryRun, isVerificationSkipped, reportPreflight } = require("../cli/command-executor");
+const {
+  isDryRun,
+  isVerificationSkipped,
+  reportPreflight,
+} = require("../cli/command-executor");
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const pkgName = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+(?![\s\S])/;
 const tuple = (value) => value.split(".").map(Number);
@@ -494,26 +504,23 @@ class Repairer extends Scanner {
   async repair(root = process.cwd(), { dry = isDryRun() } = {}) {
     const output = path.join(root, "security-report"),
       report = read(path.join(output, "tracked.json"));
+    const blockedReason = () =>
+      "Incomplete scan/tracking; automatic repair is blocked" +
+      (report.errors.length
+        ? ": " + diagnostic(report.errors.join("; "), this.env)
+        : "");
     try {
-      if (dry)
-        ensure(
-          !report.errors.length,
-          "Incomplete scan/tracking; automatic repair is blocked",
-        );
+      if (dry) ensure(!report.errors.length, blockedReason());
       if (!report.findings.length) return report.errors.length ? 1 : 0;
-      ensure(
-        !report.errors.length,
-        "Incomplete scan/tracking; automatic repair is blocked",
-      );
+      ensure(!report.errors.length, blockedReason());
       const api = this.deps.api || glab(this.env);
-      if (!isVerificationSkipped()) report.preflight = {
-        ...report.preflight,
-        gitlab_repair: await (this.deps.checkGitlabAccess || checkGitlabAccess)(
-          this.env,
-          [String(report.config.project_id)],
-          { api, write: true },
-        ),
-      };
+      if (!isVerificationSkipped())
+        report.preflight = {
+          ...report.preflight,
+          gitlab_repair: await (
+            this.deps.checkGitlabAccess || checkGitlabAccess
+          )(this.env, [String(report.config.project_id)], { api, write: true }),
+        };
       if (dry) {
         await this.preflightRepair(api, report, root);
         return 0;
@@ -521,23 +528,33 @@ class Repairer extends Scanner {
       for (const value of report.findings) {
         try {
           ensure(value.task && value.parent, "YouTrack task was not resolved");
-          ensure(
-            !report.errors.length,
-            "Incomplete scan/tracking; automatic repair is blocked",
-          );
+          ensure(!report.errors.length, blockedReason());
           value.repair = await this.repairOne(api, value, report, root);
         } catch (error) {
-          value.repair = { status: "blocked", reason: error.message };
+          value.repair = {
+            status: "blocked",
+            reason: diagnostic(error.message, this.env),
+          };
+          console.error(
+            "ERROR security repair [" +
+              value.id +
+              "]: " +
+              diagnostic(error.message, this.env),
+          );
         }
       }
     } catch (error) {
       if (dry) throw error;
-      report.errors.push(error.message);
+      report.errors.push(diagnostic(error.message, this.env));
       for (const value of report.findings)
         if (!value.repair)
-          value.repair = { status: "blocked", reason: error.message };
+          value.repair = {
+            status: "blocked",
+            reason: diagnostic(error.message, this.env),
+          };
     } finally {
       if (!dry) {
+        logPhaseErrors("security repair", report, this.env);
         save(path.join(output, "final.json"), report);
         save(path.join(output, "message.json"), {
           messages: messageParts(formatReport(report)),
