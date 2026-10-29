@@ -23,7 +23,41 @@ function run(args, cwd, options = {}, env = process.env) {
   if (args[0] === "npm")
     for (const key of ["NPM_TOKEN", "NODE_AUTH_TOKEN"])
       if (env[key]) clean[key] = env[key];
-  return exec(args, { cwd, ...options, env: clean });
+  try {
+    return exec(args, { cwd, ...options, env: clean });
+  } catch (error) {
+    const detail = diagnostic(error.stderr || "", env);
+    if (detail) error.message += ": " + detail;
+    throw error;
+  }
+}
+function diagnostic(value, env = process.env) {
+  let text = String(value || "");
+  const secrets = Object.entries(env)
+    .filter(
+      ([key, value]) =>
+        /TOKEN|PASSWORD|SECRET|MATTERMOST_HOOK/i.test(key) && value,
+    )
+    .map(([, value]) => String(value));
+  if (env.NEXUS_USER && env.NEXUS_PASSWORD)
+    secrets.push(
+      Buffer.from(env.NEXUS_USER + ":" + env.NEXUS_PASSWORD).toString("base64"),
+    );
+  for (const secret of secrets.sort((a, b) => b.length - a.length))
+    text = text.split(secret).join("[REDACTED]");
+  return text
+    .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/g, "$1[REDACTED]@")
+    .replace(
+      /([?&](?:token|access_token|auth|password)=)[^&\s]+/gi,
+      "$1[REDACTED]",
+    )
+    .replace(
+      /\b(Bearer|Basic)\s+(?!realm=)[A-Za-z0-9+/_=.-]+/gi,
+      "$1 [REDACTED]",
+    )
+    .replace(/[\r\n]+/g, " ")
+    .slice(0, 2000)
+    .trim();
 }
 async function registryAuth(env, action) {
   return temporary("nightly-registry-", async (directory) => {
@@ -56,6 +90,45 @@ async function registryAuth(env, action) {
         ).toString("base64"),
       };
     const runtime = { ...env };
+    if (env.NIGHTLY_NPM_REGISTRY && env.NIGHTLY_NPM_ENABLED !== "false") {
+      let registry;
+      try {
+        registry = new URL(env.NIGHTLY_NPM_REGISTRY);
+      } catch {
+        throw new Error("NIGHTLY_NPM_REGISTRY must be an HTTPS registry URL");
+      }
+      ensure(
+        registry.protocol === "https:" &&
+          !registry.username &&
+          !registry.password &&
+          !registry.search &&
+          !registry.hash,
+        "NIGHTLY_NPM_REGISTRY must be an HTTPS registry URL",
+      );
+      runtime.NPM_CONFIG_REGISTRY = registry.href;
+      if (env.NEXUS_USER && env.NEXUS_PASSWORD) {
+        const userconfig =
+          env.NPM_CONFIG_USERCONFIG ||
+          env.npm_config_userconfig ||
+          path.join(require("node:os").homedir(), ".npmrc");
+        const existing = fs.existsSync(userconfig)
+          ? fs.readFileSync(userconfig, "utf8")
+          : "";
+        const scope =
+          "//" + registry.host + registry.pathname.replace(/\/?$/, "/");
+        const auth = Buffer.from(
+          env.NEXUS_USER + ":" + env.NEXUS_PASSWORD,
+        ).toString("base64");
+        const file = path.join(directory, "npmrc");
+        fs.writeFileSync(
+          file,
+          existing.trimEnd() + "\n" + scope + ":_auth=" + auth + "\n",
+          { mode: 0o600 },
+        );
+        runtime.NPM_CONFIG_USERCONFIG = file;
+        delete runtime.npm_config_userconfig;
+      }
+    }
     if (Object.keys(auths).length) {
       const file = path.join(directory, "config.json");
       fs.writeFileSync(file, JSON.stringify({ auths }), { mode: 0o600 });
@@ -182,6 +255,7 @@ async function pages(api, location, query = {}) {
 }
 module.exports = {
   cleanEnv,
+  diagnostic,
   run,
   registryAuth,
   artifactRedirect,

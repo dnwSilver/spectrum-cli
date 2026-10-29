@@ -6,10 +6,12 @@ const {
   save,
   json,
   temporary,
+  temp,
+  remove,
   repositoryPath,
   DIGEST,
 } = require("../automation");
-const { run, API } = require("./runtime");
+const { run, API, diagnostic } = require("./runtime");
 const {
   npmFindings,
   trivyFindings,
@@ -67,12 +69,38 @@ class Scanner {
   }
   async auditNpm(root, evidence) {
     const proc = this.run(
-        ["npm", "audit", "--omit=dev", "--audit-level=high", "--json"],
-        root,
-        { allowed: [0, 1] },
-      ),
+      ["npm", "audit", "--omit=dev", "--audit-level=high", "--json"],
+      root,
+      { allowed: [0, 1] },
+    );
+    if (evidence)
+      save(evidence.replace(/\.json$/, "-command.json"), {
+        status: proc.status,
+        stderr: diagnostic(proc.stderr, this.env),
+      });
+    let report;
+    try {
       report = json(proc.stdout);
+    } catch {
+      throw new Error(
+        "npm audit returned invalid JSON" +
+          (proc.stderr ? ": " + diagnostic(proc.stderr, this.env) : ""),
+      );
+    }
     if (evidence) save(evidence, report);
+    if (!report || report.error || !report.vulnerabilities) {
+      const code = report?.statusCode || report?.error?.code || proc.status;
+      const detail = diagnostic(
+        report?.message ||
+          report?.error?.summary ||
+          report?.error?.detail ||
+          proc.stderr,
+        this.env,
+      );
+      throw new Error(
+        `npm audit returned no vulnerability report (${code})${detail ? ": " + detail : ""}`,
+      );
+    }
     const values = await npmFindings(report, this.deps.aliases);
     ensure(
       proc.status === 0 || values.length,
@@ -92,21 +120,45 @@ class Scanner {
     return image.split("@")[0] + "@" + digest;
   }
   nodeVersion(image, platform) {
-    const container = this.run([
-      "buildah",
-      "from",
-      "--platform",
-      platform,
-      image,
-    ]).stdout.trim();
+    ensure(
+      ["linux/amd64", "linux/arm64"].includes(platform),
+      "Unsupported runtime platform",
+    );
+    const directory = temp("nightly-node-");
+    const imagePath = path.join(directory, "image");
+    const bundle = path.join(directory, "bundle");
+    let failure;
     try {
+      this.run([
+        "skopeo",
+        "--override-os",
+        "linux",
+        "--override-arch",
+        platform.split("/")[1],
+        "copy",
+        "docker://" + image,
+        "oci:" + imagePath + ":runtime",
+      ]);
+      this.run([
+        "umoci",
+        "unpack",
+        "--rootless",
+        "--image",
+        imagePath + ":runtime",
+        bundle,
+      ]);
+      const binary = this.env.NIGHTLY_NODE_BINARY || "/nodejs/bin/node";
+      ensure(
+        path.posix.isAbsolute(binary) && !binary.split("/").includes(".."),
+        "Expected an absolute runtime Node binary path",
+      );
+      // Execute only the runtime binary, with its own libraries and an unprivileged uid.
+      // This does not need a container daemon, mount namespace or Buildah storage.
       const value = this.run([
-        "buildah",
-        "run",
-        "--isolation=chroot",
-        container,
-        "--",
-        this.env.NIGHTLY_NODE_BINARY || "/nodejs/bin/node",
+        "chroot",
+        "--userspec=65534:65534",
+        path.join(bundle, "rootfs"),
+        binary,
         "--version",
       ])
         .stdout.trim()
@@ -116,8 +168,16 @@ class Scanner {
         "Cannot determine runtime Node.js version",
       );
       return value;
+    } catch (error) {
+      failure = error;
+      throw error;
     } finally {
-      this.run(["buildah", "rm", container]);
+      try {
+        remove(directory);
+      } catch (cleanup) {
+        if (failure) failure.message += "; cleanup: " + cleanup.message;
+        else throw cleanup;
+      }
     }
   }
   async feed() {
@@ -125,7 +185,7 @@ class Scanner {
       ? this.deps.feed()
       : new API("https://raw.githubusercontent.com").get(NODE_FEED);
   }
-  async scanImage(image, platform, feed) {
+  async scanImage(image, platform, feed, evidence) {
     ensure(
       ["linux/amd64", "linux/arm64"].includes(platform),
       "Unsupported runtime platform",
@@ -155,6 +215,7 @@ class Scanner {
       ]);
       return read(filename);
     });
+    if (evidence) save(evidence, report);
     const values = trivyFindings(report);
     let version = null;
     if ((this.env.NIGHTLY_CHECK_NODE || "true") === "true") {
@@ -209,7 +270,7 @@ class Scanner {
       tools.push("npm");
     }
     if ((this.env.NIGHTLY_CHECK_NODE || "true") === "true")
-      tools.push("buildah");
+      tools.push("umoci", "chroot");
     (this.deps.checkExecutables || checkExecutables)(tools, this.env);
     const platforms = (this.env.NIGHTLY_PLATFORMS || "linux/amd64").split(",");
     ensure(
@@ -276,8 +337,12 @@ class Scanner {
           platforms = (this.env.NIGHTLY_PLATFORMS || "linux/amd64").split(",");
         report.runtime = { image, dockerfile, platforms };
         for (const [index, platform] of platforms.entries()) {
-          const [raw, values, version] = await this.scanImage(image, platform);
-          save(path.join(output, `runtime-${index}.json`), raw);
+          const [, values, version] = await this.scanImage(
+            image,
+            platform,
+            undefined,
+            path.join(output, `runtime-${index}.json`),
+          );
           report.runtime[platform] = { node: version };
           report.findings.push(...values);
         }
@@ -294,6 +359,8 @@ class Scanner {
         "NIGHTLY_SCAN_JOB_ID=" + this.env.CI_JOB_ID + "\n",
       );
     }
+    for (const error of report.errors)
+      console.error("ERROR security scan: " + diagnostic(error, this.env));
     return report.errors.length ? 1 : 0;
   }
 }

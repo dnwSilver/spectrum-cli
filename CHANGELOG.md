@@ -9,6 +9,14 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.0.2] - 2026-10-29
+
+### Fixed
+
+- Ночной npm audit использует временный registry-scoped user config с Nexus credentials, сохраняет существующую конфигурацию и удаляет auth-файл после команды. Ошибки registry содержат исходный HTTP-код и сообщение без секретов.
+- Версия Node из runtime проверяется через Skopeo, rootless OCI unpack и запуск binary от непривилегированного uid в chroot. Сканирование больше не зависит от Buildah user/mount namespaces. Buildah остаётся инструментом сборки исправленного образа.
+- При ошибке проверки Node сохраняется уже полученный Trivy-отчёт; причины неполного сканирования выводятся в job log с удалением credentials.
+
 ## 🚀 [6.0.1] - 2026-10-29
 
 ### Fixed

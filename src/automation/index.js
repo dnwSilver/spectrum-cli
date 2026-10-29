@@ -125,10 +125,19 @@ function exec(
     encoding: binary ? null : "utf8",
     windowsHide: true,
   });
-  ensure(
-    !result.error && allowed.includes(result.status),
-    `${label || path.basename(args[0]) + " " + (args[1] || "")} failed (exit ${result.status})`,
-  );
+  if (result.error || !allowed.includes(result.status)) {
+    const error = new Error(
+      `${label || path.basename(args[0]) + " " + (args[1] || "")} failed (exit ${result.status})`,
+    );
+    // Keep subprocess output out of generic error messages and serialization.
+    // Callers that know their credential context can expose redacted diagnostics.
+    Object.defineProperties(error, {
+      stdout: { value: result.stdout },
+      stderr: { value: result.stderr },
+      status: { value: result.status },
+    });
+    throw error;
+  }
   return {
     stdout: result.stdout,
     stderr: result.stderr,
