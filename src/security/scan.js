@@ -59,6 +59,17 @@ function runtimeFromDockerfile(text) {
   ensure(last, "No runtime FROM found");
   return last;
 }
+function skopeoImageReference(image) {
+  const at = image.indexOf("@");
+  if (at === -1) return image;
+  const name = image.slice(0, at),
+    digest = image.slice(at + 1);
+  ensure(DIGEST.test(digest), "Invalid runtime image digest");
+  const colon = name.lastIndexOf(":"),
+    slash = name.lastIndexOf("/");
+  // Strip the tag, never the registry port. Keep the original tag in report metadata.
+  return (colon > slash ? name.slice(0, colon) : name) + "@" + digest;
+}
 class Scanner {
   constructor(env = process.env, deps = {}) {
     this.env = env;
@@ -121,7 +132,7 @@ class Scanner {
       "inspect",
       "--format",
       "{{.Digest}}",
-      "docker://" + image,
+      "docker://" + skopeoImageReference(image),
     ]).stdout.trim();
     ensure(DIGEST.test(digest), "Registry did not return an image digest");
     return image.split("@")[0] + "@" + digest;
@@ -143,7 +154,7 @@ class Scanner {
         "--override-arch",
         platform.split("/")[1],
         "copy",
-        "docker://" + image,
+        "docker://" + skopeoImageReference(image),
         "oci:" + imagePath + ":runtime",
       ]);
       this.run([

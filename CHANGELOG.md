@@ -9,6 +9,12 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.0.4] - 2026-10-29
+
+### Fixed
+
+- В Skopeo передаётся ссылка repository@digest без tag: устранена ошибка Docker references with both a tag and digest. Исходный tag сохраняется в отчёте для поиска обновлений runtime; порт registry не изменяется.
+
 ## 🚀 [6.0.3] - 2026-10-29
 
 ### Fixed
