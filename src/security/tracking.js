@@ -1,3 +1,4 @@
+const { cliIdentity, verifyCLI } = require("../automation/tooling");
 const {
   path,
   ensure,
@@ -93,6 +94,7 @@ async function track({
       "Nightly automation requires a protected production branch",
     );
   }
+  verifyCLI(report, env);
   const base = httpsEndpoint(env.YOUTRACK_URL, "YOUTRACK_URL");
   const youtrack = new API(base + "/api", {
     Authorization: "Bearer " + env.YOUTRACK_PRIVATE_TOKEN,
@@ -148,6 +150,7 @@ async function reconcile({
   if (dry)
     ensure(!report.errors.length, "Incomplete scan evidence blocks tracking");
   try {
+    verifyCLI(report, env);
     if (!report.findings.length) return report.errors.length ? 1 : 0;
     required(env, [
       "NIGHTLY_TRACKER_PROJECT",
@@ -168,6 +171,9 @@ async function reconcile({
       sha = env.NIGHTLY_COMPONENT_SHA;
     ensure(COMMIT.test(sha), "Invalid component SHA");
     let ref = env.NIGHTLY_TRACKER_REF;
+    const reference = env.NIGHTLY_COMPONENT_REFERENCE;
+    if (!ref && reference && reference !== "~latest" && !/^v?\d+(?:\.\d+){0,2}$/.test(reference) && !COMMIT.test(reference))
+      ref = reference;
     if (!ref) {
       const refs = await pages(
           api,
@@ -206,6 +212,7 @@ async function reconcile({
         consumer_project: env.CI_PROJECT_ID,
         consumer_scan_job: env.NIGHTLY_SCAN_JOB_ID,
         component_sha: sha,
+        ...(cliIdentity(env) ? { cli_identity: JSON.stringify(cliIdentity(env)) } : {}),
       },
     });
     ensure(
@@ -240,6 +247,8 @@ async function reconcile({
       equal(tracked.config, report.config),
       "Tracker result identity mismatch",
     );
+    ensure(!report.cli || equal(tracked.cli, report.cli), "Tracker result CLI identity mismatch");
+    verifyCLI(tracked, env);
     report = tracked;
     ensure(
       pipeline.status === "success",

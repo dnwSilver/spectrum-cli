@@ -1,10 +1,11 @@
 {
   "name": "spectrum-cli",
-  "version": "6.1.2",
+  "version": "6.2.0",
   "description": "🚀 Modern CLI for development workflow automation - release management, versioning, and changelog generation",
   "main": "index.js",
   "bin": {
-    "spectrum": "./index.js"
+    "spectrum": "./index.js",
+    "spectrum-ci": "./ci-bootstrap.cjs"
   },
   "scripts": {
     "test": "jest",
@@ -15,6 +16,7 @@
   },
   "files": [
     "index.js",
+    "ci-bootstrap.cjs",
     "src/",
     "README.md",
     "LICENSE",

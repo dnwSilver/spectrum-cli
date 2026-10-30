@@ -490,9 +490,9 @@ class Publisher {
     try {
       const requested = versions(this.env.NEXT_CATALOG_VERSIONS || "[]");
       if (!isVerificationSkipped()) ensure(
-        this.env.CI_COMMIT_BRANCH === "main" &&
+        Boolean(this.env.CI_COMMIT_BRANCH) &&
           this.env.CI_COMMIT_REF_PROTECTED === "true",
-        "Updater requires protected main",
+        "Updater requires a protected branch",
       );
       required(this.env, [
         "SBOM_CATALOG_PUBLISH_REPOSITORY",

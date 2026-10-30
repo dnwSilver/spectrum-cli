@@ -739,3 +739,34 @@ registry и соответствия tracker ref. Команда сразу пе
 Загрузка входных отчётов, аутентификация для операций, проверка целостности
 артефактов и проверочные команды после исправления остаются частью действия.
 Пропущенные preflight не получают статус «проверено» в отчёте.
+
+### CI launcher: independent CLI versions
+
+`spectrum-ci <command and flags>` installs command implementations independently
+of the toolbox image. It is also shipped as dependency-free `ci-bootstrap.cjs`
+for extraction into Node/npm/tar images. Minimum selected CLI is 6.2.0.
+
+| Selector | Behavior |
+| --- | --- |
+| `SPECTRUM_CLI_VERSION` | Exact npm version, major or minor; default `6` |
+| `SPECTRUM_CLI_REF` | Named branch/tag of the public CLI repo; overrides npm selection |
+| `SPECTRUM_CLI_REQUESTED_VERSION/REF` | CI component input overrides |
+| `SPECTRUM_CLI_IDENTITY_FILE` | Save/restore one exact version or Git SHA in an artifact |
+| `SPECTRUM_CLI_IDENTITY` | Downstream frozen identity; overrides local selectors |
+| `SPECTRUM_CLI_GITHUB_TOKEN` | Optional GitHub read token for higher Git-mode API limits; sent only to api.github.com |
+| `SPECTRUM_CLI_CACHE_DIR` | npm download cache; default `.spectrum-cli-cache` |
+
+Git mode uses HTTPS archives, its lockfile and a fixed repository; Git is not
+required. A moving branch cannot replace the selected SHA within a workflow.
+If history is force-pushed away, the job fails and requires a new pipeline.
+GitHub API limits/network errors are reported without fallback to another source.
+An installed npm selector is resolved to the exact version once per workflow.
+Installations are temporary, lifecycle scripts are disabled, installer credentials
+are stripped and public npm is explicit. Application npm config/node_modules are
+unchanged. Resolved source is printed to stderr; command stdout/exit status and
+all command flags are preserved. `--dry` does not write a CLI identity artifact.
+
+Nightly reports record the selected identity; reconcile forwards it to the central
+tracker and repair rejects mismatches. The catalogue client forwards the same
+identity to its writer. Named component branches can select the corresponding
+tracker branch while component SHA verification stays enabled.

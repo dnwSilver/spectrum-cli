@@ -9,6 +9,13 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.2.0] - 2026-10-30
+
+### Added
+
+- Standalone spectrum-ci launcher selects npm versions or named Git refs, installs without lifecycle scripts in an isolated directory, prints the resolved source and persists one exact identity across a workflow. It needs Node/npm/tar, not Git, and supports the existing command flags.
+- Nightly scan/tracker/repair verify the same CLI identity; the catalogue client forwards it to the writer. Component branch references select the corresponding tracker branch without removing component SHA checks. Catalogue writer refs can be overridden for pilots.
+
 ## 🚀 [6.1.2] - 2026-10-30
 
 ### Fixed

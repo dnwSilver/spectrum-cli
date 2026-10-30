@@ -1,3 +1,4 @@
+const { verifyCLI } = require("../automation/tooling");
 const {
   fs,
   path,
@@ -432,6 +433,7 @@ class Repairer extends Scanner {
         ? ": " + diagnostic(report.errors.join("; "), this.env)
         : "");
     try {
+      verifyCLI(report, this.env);
       if (dry) ensure(!report.errors.length, blockedReason());
       if (!report.findings.length) return report.errors.length ? 1 : 0;
       ensure(!report.errors.length, blockedReason());

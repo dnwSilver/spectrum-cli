@@ -1,3 +1,4 @@
+const { cliIdentity } = require("../automation/tooling");
 const {
   fs,
   path,
@@ -246,6 +247,7 @@ class Scanner {
         errors: [],
         runtime: {},
       };
+    if (cliIdentity(this.env)) report.cli = cliIdentity(this.env);
     try {
       required(this.env, [
         "NIGHTLY_YOUTRACK_PROJECT",

@@ -1,3 +1,4 @@
+const { cliIdentity } = require("../automation/tooling");
 const io = require("../automation");
 const { isDryRun, reportPreflight } = require("../cli/command-executor");
 const {
@@ -167,10 +168,11 @@ async function trigger(versions, env, transport = io.request) {
   required(env, ["SBOM_CATALOG_UPDATER_PROJECT"]);
   const body = JSON.stringify({
     token: env.CI_JOB_TOKEN,
-    ref: "main",
+    ref: env.SBOM_CATALOG_UPDATER_REF || "main",
     inputs: {
       operation: "populate-next-catalog",
       next_versions: JSON.stringify(versions),
+      ...(cliIdentity(env) ? { cli_identity: JSON.stringify(cliIdentity(env)) } : {}),
     },
   });
   // One POST. A transport timeout must not create another downstream pipeline.
