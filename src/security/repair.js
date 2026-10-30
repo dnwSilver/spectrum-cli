@@ -189,7 +189,7 @@ class Repairer extends Scanner {
       "gim",
     );
     let count = 0;
-    const changed = text.replace(regex, (_, prefix) => {
+    let changed = text.replace(regex, (_, prefix) => {
       count++;
       return prefix + selected;
     });
@@ -197,13 +197,22 @@ class Repairer extends Scanner {
       count === 1,
       "Runtime FROM must be a single literal image for automatic replacement",
     );
-    fs.writeFileSync(dockerfile, changed);
     const variable = this.env.NIGHTLY_RUNTIME_PUBLISH_VARIABLE;
     if (variable) {
       ensure(
         new Set(versions).size === 1 && versions[0],
         "Runtime platform versions differ",
       );
+      // Runtime owners must republish the version metadata lost when rebuilding
+      // a distroless manifest. Application Dockerfiles keep their inherited config.
+      const key = "com.google.distroless.nodejs.version";
+      const label = 'LABEL ' + key + '="' + versions[0] + '"';
+      const labelPattern = /^LABEL\s+com\.google\.distroless\.nodejs\.version=(?:"[^"]*"|'[^']*'|[^\s]+)[ \t]*$/gim;
+      const labels = changed.match(labelPattern) || [];
+      ensure(labels.length <= 1 && !changed.replace(labelPattern, "").includes(key),
+        "Runtime version metadata requires a single dedicated LABEL instruction");
+      changed = labels.length ? changed.replace(labelPattern, label) :
+        changed.replace(/^(FROM[^\r\n]*)(\r?\n|$)/im, (_, line, newline) => line + (newline || "\n") + label + (newline || "\n"));
       const pipeline = repositoryPath(root, ".gitlab-ci.yml"),
         current = fs.readFileSync(pipeline, "utf8"),
         pattern = new RegExp(
@@ -220,6 +229,7 @@ class Repairer extends Scanner {
         current.replace(pattern, (_, prefix) => prefix + '"' + tag + '"'),
       );
     }
+    fs.writeFileSync(dockerfile, changed);
     return selected;
   }
   commitActions(root, allowed) {

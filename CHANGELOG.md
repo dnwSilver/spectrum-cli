@@ -9,6 +9,13 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.1.1] - 2026-10-30
+
+### Fixed
+
+- Проверка версии runtime читает config blob из registry с проверкой digest и размера, даже если Trivy не сохранил ImageConfig. Ошибка отсутствующих metadata указывает платформу, ожидаемые поля и необходимость публикации runtime с версией.
+- При обновлении базы runtime owner сохраняет подтверждённую сканированием версию Node.js в отдельной LABEL вместе с тегом публикации; проектные Dockerfiles не получают дополнительную LABEL.
+
 ## 🚀 [6.1.0] - 2026-10-30
 
 ### Changed

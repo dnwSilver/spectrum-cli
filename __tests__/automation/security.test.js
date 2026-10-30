@@ -706,6 +706,42 @@ test("unsafe runtime candidates never replace Dockerfile and safe same-major one
   );
 });
 
+test.each([true, false])("runtime owner keeps publication label synchronized with verified candidates (existing label: %s)", async (existing) => {
+  const root = dir();
+  const dockerfile = path.join(root, "Dockerfile");
+  fs.writeFileSync(dockerfile, "FROM registry.example/runtime:24.1.0.1\n" +
+    (existing ? 'LABEL com.google.distroless.nodejs.version="24.1.0"\n' : "") + 'CMD ["--version"]\n');
+  fs.writeFileSync(path.join(root, ".gitlab-ci.yml"), 'variables:\n  RUNTIME_IMAGE_TAG: "24.1.0.1"\n');
+  const repairer = new Repairer({ NIGHTLY_RUNTIME_PUBLISH_VARIABLE: "RUNTIME_IMAGE_TAG" });
+  repairer.imageCandidates = async () => ["registry.example/runtime:24.2.0"];
+  repairer.immutableImage = async () => "registry.example/runtime:24.2.0@sha256:" + "2".repeat(64);
+  repairer.scanImage = async () => [{}, [], "24.2.0"];
+  const report = { runtime: { image: "old", dockerfile: "Dockerfile", platforms: ["linux/amd64", "linux/arm64"] }, findings: [value("runtime")] };
+  await repairer.fixRuntime(root, value("runtime"), report);
+  const source = fs.readFileSync(dockerfile, "utf8");
+  expect(source.match(/LABEL /g)).toHaveLength(1);
+  expect(source).toContain('LABEL com.google.distroless.nodejs.version="24.2.0"');
+  expect(source).not.toContain('="24.1.0"');
+  expect(fs.readFileSync(path.join(root, ".gitlab-ci.yml"), "utf8")).toContain('RUNTIME_IMAGE_TAG: "24.2.0.2"');
+});
+test.each(["different platform versions", "unsupported label layout"])("runtime owner leaves files unchanged for %s", async (problem) => {
+  const root = dir();
+  const dockerfile = path.join(root, "Dockerfile"), pipeline = path.join(root, ".gitlab-ci.yml");
+  const source = 'FROM registry.example/runtime:24.1.0.1\n' + (problem === "unsupported label layout" ?
+    'LABEL other="value" com.google.distroless.nodejs.version="24.1.0"\n' : "");
+  const ci = 'variables:\n  RUNTIME_IMAGE_TAG: "24.1.0.1"\n';
+  fs.writeFileSync(dockerfile, source);
+  fs.writeFileSync(pipeline, ci);
+  const repairer = new Repairer({ NIGHTLY_RUNTIME_PUBLISH_VARIABLE: "RUNTIME_IMAGE_TAG" });
+  repairer.imageCandidates = async () => ["candidate"];
+  repairer.immutableImage = async () => "candidate@sha256:" + "2".repeat(64);
+  repairer.scanImage = async (_, platform) => [{}, [], problem === "different platform versions" && platform === "linux/arm64" ? "24.3.0" : "24.2.0"];
+  const report = { runtime: { image: "old", dockerfile: "Dockerfile", platforms: ["linux/amd64", "linux/arm64"] }, findings: [value("runtime")] };
+  await expect(repairer.fixRuntime(root, value("runtime"), report)).rejects.toThrow(
+    problem === "different platform versions" ? "platform versions differ" : "dedicated LABEL");
+  expect(fs.readFileSync(dockerfile, "utf8")).toBe(source);
+  expect(fs.readFileSync(pipeline, "utf8")).toBe(ci);
+});
 test("full-match migration rejects terminal newlines in IDs, versions and digests", () => {
   const { SEMVER, DIGEST, COMMIT } = require("../../src/automation");
   expect(SEMVER.test("1.2.3\n")).toBe(false);

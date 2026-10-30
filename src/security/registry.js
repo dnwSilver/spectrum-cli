@@ -104,24 +104,39 @@ class Registry {
   }
   async nodeVersion(image, platform, report) {
     let { target, manifest } = await this.manifest(image);
+    const key = "com.google.distroless.nodejs.version";
+    const versions = [manifest.annotations?.[key]];
     if (manifest.manifests) {
       const [os, architecture] = platform.split("/");
       const matches = manifest.manifests.filter((entry) => entry.platform?.os === os && entry.platform?.architecture === architecture);
       ensure(matches.length === 1 && DIGEST.test(matches[0].digest), "Runtime platform is missing or ambiguous");
+      versions.push(matches[0].annotations?.[key]);
       ({ manifest } = await this.manifest(target.name + "@" + matches[0].digest));
+      versions.push(manifest.annotations?.[key]);
     }
-    const versions = [manifest.annotations?.["com.google.distroless.nodejs.version"]];
-    const config = report?.Metadata?.ImageConfig?.config;
-    versions.push(config?.Labels?.["com.google.distroless.nodejs.version"]);
-    for (const entry of config?.Env || [])
-      if (entry.startsWith("NODE_VERSION=")) versions.push(entry.slice("NODE_VERSION=".length));
+    const configs = [report?.Metadata?.ImageConfig?.config];
+    if (!configs[0] && manifest.config?.digest) {
+      const descriptor = manifest.config;
+      ensure(DIGEST.test(descriptor.digest), "Invalid runtime config digest");
+      const response = await this.get(target, `/v2/${target.repository}/blobs/${descriptor.digest}`);
+      ensure("sha256:" + sha(response.body) === descriptor.digest, "Runtime config digest mismatch");
+      ensure(descriptor.size === undefined || descriptor.size === response.body.length, "Runtime config size mismatch");
+      configs.push(json(response.body).config);
+    }
+    for (const config of configs) {
+      versions.push(config?.Labels?.[key]);
+      for (const entry of config?.Env || [])
+        if (typeof entry === "string" && entry.startsWith("NODE_VERSION=")) versions.push(entry.slice("NODE_VERSION=".length));
+    }
     const found = [...new Set(versions.filter(Boolean).map((version) =>
       typeof version === "string" ? version.replace(/^v/, "") : version,
     ))];
     ensure(
       found.length === 1 && typeof found[0] === "string" &&
         /^\d+\.\d+\.\d+(?![\s\S])/.test(found[0]),
-      "Cannot determine runtime Node.js version from published metadata",
+      "Cannot determine runtime Node.js version from published metadata (" + platform + "): " +
+        (found.length ? "invalid or conflicting version values" :
+          "missing " + key + " annotation/label and NODE_VERSION; publish a runtime image with version metadata"),
     );
     return found[0];
   }

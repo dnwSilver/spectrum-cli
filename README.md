@@ -646,7 +646,11 @@ Runtime-исправления выбирают уже опубликованн�
 Теги и digest читаются через HTTPS Registry API v2 с проверкой SHA-256 содержимого manifest.
 Trivy работает с `--image-src remote`; Docker/Buildah, Skopeo, umoci, chroot и binfmt/QEMU не требуются.
 Версия Node берётся из platform-specific manifest annotation `com.google.distroless.nodejs.version`
-или `NODE_VERSION`/одноимённой distroless label в конфигурации просканированного образа. Бинарный файл
+или `NODE_VERSION`/одноимённой distroless label в конфигурации просканированного образа. Config blob
+при отсутствии ImageConfig в отчёте Trivy читается напрямую из registry и сверяется с digest/размером в manifest.
+При пересборке runtime annotation исходного manifest может потеряться: владелец runtime должен сохранять
+версию в отдельной `LABEL com.google.distroless.nodejs.version="<version>"`. Ночной repair владельца
+(`NIGHTLY_RUNTIME_PUBLISH_VARIABLE`) обновляет эту LABEL вместе с `FROM` и тегом публикации. Бинарный файл
 не исполняется; версия не угадывается по тегу. Отсутствующие или противоречивые метаданные при включённом
 `NIGHTLY_CHECK_NODE` считаются ошибкой сканирования. Это проверка опубликованных метаданных, а не фактического
 вывода `node --version`.
