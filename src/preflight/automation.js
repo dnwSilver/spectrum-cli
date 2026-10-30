@@ -99,37 +99,61 @@ async function checkGitlabAccess(
       typeof project === "string" && project.trim() && !/[\r\n]/.test(project),
       "GitLab project must be configured explicitly",
     );
+    const identity = user.username ? "@" + user.username + " (id " + user.id + ")" : "id " + user.id;
+    const operation = purpose === "pipeline" ? "pipeline" : "repository/MR";
+    const accessContext = (name) => "project " + JSON.stringify(name) +
+      "; token user " + identity + "; operation " + operation;
     const data = await get(
       client,
       projectPath(project),
       undefined,
-      "GitLab project access",
+      "GitLab project access (" + accessContext(project) + ")",
     );
-    const level = user.is_admin
+    let level = user.is_admin
       ? 50
       : Math.max(
           data.permissions?.project_access?.access_level || 0,
           data.permissions?.group_access?.access_level || 0,
         );
+    const minimum = write ? 30 : 20;
+    if (level < minimum) {
+      // Project summary permissions may omit access through an invited group.
+      // Resolve the token user's effective membership, including shared groups.
+      let member;
+      try {
+        member = await client.get(projectPath(project) + "/members/all/" + encoded(String(user.id)));
+      } catch (error) {
+        if (error.status !== 404)
+          throw new PreflightError("GitLab effective membership check failed (" +
+            accessContext(data.path_with_namespace || project) +
+            (Number.isInteger(error.status) ? "; HTTP " + error.status : "") + ")");
+      }
+      if (member) {
+        check(String(member.id) === String(user.id) && Number.isInteger(member.access_level),
+          "GitLab effective membership response is invalid (" + accessContext(project) + ")");
+        level = Math.max(level, member.access_level);
+      }
+    }
+    const context = accessContext(data.path_with_namespace || project) + "; access level " + level;
     check(
-      level >= (write ? 30 : 20),
-      write
+      level >= minimum,
+      (write
         ? "GitLab project requires Developer access or higher"
-        : "GitLab project requires Reporter access or higher",
+        : "GitLab project requires Reporter access or higher") + " (" + context + ")",
     );
     if (write) {
-      check(data.archived !== true, "GitLab project is archived");
+      check(data.archived !== true, "GitLab project is archived (" + context + ")");
       if (purpose === "pipeline")
         check(
           data.builds_access_level !== "disabled",
-          "GitLab pipeline access is disabled",
+          "GitLab pipeline access is disabled (" + context + ")",
         );
       else
         check(
           data.repository_access_level !== "disabled" &&
             data.merge_requests_access_level !== "disabled" &&
             data.can_create_merge_request_in !== false,
-          "GitLab repository/MR access is disabled",
+          "GitLab repository/MR access is disabled (" + context + ")",
         );
     }
   }

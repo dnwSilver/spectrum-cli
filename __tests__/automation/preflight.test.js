@@ -54,6 +54,8 @@ function glab({
       if (location === "user") return { id: 1, state: "active" };
       if (location === "personal_access_tokens/self")
         return { active, revoked: false, scopes: scope };
+      if (/\/members\/all\/1$/.test(location))
+        return { id: 1, access_level: level };
       if (location.startsWith("projects/"))
         return {
           permissions: { project_access: { access_level: level } },
@@ -127,6 +129,76 @@ test("GitLab identity, token scope and effective project role are checked using 
     token_scope: "verified",
     project_role: "verified",
   });
+  expect(api.post).not.toHaveBeenCalled();
+});
+test("inherited Developer membership satisfies the project write preflight", async () => {
+  const api = glab();
+  const originalGet = api.get.getMockImplementation();
+  api.get.mockImplementation(async (location) => location.startsWith("projects/") ? {
+    permissions: { project_access: null, group_access: { access_level: 30 } },
+  } : originalGet(location));
+  await expect(checkGitlabAccess(ENV, ["example/app"], { api, write: true })).resolves.toMatchObject({ project_role: "verified" });
+  expect(api.post).not.toHaveBeenCalled();
+});
+test("access errors identify the actual token user and tracker project, even if application access is sufficient", async () => {
+  const api = glab();
+  const originalGet = api.get.getMockImplementation();
+  api.get.mockImplementation(async (location) => {
+    if (location === "user") return { id: 1, username: "group_bot", state: "active" };
+    if (location.endsWith("/members/all/1")) return { id: 1, access_level: 20 };
+    if (location.startsWith("projects/")) return {
+      path_with_namespace: location === "projects/example%2Fapp" ? "example/app" : "automation/security",
+      permissions: { project_access: null, group_access: { access_level: location === "projects/example%2Fapp" ? 30 : 20 } },
+    };
+    return originalGet(location);
+  });
+  await checkGitlabAccess(ENV, ["example/app"], { api, write: true });
+  let message;
+  try {
+    await checkGitlabAccess(ENV, ["automation/security"], { api, write: true, purpose: "pipeline" });
+  } catch (error) { message = error.message; }
+  expect(message).toContain('project "automation/security"');
+  expect(message).toContain("@group_bot (id 1)");
+  expect(message).toContain("operation pipeline");
+  expect(message).toContain("access level 20");
+  expect(message).not.toContain(ENV.GLAB_BOT_PAT);
+  expect(api.post).not.toHaveBeenCalled();
+});
+test.each([20, 30])("effective invited-group membership is accepted for required access %i", async (level) => {
+  const api = glab();
+  const originalGet = api.get.getMockImplementation();
+  api.get.mockImplementation(async (location) => {
+    if (location.endsWith("/members/all/1")) return { id: 1, access_level: level };
+    if (location.startsWith("projects/")) return { permissions: { project_access: null, group_access: null } };
+    return originalGet(location);
+  });
+  await expect(checkGitlabAccess(ENV, ["automation/security"], { api, write: level === 30, purpose: "pipeline" }))
+    .resolves.toMatchObject({ project_role: "verified" });
+  expect(api.get).toHaveBeenCalledWith("projects/automation%2Fsecurity/members/all/1");
+  expect(api.post).not.toHaveBeenCalled();
+});
+test.each([404, 403])("effective membership HTTP %i remains an error without leaking response data", async (status) => {
+  const api = glab({ level: 0 });
+  const originalGet = api.get.getMockImplementation();
+  api.get.mockImplementation(async (location) => {
+    if (location.endsWith("/members/all/1")) throw Object.assign(Error("private-server-response"), { status });
+    return originalGet(location);
+  });
+  let message;
+  try { await checkGitlabAccess(ENV, ["automation/security"], { api, write: true }); }
+  catch (error) { message = error.message; }
+  expect(message).toContain('project "automation/security"');
+  expect(message).toContain(status === 403 ? "HTTP 403" : "Developer access");
+  expect(message).not.toContain("private-server-response");
+  expect(api.post).not.toHaveBeenCalled();
+});
+test("membership of another user cannot satisfy the token user's preflight", async () => {
+  const api = glab({ level: 0 });
+  const originalGet = api.get.getMockImplementation();
+  api.get.mockImplementation(async (location) => location.endsWith("/members/all/1") ?
+    { id: 2, access_level: 50 } : originalGet(location));
+  await expect(checkGitlabAccess(ENV, ["automation/security"], { api, write: true }))
+    .rejects.toThrow("membership response is invalid");
   expect(api.post).not.toHaveBeenCalled();
 });
 test.each([

@@ -9,6 +9,13 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.1.2] - 2026-10-30
+
+### Fixed
+
+- GitLab preflight дополнительно проверяет эффективное членство пользователя токена через members/all, когда сводные project_access/group_access не подтверждают роль. Учитывается Developer через приглашённую группу без прямого добавления бота; Reporter, отсутствие членства и ошибки API сохраняют блокировку записи.
+- Ошибки GitLab preflight указывают целевой проект, пользователя токена, эффективный уровень роли и операцию. Проверка центрального tracker больше не выглядит как отказ в доступе к приложению; добавлена регрессия для унаследованной роли Developer.
+
 ## 🚀 [6.1.1] - 2026-10-30
 
 ### Fixed
