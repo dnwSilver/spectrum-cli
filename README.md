@@ -571,11 +571,11 @@ credentials/некорректные отчёты приводят к ошибк
 Компоненты передают свои inputs через job-local окружение. `security scan`
 читает `NIGHTLY_YOUTRACK_PROJECT`, `NIGHTLY_YOUTRACK_TIME_TRACKING_ARTICLE`,
 `NIGHTLY_YOUTRACK_TESTER`, необязательный `NIGHTLY_YOUTRACK_SUBSYSTEM`,
-`NIGHTLY_DOCKERFILE`, `NIGHTLY_PLATFORMS` и `NIGHTLY_CHECK_COMMANDS` (JSON argv).
+`NIGHTLY_DOCKERFILE`, `NIGHTLY_PLATFORMS` и `NIGHTLY_CHECK_NODE`.
 Токены `GLAB_BOT_PAT` и `YOUTRACK_PRIVATE_TOKEN` остаются секретными CI variables;
 YouTrack-токен нужен только центральному tracker. Для registry используются
 `NEXUS_USER`/`NEXUS_PASSWORD` либо стандартные CI registry credentials.
-Секреты автоматизации исключаются из окружения выполняемых проверок проекта.
+Секреты автоматизации исключаются из окружения npm-подпроцессов.
 
 `sbom catalog resolve` читает `SBOM_CATALOG_CLIENT_ENABLED=true`,
 `SBOM_CATALOG_FRAMEWORK=nextjs`, `SBOM_CATALOG_PREFIX` (по умолчанию `site:`),
@@ -587,7 +587,7 @@ YouTrack-токен нужен только центральному tracker. Д
 project variable `SBOM_CATALOG_PUBLISH_REPOSITORY`.
 
 Внешние инструменты: Linux amd64 для SBOM bootstrap; Git для каталога,
-Trivy/Skopeo/Buildah для runtime-аудита и исправлений. SBOM-команды скачивают
+Trivy для аудита опубликованных runtime-образов и HTTPS Registry API для чтения тегов, digest и метаданных. SBOM-команды скачивают
 закреплённые ORAS/Syft с проверкой SHA-256, ограничениями размера и времени.
 Python для этих команд не требуется. Они не выполняют код из npm tarball
 или upstream build-рецептов. Неоднозначное происхождение остаётся unresolved.
@@ -636,11 +636,23 @@ npm audit --registry=https://registry.npmjs.org/ --omit=dev --audit-level=high -
 зависимостей продолжают использовать конфигурацию проекта. Порог ночного процесса — HIGH/CRITICAL.
 Ошибки audit сохраняют HTTP-код и причину с удалением credentials из диагностических сообщений.
 
-Для версии Node из runtime нужны Skopeo, umoci и chroot. CLI копирует выбранную платформу immutable OCI-образа,
-распаковывает rootfs в rootless-режиме и запускает только настроенный Node binary с `--version` от uid/gid 65534.
-Проверка требует доступный chroot (`CAP_SYS_CHROOT`), но не Buildah user/mount namespaces. Кросс-платформенный запуск
-требует binfmt/QEMU. Buildah нужен для пересборки runtime при автоматическом исправлении; отсутствие его нужных
-возможностей блокирует публикацию такого исправления и отражается в отчёте.
+Ночной процесс готовит изменения и создаёт отдельный Draft MR на проектную задачу. Он не устанавливает
+полное дерево зависимостей, не запускает проектные проверки и не собирает контейнерные образы. npm-исправления
+меняют manifest/lockfile с `--package-lock-only --ignore-scripts` и проходят повторный production audit.
+Runtime-исправления выбирают уже опубликованный образ того же Node major, повторно сканируют его на всех
+настроенных платформах и меняют `FROM`/digest. Сборка и проверки проекта выполняются обычным MR pipeline;
+статус нового исправления — `created`, а не `verified`.
+
+Теги и digest читаются через HTTPS Registry API v2 с проверкой SHA-256 содержимого manifest.
+Trivy работает с `--image-src remote`; Docker/Buildah, Skopeo, umoci, chroot и binfmt/QEMU не требуются.
+Версия Node берётся из platform-specific manifest annotation `com.google.distroless.nodejs.version`
+или `NODE_VERSION`/одноимённой distroless label в конфигурации просканированного образа. Бинарный файл
+не исполняется; версия не угадывается по тегу. Отсутствующие или противоречивые метаданные при включённом
+`NIGHTLY_CHECK_NODE` считаются ошибкой сканирования. Это проверка опубликованных метаданных, а не фактического
+вывода `node --version`.
+
+Прежние `NIGHTLY_CHECK_COMMANDS` и `NIGHTLY_NODE_BINARY` больше не используются. Настройки MR CI остаются
+в проекте. Защиты от неполного сканирования, дублирующих MR и изменения исходной ветки сохраняются.
 
 ### Preflight для команд автоматизации
 

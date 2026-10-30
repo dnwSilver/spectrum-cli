@@ -4,7 +4,6 @@ const {
   ensure,
   read,
   save,
-  json,
   temporary,
   repositoryPath,
   equal,
@@ -18,7 +17,7 @@ const {
   logPhaseErrors,
 } = require("./runtime");
 const { Scanner, runtimeFromDockerfile } = require("./scan");
-const { intersects, trivyFindings, nodeFindings } = require("./findings");
+const { intersects } = require("./findings");
 const { formatReport, messageParts } = require("./report");
 const {
   checkGitlabAccess,
@@ -43,7 +42,7 @@ function compareTags(a, b) {
   return 0;
 }
 class Repairer extends Scanner {
-  imageCandidates(image) {
+  async imageCandidates(image) {
     const base = image.split("@")[0],
       offset = base.lastIndexOf(":"),
       repository = base.slice(0, offset),
@@ -53,9 +52,7 @@ class Repairer extends Scanner {
       "Runtime image must have an explicit tag",
     );
     if (/^\d+(?:\.\d+){2,3}(?![\s\S])/.test(tag)) {
-      const tags = json(
-        this.run(["skopeo", "list-tags", "docker://" + repository]).stdout,
-      ).Tags;
+      const tags = await this.registry.tags(image);
       return tags
         .filter(
           (item) =>
@@ -141,7 +138,7 @@ class Repairer extends Scanner {
   }
   async fixRuntime(root, value, report) {
     const runtime = report.runtime,
-      candidates = this.imageCandidates(runtime.image);
+      candidates = await this.imageCandidates(runtime.image);
     ensure(
       candidates.length,
       "No newer published runtime image; fix and publish the runtime owner first",
@@ -154,7 +151,7 @@ class Repairer extends Scanner {
         .flatMap((entry) => entry.aliases),
     );
     for (let candidate of candidates) {
-      candidate = this.immutableImage(candidate);
+      candidate = await this.immutableImage(candidate);
       if (candidate === runtime.image) continue;
       let safe = true;
       versions = [];
@@ -295,84 +292,11 @@ class Repairer extends Scanner {
         this.commitActions(work, allowed).length,
         "Repair produced no changes",
       );
-      if ((this.env.NIGHTLY_NPM_ENABLED || "true") === "true")
-        this.run(
-          ["npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"],
-          work,
-        );
-      const checks = json(this.env.NIGHTLY_CHECK_COMMANDS || "[]");
-      ensure(
-        Array.isArray(checks) &&
-          checks.length &&
-          checks.every(
-            (check) =>
-              Array.isArray(check) &&
-              check.length &&
-              check.every((arg) => typeof arg === "string"),
-          ),
-        "Configure nonempty check_commands as argv arrays",
-      );
-      for (const command of checks) this.run(command, work);
       const after = [];
       if ((this.env.NIGHTLY_NPM_ENABLED || "true") === "true") {
         const [, entries] = await this.auditNpm(work);
         after.push(...entries);
       }
-      if (intersects(value.sources, ["runtime", "node"]))
-        for (const platform of report.runtime.platforms) {
-          const tag = "localhost/nightly-security:" + process.pid;
-          this.run(
-            [
-              "buildah",
-              "bud",
-              "--isolation=chroot",
-              "--platform",
-              platform,
-              "--format=docker",
-              "--tag",
-              tag,
-              "--file",
-              report.runtime.dockerfile,
-              ".",
-            ],
-            work,
-          );
-          try {
-            const archive = path.join(directory, "fixed-image.tar"),
-              filename = path.join(directory, "fixed-trivy.json");
-            this.run(["buildah", "push", tag, "docker-archive:" + archive]);
-            this.run([
-              "trivy",
-              "image",
-              "--input",
-              archive,
-              "--scanners",
-              "vuln",
-              "--severity",
-              "HIGH,CRITICAL",
-              "--skip-db-update=false",
-              "--ignore-unfixed=false",
-              "--ignorefile",
-              "/dev/null",
-              "--config",
-              "/dev/null",
-              "--format",
-              "json",
-              "--output",
-              filename,
-            ]);
-            after.push(...trivyFindings(read(filename)));
-            if ((this.env.NIGHTLY_CHECK_NODE || "true") === "true")
-              after.push(
-                ...nodeFindings(
-                  this.nodeVersion(tag, platform),
-                  await this.feed(),
-                ),
-              );
-          } finally {
-            this.run(["buildah", "rmi", tag]);
-          }
-        }
       const aliases = after.flatMap((entry) => entry.aliases),
         baseline = new Set(report.findings.flatMap((entry) => entry.aliases));
       ensure(
@@ -427,7 +351,7 @@ class Repairer extends Scanner {
             );
           ensure(
             Buffer.from(actual).equals(expected),
-            "Existing hotfix differs from the verified repair",
+            "Existing hotfix differs from the prepared repair",
           );
         }
       } else
@@ -437,7 +361,7 @@ class Repairer extends Scanner {
           commit_message: expectedMessage,
           actions,
         });
-      const description = `Устранение ${value.id} (${value.severity}).\n\nЗадача: ${value.task.url}\nРодитель: ${value.parent.url}\n\nПроверки проекта и повторный аудит выполнены ночной автоматизацией.\nИсходный commit: \`${cfg.sha}\`\nPipeline: ${cfg.pipeline_url}\n\nАвтоматическое слияние отключено. Необходимо ревью.`;
+      const description = `Устранение ${value.id} (${value.severity}).\n\nЗадача: ${value.task.url}\nРодитель: ${value.parent.url}\n\nЗависимости или опубликованный runtime обновлены; повторный аудит соответствующего источника выполнен.\nСборка образа и проверки проекта в nightly не запускались. Требуется проверка в обычном MR pipeline.\nИсходный commit: \`${cfg.sha}\`\nPipeline: ${cfg.pipeline_url}\n\nАвтоматическое слияние отключено. Необходимо ревью.`;
       const mr = await api.post(project + "/merge_requests", {
         source_branch: branch,
         target_branch: cfg.branch,
@@ -445,22 +369,10 @@ class Repairer extends Scanner {
         description,
         remove_source_branch: true,
       });
-      return { status: "verified", mr: mr.web_url, checks, sha: cfg.sha };
+      return { status: "created", mr: mr.web_url, sha: cfg.sha };
     });
   }
   async preflightRepair(api, report, root) {
-    const checks = json(this.env.NIGHTLY_CHECK_COMMANDS || "[]");
-    ensure(
-      Array.isArray(checks) &&
-        checks.length &&
-        checks.every(
-          (command) =>
-            Array.isArray(command) &&
-            command.length &&
-            command.every((arg) => typeof arg === "string"),
-        ),
-      "Configure nonempty check_commands as argv arrays",
-    );
     const tools = new Set(["git"]);
     for (const value of report.findings) {
       ensure(value.task && value.parent, "YouTrack task was not resolved");
@@ -470,7 +382,7 @@ class Repairer extends Scanner {
         read(repositoryPath(root, "package-lock.json"));
       }
       if (intersects(value.sources, ["runtime", "node"])) {
-        for (const tool of ["skopeo", "trivy", "buildah"]) tools.add(tool);
+        for (const tool of ["trivy"]) tools.add(tool);
         runtimeFromDockerfile(
           fs.readFileSync(
             repositoryPath(root, report.runtime.dockerfile),
@@ -498,7 +410,7 @@ class Repairer extends Scanner {
     reportPreflight(
       "security repair",
       "repair-inputs",
-      "проверены задачи, инструменты, argv проверок и исходный commit",
+      "проверены задачи, инструменты и исходный commit",
     );
   }
   async repair(root = process.cwd(), { dry = isDryRun() } = {}) {

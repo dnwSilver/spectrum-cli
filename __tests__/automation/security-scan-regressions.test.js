@@ -163,50 +163,7 @@ test("invalid npm JSON reports redacted stderr", async () => {
     "invalid JSON: denied [REDACTED]",
   );
 });
-test("actual Node execution uses unpacked OCI rootfs, drops uid and cleans up", () => {
-  let workingDirectory;
-  const scanner = new Scanner(
-    {},
-    {
-      run: (args) => {
-        if (args[0] === "chroot") {
-          workingDirectory = path.dirname(path.dirname(args[2]));
-          expect(args[1]).toBe("--userspec=65534:65534");
-          expect(args.slice(-2)).toEqual(["/nodejs/bin/node", "--version"]);
-          return { stdout: "v24.22.1\n", status: 0 };
-        }
-        return { stdout: "", status: 0 };
-      },
-    },
-  );
-  expect(
-    scanner.nodeVersion(
-      "registry.example/runtime@sha256:" + "a".repeat(64),
-      "linux/amd64",
-    ),
-  ).toBe("24.22.1");
-  expect(fs.existsSync(workingDirectory)).toBe(false);
-});
-test("runtime execution failure remains visible and work directory is removed", () => {
-  let workingDirectory;
-  const scanner = new Scanner(
-    {},
-    {
-      run: (args) => {
-        if (args[0] === "chroot") {
-          workingDirectory = path.dirname(path.dirname(args[2]));
-          throw new Error("runtime binary cannot execute");
-        }
-        return { stdout: "", status: 0 };
-      },
-    },
-  );
-  expect(() => scanner.nodeVersion("image", "linux/amd64")).toThrow(
-    "runtime binary cannot execute",
-  );
-  expect(fs.existsSync(workingDirectory)).toBe(false);
-});
-test("Trivy evidence survives a later Node execution failure", async () => {
+test("Trivy evidence survives unavailable Node metadata", async () => {
   const evidence = path.join(directory(), "runtime.json");
   const scanner = new Scanner(
     {},
@@ -230,60 +187,34 @@ test("Trivy evidence survives a later Node execution failure", async () => {
   expect(read(evidence)).toEqual({ SchemaVersion: 2, Results: [] });
 });
 
-test.each([
-  ["registry.example/node/runtime:24.22.1.9", "registry.example/node/runtime"],
-  [
-    "registry.example:5443/team/runtime:24.22.1.9",
-    "registry.example:5443/team/runtime",
-  ],
-  ["registry.example:5443/team/runtime", "registry.example:5443/team/runtime"],
-  ["node:24.22.1", "node"],
-])(
-  "Skopeo uses digest without tag while preserving report metadata: %s",
-  (name, repository) => {
-    const digest = "sha256:" + "a".repeat(64);
-    const reference = name + "@" + digest;
-    const calls = [];
-    const scanner = new Scanner(
-      {},
-      {
-        run: (args) => {
-          calls.push(args);
-          return {
-            status: 0,
-            stdout: args[0] === "chroot" ? "v24.22.1\n" : digest,
-          };
-        },
-      },
-    );
-    const immutable = scanner.immutableImage(reference);
-    expect(immutable).toBe(reference);
-    expect(scanner.nodeVersion(immutable, "linux/amd64")).toBe("24.22.1");
-    const sources = calls
-      .filter((args) => args[0] === "skopeo")
-      .flatMap((args) => args.filter((arg) => arg.startsWith("docker://")));
-    expect(sources).toEqual([
-      "docker://" + repository + "@" + digest,
-      "docker://" + repository + "@" + digest,
-    ]);
-  },
-);
-test("tag resolution and numeric repair candidates keep their original tag", () => {
+test("scan reads published metadata and runs only remote Trivy, without container tools", async () => {
+  const report = { SchemaVersion: 2, Results: [] };
+  const registry = {
+    nodeVersion: jest.fn(async () => "24.22.1"),
+  };
+  const runner = jest.fn((args) => {
+    expect(args.slice(0, 4)).toEqual(["trivy", "image", "--image-src", "remote"]);
+    save(args[args.indexOf("--output") + 1], report);
+    return { status: 0, stdout: "" };
+  });
+  const scanner = new Scanner({}, { registry, run: runner });
+  expect(await scanner.scanImage("image", "linux/arm64", { 1: { vulnerable: "<24", patched: ">=24", severity: "high" } })).toEqual([report, [], "24.22.1"]);
+  expect(registry.nodeVersion).toHaveBeenCalledWith("image", "linux/arm64", report);
+  expect(runner).toHaveBeenCalledTimes(1);
+});
+test("numeric runtime candidates use registry tags and preserve the original tag and port", async () => {
   const { Repairer } = require("../../src/security/repair");
-  const digest = "sha256:" + "b".repeat(64);
-  const runner = jest.fn((args) => ({
-    status: 0,
-    stdout:
-      args[1] === "list-tags"
-        ? JSON.stringify({ Tags: ["24.22.1.9", "24.22.1.10"] })
-        : digest,
-  }));
-  const repairer = new Repairer({}, { run: runner });
   const image = "registry.example:5443/node/runtime:24.22.1.9";
-  const immutable = repairer.immutableImage(image);
-  expect(runner.mock.calls[0][0]).toContain("docker://" + image);
+  const digest = "sha256:" + "b".repeat(64);
+  const registry = {
+    immutableImage: async () => image + "@" + digest,
+    tags: jest.fn(async () => ["24.22.1.9", "24.22.1.10", "25.0.0.1"]),
+  };
+  const runner = jest.fn();
+  const repairer = new Repairer({}, { registry, run: runner });
+  const immutable = await repairer.immutableImage(image);
   expect(immutable).toBe(image + "@" + digest);
-  expect(repairer.imageCandidates(immutable)).toEqual([
-    "registry.example:5443/node/runtime:24.22.1.10",
-  ]);
+  expect(await repairer.imageCandidates(immutable)).toEqual(["registry.example:5443/node/runtime:24.22.1.10"]);
+  expect(registry.tags).toHaveBeenCalledWith(immutable);
+  expect(runner).not.toHaveBeenCalled();
 });

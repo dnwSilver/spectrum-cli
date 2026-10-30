@@ -156,6 +156,7 @@ test("scan dry checks source/tools/registry without npm audit, Trivy scan or rep
     status: 0,
   }));
   const checkExecutables = jest.fn();
+  const registry = { immutableImage: jest.fn(async () => "image@sha256:" + "1".repeat(64)) };
   await dry(security.scan, {
     cwd,
     env: {
@@ -164,10 +165,11 @@ test("scan dry checks source/tools/registry without npm audit, Trivy scan or rep
       NIGHTLY_CHECK_NODE: "false",
       NIGHTLY_DOCKERFILE: "Dockerfile",
     },
-    deps: { run, checkExecutables },
+    deps: { run, checkExecutables, registry },
   });
-  expect(run).toHaveBeenCalledTimes(1);
-  expect(run.mock.calls[0][0].slice(0, 2)).toEqual(["skopeo", "inspect"]);
+  expect(run).not.toHaveBeenCalled();
+  expect(registry.immutableImage).toHaveBeenCalledWith("registry.example.com/runtime:24.1.0");
+  expect(checkExecutables.mock.calls[0][0]).toEqual(["trivy"]);
   expect(snapshot(cwd)).toEqual(before);
 });
 test("resolve dry reads image descriptor but never scans with Syft, submits request or writes reports", async () => {

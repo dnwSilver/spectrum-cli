@@ -520,9 +520,11 @@ test("Mattermost report preserves links, incomplete status and message size", ()
     ...value(),
     parent: { key: "CVE-1", url: "https://yt/CVE-1" },
     task: { key: "APP-1", url: "https://yt/APP-1" },
-    repair: { status: "verified", mr: "https://gl/mr/1" },
+    repair: { status: "created", mr: "https://gl/mr/1" },
   };
   const text = formatReport({ config: CFG, findings: [item], errors: [] });
+  expect(text).toContain("ожидает проверок CI");
+  expect(text).not.toContain("проверки пройдены");
   for (const link of [
     "https://yt/CVE-1",
     "https://yt/APP-1",
@@ -536,7 +538,7 @@ test("Mattermost report preserves links, incomplete status and message size", ()
     messageParts("a".repeat(6000) + "\n\n" + "b".repeat(6000)),
   ).toHaveLength(2);
 });
-test("repair checks run before commit; orphan commit is recovered without duplicate or checkout changes", async () => {
+test.each(["npm", "runtime"])("%s Draft MR is prepared without install/build/checks; orphan commit is recovered without duplicate or checkout changes", async (source) => {
   const root = dir();
   exec(["git", "init", "-q", root]);
   fs.writeFileSync(
@@ -544,6 +546,7 @@ test("repair checks run before commit; orphan commit is recovered without duplic
     '{"dependencies":{"test-package":"1.0.0"}}\n',
   );
   fs.writeFileSync(path.join(root, "package-lock.json"), '{"fixed":false}\n');
+  fs.writeFileSync(path.join(root, "Dockerfile"), "FROM registry.example/runtime:24.1.0.1\n");
   exec(["git", "add", "."], { cwd: root });
   exec(
     [
@@ -563,11 +566,11 @@ test("repair checks run before commit; orphan commit is recovered without duplic
   const sha = exec(["git", "rev-parse", "HEAD"], { cwd: root }).stdout.trim(),
     cfg = { ...CFG, sha },
     item = {
-      ...value(),
+      ...value(source),
       task: { key: "APP-1", url: "https://yt/APP-1" },
       parent: { key: "CVE-1", url: "https://yt/CVE-1" },
     },
-    report = { config: cfg, findings: [item], errors: [] };
+    report = { config: cfg, findings: [item], errors: [], runtime: { image: "registry.example/runtime:24.1.0.1@sha256:" + "1".repeat(64), dockerfile: "Dockerfile", platforms: ["linux/amd64"], "linux/amd64": { node: "24.1.0" } } };
   let actions,
     lostMR = false;
   const posts = [];
@@ -622,7 +625,9 @@ test("repair checks run before commit; orphan commit is recovered without duplic
       ]),
     },
     repairer = new Repairer(env);
+  const commands = [];
   repairer.run = (args, cwd, options) => {
+    commands.push(args);
     if (args[0] === "npm") {
       if (args[1] === "update")
         fs.writeFileSync(
@@ -635,22 +640,23 @@ test("repair checks run before commit; orphan commit is recovered without duplic
   };
   repairer.auditNpm = async (work) => [
     {},
-    read(path.join(work, "package-lock.json")).fixed ? [] : [value()],
+    source === "runtime" || read(path.join(work, "package-lock.json")).fixed ? [] : [value()],
   ];
-  await expect(repairer.repairOne(api, item, report, root)).rejects.toThrow(
-    "failed",
-  );
-  expect(posts).toHaveLength(0);
-  env.NIGHTLY_CHECK_COMMANDS = JSON.stringify([
-    [process.execPath, "-e", "process.exit(0)"],
-  ]);
+  repairer.imageCandidates = async () => ["registry.example/runtime:24.2.0.1"];
+  repairer.immutableImage = async (image) => image + "@sha256:" + "2".repeat(64);
+  repairer.scanImage = jest.fn(async () => [{}, [], "24.2.0"]);
   lostMR = true;
   await expect(repairer.repairOne(api, item, report, root)).rejects.toThrow(
     "timeout",
   );
   expect((await repairer.repairOne(api, item, report, root)).status).toBe(
-    "verified",
+    "created",
   );
+  expect(commands.every((args) => args[0] === "git" || (args[0] === "npm" && args[1] === "update"))).toBe(true);
+  const mr = posts.find(([location]) => location.endsWith("/merge_requests"))[1];
+  expect(mr.title).toMatch(/^Draft:/);
+  expect(mr.description).toContain("в nightly не запускались");
+  expect(mr.description).not.toContain("Проверки проекта и повторный аудит выполнены");
   const commits = posts.filter(([location]) =>
     location.endsWith("/repository/commits"),
   );
@@ -658,7 +664,7 @@ test("repair checks run before commit; orphan commit is recovered without duplic
   expect(commits[0][1].start_sha).toBe(sha);
   expect(actions.map((action) => action.file_path).sort()).toEqual([
     ".changelog/APP-1.security.md",
-    "package-lock.json",
+    source === "npm" ? "package-lock.json" : "Dockerfile",
   ]);
   expect(read(path.join(root, "package-lock.json")).fixed).toBe(false);
 });

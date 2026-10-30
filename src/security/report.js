@@ -29,7 +29,11 @@ function formatReport(report) {
     if (repair.mr)
       lines.push(
         `MR: ${repair.mr} · ` +
-          (repair.status === "verified" ? "проверки пройдены" : "уже открыт"),
+          (repair.status === "created"
+            ? "создан Draft MR; ожидает проверок CI"
+            : repair.status === "verified"
+              ? "проверки пройдены"
+              : "уже открыт"),
       );
     if (repair.reason) lines.push("Ожидает исправления: " + repair.reason);
     if (value.tracking_error)

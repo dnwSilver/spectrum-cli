@@ -9,6 +9,13 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## 🚀 [6.1.0] - 2026-10-30
+
+### Changed
+
+- Ночной repair готовит изменения и открывает Draft MR без установки зависимостей, проектных проверок и сборки образов. Повторный npm audit и сканирование уже опубликованных runtime-кандидатов сохранены; новый MR получает статус created и ожидает проверки обычным CI.
+- Удалены вызовы Buildah, Skopeo, umoci и chroot: теги/digest читаются через HTTPS Registry API v2, Trivy сканирует remote-образы. Версия Node проверяется по опубликованным метаданным; отсутствие или конфликт версий блокирует неполное сканирование.
+
 ## 🚀 [6.0.5] - 2026-10-29
 
 ### Fixed

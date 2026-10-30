@@ -6,12 +6,10 @@ const {
   save,
   json,
   temporary,
-  temp,
-  remove,
   repositoryPath,
-  DIGEST,
 } = require("../automation");
 const { run, API, diagnostic } = require("./runtime");
+const { Registry } = require("./registry");
 const {
   npmFindings,
   trivyFindings,
@@ -59,21 +57,11 @@ function runtimeFromDockerfile(text) {
   ensure(last, "No runtime FROM found");
   return last;
 }
-function skopeoImageReference(image) {
-  const at = image.indexOf("@");
-  if (at === -1) return image;
-  const name = image.slice(0, at),
-    digest = image.slice(at + 1);
-  ensure(DIGEST.test(digest), "Invalid runtime image digest");
-  const colon = name.lastIndexOf(":"),
-    slash = name.lastIndexOf("/");
-  // Strip the tag, never the registry port. Keep the original tag in report metadata.
-  return (colon > slash ? name.slice(0, colon) : name) + "@" + digest;
-}
 class Scanner {
   constructor(env = process.env, deps = {}) {
     this.env = env;
     this.deps = deps;
+    this.registry = deps.registry || new Registry(env, deps.transport);
   }
   run(args, cwd, options) {
     return (this.deps.run || run)(args, cwd, options, this.env);
@@ -127,76 +115,10 @@ class Scanner {
     return [report, values];
   }
   immutableImage(image) {
-    const digest = this.run([
-      "skopeo",
-      "inspect",
-      "--format",
-      "{{.Digest}}",
-      "docker://" + skopeoImageReference(image),
-    ]).stdout.trim();
-    ensure(DIGEST.test(digest), "Registry did not return an image digest");
-    return image.split("@")[0] + "@" + digest;
+    return this.registry.immutableImage(image);
   }
-  nodeVersion(image, platform) {
-    ensure(
-      ["linux/amd64", "linux/arm64"].includes(platform),
-      "Unsupported runtime platform",
-    );
-    const directory = temp("nightly-node-");
-    const imagePath = path.join(directory, "image");
-    const bundle = path.join(directory, "bundle");
-    let failure;
-    try {
-      this.run([
-        "skopeo",
-        "--override-os",
-        "linux",
-        "--override-arch",
-        platform.split("/")[1],
-        "copy",
-        "docker://" + skopeoImageReference(image),
-        "oci:" + imagePath + ":runtime",
-      ]);
-      this.run([
-        "umoci",
-        "unpack",
-        "--rootless",
-        "--image",
-        imagePath + ":runtime",
-        bundle,
-      ]);
-      const binary = this.env.NIGHTLY_NODE_BINARY || "/nodejs/bin/node";
-      ensure(
-        path.posix.isAbsolute(binary) && !binary.split("/").includes(".."),
-        "Expected an absolute runtime Node binary path",
-      );
-      // Execute only the runtime binary, with its own libraries and an unprivileged uid.
-      // This does not need a container daemon, mount namespace or Buildah storage.
-      const value = this.run([
-        "chroot",
-        "--userspec=65534:65534",
-        path.join(bundle, "rootfs"),
-        binary,
-        "--version",
-      ])
-        .stdout.trim()
-        .replace(/^v/, "");
-      ensure(
-        /^\d+\.\d+\.\d+(?![\s\S])/.test(value),
-        "Cannot determine runtime Node.js version",
-      );
-      return value;
-    } catch (error) {
-      failure = error;
-      throw error;
-    } finally {
-      try {
-        remove(directory);
-      } catch (cleanup) {
-        if (failure) failure.message += "; cleanup: " + cleanup.message;
-        else throw cleanup;
-      }
-    }
+  nodeVersion(image, platform, report) {
+    return this.registry.nodeVersion(image, platform, report);
   }
   async feed() {
     return this.deps.feed
@@ -213,6 +135,8 @@ class Scanner {
       this.run([
         "trivy",
         "image",
+        "--image-src",
+        "remote",
         "--scanners",
         "vuln",
         "--severity",
@@ -237,7 +161,7 @@ class Scanner {
     const values = trivyFindings(report);
     let version = null;
     if ((this.env.NIGHTLY_CHECK_NODE || "true") === "true") {
-      version = this.nodeVersion(image, platform);
+      version = await this.nodeVersion(image, platform, report);
       feed = feed || (await this.feed());
       ensure(
         feed && Object.keys(feed).length,
@@ -278,7 +202,7 @@ class Scanner {
       "NIGHTLY_YOUTRACK_TIME_TRACKING_ARTICLE",
       "NIGHTLY_YOUTRACK_TESTER",
     ]);
-    const tools = ["trivy", "skopeo"];
+    const tools = ["trivy"];
     if ((this.env.NIGHTLY_NPM_ENABLED || "true") === "true") {
       ensure(
         fs.statSync(repositoryPath(root, "package-lock.json")).isFile(),
@@ -287,8 +211,6 @@ class Scanner {
       read(repositoryPath(root, "package-lock.json"));
       tools.push("npm");
     }
-    if ((this.env.NIGHTLY_CHECK_NODE || "true") === "true")
-      tools.push("umoci", "chroot");
     (this.deps.checkExecutables || checkExecutables)(tools, this.env);
     const platforms = (this.env.NIGHTLY_PLATFORMS || "linux/amd64").split(",");
     ensure(
@@ -302,7 +224,7 @@ class Scanner {
       root,
       this.env.NIGHTLY_DOCKERFILE || "build/Dockerfile",
     );
-    this.immutableImage(
+    await this.immutableImage(
       runtimeFromDockerfile(fs.readFileSync(dockerfile, "utf8")),
     );
     reportPreflight(
@@ -347,7 +269,7 @@ class Scanner {
       }
       try {
         const dockerfile = this.env.NIGHTLY_DOCKERFILE || "build/Dockerfile",
-          image = this.immutableImage(
+          image = await this.immutableImage(
             runtimeFromDockerfile(
               fs.readFileSync(repositoryPath(root, dockerfile), "utf8"),
             ),
