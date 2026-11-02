@@ -20,6 +20,7 @@ const {
 } = require("./runtime");
 const { HIGH } = require("./findings");
 const { Tracker } = require("./tracker");
+const { groupState } = require("./repair-plan");
 const {
   isDryRun,
   isVerificationSkipped,
@@ -125,10 +126,32 @@ async function track({
     );
     return 0;
   }
+  let repairMR;
+  let repairState;
+  try {
+  if (env.NIGHTLY_REPAIR_MR) {
+    ensure(/^\d+$/.test(env.NIGHTLY_REPAIR_MR), "Invalid repair MR IID");
+    repairMR = await api.get(consumer + "/merge_requests/" + env.NIGHTLY_REPAIR_MR);
+    repairState = groupState(repairMR.description);
+    ensure(repairState && ["opened", "merged"].includes(repairMR.state) && repairMR.target_branch === cfg.branch &&
+      String(repairMR.source_project_id) === String(cfg.project_id) && repairMR.sha === repairState.head &&
+      repairState.scan === cfg.sha && repairMR.source_branch.endsWith("-security-" + repairState.id),
+      "Repair MR identity does not match the scheduled scan");
+    ensure(Array.isArray(repairState.cves) && repairState.cves.length &&
+      repairState.cves.every((id) => report.findings.some((item) => item.id === id)), "Repair MR references unknown advisories");
+  }
+  } catch (error) {
+    report.errors.push(diagnostic(error.message, env));
+    save(path.join(cwd, "security-report/tracked.json"), report);
+    logPhaseErrors("security track", report, env);
+    return 1;
+  }
   for (const value of report.findings) {
+    if (repairState && !repairState.cves.includes(value.id)) continue;
     try {
       ensure(HIGH.has(value.severity), "Unexpected finding severity");
-      Object.assign(value, await tracker.ensure(value, cfg));
+      Object.assign(value, repairMR ? await tracker.ensure(value, cfg, { readOnly: true }) : await tracker.ensure(value, cfg));
+      if (repairMR) await tracker.linkMR(value, cfg, repairMR);
     } catch (error) {
       value.tracking_error = diagnostic(error.message, env);
       report.errors.push(value.id + ": " + diagnostic(error.message, env));
@@ -138,20 +161,7 @@ async function track({
   logPhaseErrors("security track", report, env);
   return report.errors.length ? 1 : 0;
 }
-async function reconcile({
-  env = process.env,
-  cwd = process.cwd(),
-  deps = {},
-  dry = isDryRun(),
-} = {}) {
-  const file = path.join(cwd, "security-report"),
-    reportFile = path.join(file, "tracked.json");
-  let report = read(path.join(file, "findings.json"));
-  if (dry)
-    ensure(!report.errors.length, "Incomplete scan evidence blocks tracking");
-  try {
-    verifyCLI(report, env);
-    if (!report.findings.length) return report.errors.length ? 1 : 0;
+async function queueTracking(report, env, deps = {}, { dry = false, repairMR } = {}) {
     required(env, [
       "NIGHTLY_TRACKER_PROJECT",
       "NIGHTLY_COMPONENT_SHA",
@@ -161,6 +171,7 @@ async function reconcile({
     const api = deps.api || glab(env);
     if (!isVerificationSkipped())
       report.preflight = {
+        ...report.preflight,
         gitlab: await (deps.checkGitlabAccess || checkGitlabAccess)(
           env,
           [env.NIGHTLY_TRACKER_PROJECT],
@@ -204,7 +215,7 @@ async function reconcile({
       "tracker-reference",
       "ref очереди соответствует SHA компонента",
     );
-    if (dry) return report.errors.length ? 1 : 0;
+    if (dry) return report;
     let pipeline = await api.post(target + "/pipeline", {
       ref,
       inputs: {
@@ -212,6 +223,7 @@ async function reconcile({
         consumer_project: env.CI_PROJECT_ID,
         consumer_scan_job: env.NIGHTLY_SCAN_JOB_ID,
         component_sha: sha,
+        ...(repairMR ? { repair_mr: String(repairMR) } : {}),
         ...(cliIdentity(env) ? { cli_identity: JSON.stringify(cliIdentity(env)) } : {}),
       },
     });
@@ -249,13 +261,33 @@ async function reconcile({
     );
     ensure(!report.cli || equal(tracked.cli, report.cli), "Tracker result CLI identity mismatch");
     verifyCLI(tracked, env);
-    report = tracked;
-    ensure(
-      pipeline.status === "success",
-      "YouTrack tracking completed with errors",
-    );
+
+    if (pipeline.status !== "success") {
+      const error = new Error("YouTrack tracking completed with errors" + (tracked.errors.length ? ": " + tracked.errors.join("; ") : ""));
+      error.report = tracked;
+      throw error;
+    }
+    return tracked;
+
+}
+async function reconcile({
+  env = process.env,
+  cwd = process.cwd(),
+  deps = {},
+  dry = isDryRun(),
+} = {}) {
+  const file = path.join(cwd, "security-report"),
+    reportFile = path.join(file, "tracked.json");
+  let report = read(path.join(file, "findings.json"));
+  if (dry)
+    ensure(!report.errors.length, "Incomplete scan evidence blocks tracking");
+  try {
+    verifyCLI(report, env);
+    if (!report.findings.length) return report.errors.length ? 1 : 0;
+    report = await queueTracking(report, env, deps, { dry });
   } catch (error) {
     if (dry) throw error;
+    if (error.report) report = error.report;
     report.errors.push(diagnostic(error.message, env));
   } finally {
     if (!dry) {
@@ -265,4 +297,4 @@ async function reconcile({
   }
   return report.errors.length ? 1 : 0;
 }
-module.exports = { track, reconcile };
+module.exports = { track, reconcile, queueTracking };

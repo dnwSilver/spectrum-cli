@@ -193,6 +193,7 @@ class Scanner {
       time_article: e.NIGHTLY_YOUTRACK_TIME_TRACKING_ARTICLE || "",
       tester: e.NIGHTLY_YOUTRACK_TESTER || "",
       pipeline_id: e.CI_PIPELINE_ID,
+      scan_job_id: e.CI_JOB_ID,
       pipeline_url: e.CI_PIPELINE_URL,
     };
   }

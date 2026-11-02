@@ -100,7 +100,7 @@ securityCmd
 
 securityCmd
   .command("repair")
-  .description("Исправить, проверить и создать отдельный MR на проектную задачу")
+  .description("Подготовить общий Draft MR на исправление группы уязвимостей")
   .allowExcessArguments(false)
   .option("-n, --no-verify", "Выполнить команду без предпроверок")
   .option("-d, --dry", "Запустить только предпроверки")

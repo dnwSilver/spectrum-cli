@@ -427,7 +427,9 @@ test('reconcile no-verify starts the tracker without introspection or ref verifi
 
 test('repair no-verify enters repairOne without an access preflight', async () => {
   const cwd = directory();
-  save(path.join(cwd, 'security-report/tracked.json'), { config: CFG, findings: [FINDING], errors: [] });
+  save(path.join(cwd, 'package.json'), { dependencies: { 'example-package': '1.0.0' } });
+  save(path.join(cwd, 'package-lock.json'), { packages: {} });
+  save(path.join(cwd, 'security-report/tracked.json'), { config: CFG, findings: [{ ...FINDING, occurrences: [{ package: 'example-package', entry: 'example-package' }] }], errors: [] });
   const checkGitlabAccess = jest.fn(() => { throw Error('preflight called'); });
   const repairOne = jest.spyOn(Repairer.prototype, 'repairOne').mockResolvedValue({ status: 'verified' });
   await runAutomationAction(() => security.repair({ cwd, env: ENV,

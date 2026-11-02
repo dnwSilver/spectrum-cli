@@ -67,7 +67,10 @@ const checklist = [
 ].join("\n");
 // A nonempty paragraph keeps YouTrack from visually joining adjacent tables.
 const tableSpacing = (body) => body.replace(/(\|[^\r\n]*\|)\r?\n(?:[ \t]*\r?\n)+(?=\|)/g, "$1\n\n&nbsp;\n\n");
-function projectText(value, cfg, severity) {
+function repairLinks(description = "") {
+  return description.match(/<!-- nightly-security merge-requests -->[\s\S]*?<!-- \/nightly-security merge-requests -->/)?.[0] || "";
+}
+function projectText(value, cfg, severity, previous = "") {
   return tableSpacing([
     `<!-- nightly-security project=${cfg.project_id} -->`,
     "",
@@ -82,6 +85,7 @@ function projectText(value, cfg, severity) {
     evidence(value, cfg),
     "",
     checklist,
+    ...(repairLinks(previous) ? ["", repairLinks(previous)] : []),
   ].join("\n"));
 }
 // Shared CVE facts must not contain installed versions, repository locations or
@@ -152,4 +156,4 @@ function parentText(value, parent, severity) {
     ].join("\n")),
   };
 }
-module.exports = { packages, projectText, parentText };
+module.exports = { repairLinks, packages, projectText, parentText };

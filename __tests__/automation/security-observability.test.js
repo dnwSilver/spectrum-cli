@@ -88,7 +88,9 @@ test("empty incomplete reports still print the failure before early return", asy
   expect(logs()).toContain("registry unavailable");
 });
 test("repair errors identify the advisory and redact all available token values", async () => {
-  const item = { ...finding, task: { key: "APP-1" }, parent: { key: "CVE-1" } };
+  save(path.join(root, "package.json"), { dependencies: { "example-package": "1.0.0" } });
+  save(path.join(root, "package-lock.json"), { packages: {} });
+  const item = { ...finding, occurrences: [{ package: "example-package", entry: "example-package" }], task: { key: "APP-1" }, parent: { key: "CVE-1" } };
   save(path.join(root, "security-report/tracked.json"), report([], [item]));
   const repairer = new Repairer(
     { ...env, GITLAB_PRIVATE_TOKEN: "private-secret" },

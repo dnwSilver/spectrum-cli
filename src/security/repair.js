@@ -1,18 +1,18 @@
 const { verifyCLI } = require("../automation/tooling");
+const { planRepairs } = require("./repair-plan");
+const { repairGroup } = require("./grouped-repair");
+const { queueTracking } = require("./tracking");
 const {
   fs,
   path,
   ensure,
   read,
   save,
-  temporary,
   repositoryPath,
-  equal,
 } = require("../automation");
 const { encoded } = require("../sbom/schema");
 const {
   glab,
-  pages,
   projectPath,
   diagnostic,
   logPhaseErrors,
@@ -94,16 +94,19 @@ class Repairer extends Scanner {
     );
     const [, remaining] = await this.auditNpm(root);
     if (remaining.some((item) => intersects(item.aliases, value.aliases))) {
-      const fixes = Object.fromEntries(
-        occurrences
-          .filter((entry) => entry.fix && typeof entry.fix === "object")
-          .map((entry) => [entry.fix.name, entry.fix]),
-      );
+      const fixes = new Map();
+      for (const entry of occurrences) {
+        const fix = entry.fix;
+        if (!fix || typeof fix !== "object") continue;
+        ensure(pkgName.test(fix.name) && require("semver").valid(fix.version) === fix.version, "Invalid npm remediation");
+        const previous = fixes.get(fix.name);
+        if (!previous || require("semver").gt(fix.version, previous.version)) fixes.set(fix.name, fix);
+      }
       ensure(
-        Object.keys(fixes).length,
+        fixes.size,
         "No automatic compatible npm remediation is available",
       );
-      for (const [name, fix] of Object.entries(fixes)) {
+      for (const [name, fix] of fixes) {
         ensure(
           pkgName.test(name) && /^\d+\.\d+\.\d+(?![\s\S])/.test(fix.version),
           "Invalid npm remediation",
@@ -255,141 +258,7 @@ class Repairer extends Scanner {
     });
   }
   async repairOne(api, value, report, root) {
-    const cfg = report.config,
-      project = projectPath(cfg.project_id),
-      branch = "hotfix/" + value.task.key + "-security";
-    const existing = await pages(api, project + "/merge_requests", {
-      state: "opened",
-      source_branch: branch,
-      target_branch: cfg.branch,
-    });
-    ensure(existing.length <= 1, "Multiple hotfix MRs exist for this task");
-    if (existing.length) return { status: "existing", mr: existing[0].web_url };
-    const branches = (
-      await pages(api, project + "/repository/branches", {
-        search: "^" + escape(branch) + "$",
-      })
-    ).filter((item) => item.name === branch);
-    ensure(branches.length <= 1, "Ambiguous hotfix branch");
-    const previous = branches[0]?.commit,
-      expectedMessage = `fix(${value.task.key}): remediate ${value.id} [skip ci]`;
-    if (previous)
-      ensure(
-        equal(previous.parent_ids, [cfg.sha]) &&
-          previous.message?.trim() === expectedMessage,
-        "Hotfix branch was modified outside this workflow; manual review required",
-      );
-    const head = await api.get(
-      project + "/repository/branches/" + encoded(cfg.branch),
-    );
-    ensure(
-      head.commit.id === cfg.sha,
-      "Production branch moved after scan; rerun the nightly pipeline",
-    );
-    return temporary("nightly-fix-", async (directory) => {
-      const work = path.join(directory, "repo");
-      this.run(["git", "clone", "--no-hardlinks", "--no-checkout", root, work]);
-      this.run(["git", "checkout", "--detach", cfg.sha], work);
-      const allowed = new Set(["package.json", "package-lock.json"]);
-      const dependencyUpdates = value.sources.includes("npm") ? await this.fixNpm(work, value) : [];
-      if (intersects(value.sources, ["runtime", "node"])) {
-        await this.fixRuntime(work, value, report);
-        allowed.add(report.runtime.dockerfile);
-        if (this.env.NIGHTLY_RUNTIME_PUBLISH_VARIABLE)
-          allowed.add(".gitlab-ci.yml");
-      }
-      ensure(
-        this.commitActions(work, allowed).length,
-        "Repair produced no changes",
-      );
-      const after = [];
-      if ((this.env.NIGHTLY_NPM_ENABLED || "true") === "true") {
-        const [, entries] = await this.auditNpm(work);
-        after.push(...entries);
-      }
-      const aliases = after.flatMap((entry) => entry.aliases),
-        baseline = new Set(report.findings.flatMap((entry) => entry.aliases));
-      ensure(
-        !intersects(aliases, value.aliases),
-        "Target advisory remains after repair",
-      );
-      ensure(
-        !aliases.some((alias) => !baseline.has(alias)),
-        "Repair introduced new HIGH/CRITICAL advisories",
-      );
-      const actions = this.commitActions(work, allowed),
-        fragment = ".changelog/" + value.task.key + ".security.md";
-      ensure(
-        !fs.existsSync(repositoryPath(work, fragment)),
-        "Security changelog fragment already exists",
-      );
-      actions.push({
-        action: "create",
-        file_path: fragment,
-        content: `- Устранена ${value.id}: обновлены зависимости или runtime-образ.\n`,
-      });
-      const current = await api.get(
-        project + "/repository/branches/" + encoded(cfg.branch),
-      );
-      ensure(
-        current.commit.id === cfg.sha,
-        "Production branch moved during repair; rerun",
-      );
-      if (previous) {
-        const differences = await pages(
-          api,
-          project + "/repository/commits/" + previous.id + "/diff",
-        );
-        ensure(
-          equal(
-            new Set(differences.map((item) => item.new_path)),
-            new Set(actions.map((action) => action.file_path)),
-          ),
-          "Existing hotfix commit has unexpected files",
-        );
-        for (const action of actions) {
-          const expected =
-              action.encoding === "base64"
-                ? Buffer.from(action.content, "base64")
-                : Buffer.from(action.content),
-            actual = await api.get(
-              project +
-                "/repository/files/" +
-                encoded(action.file_path) +
-                "/raw",
-              { raw: true, query: { ref: previous.id } },
-            );
-          ensure(
-            Buffer.from(actual).equals(expected),
-            "Existing hotfix differs from the prepared repair",
-          );
-        }
-      } else
-        await api.post(project + "/repository/commits", {
-          branch,
-          start_sha: cfg.sha,
-          commit_message: expectedMessage,
-          actions,
-        });
-      const majorUpdates = dependencyUpdates.filter((update) => update.major);
-      const majorNotice = majorUpdates.length
-        ? "\n\n**Мажорные обновления зависимостей:**\n" +
-          majorUpdates.map((update) => `- \`${update.package}\` → \`${update.version}\``).join("\n") +
-          "\nВозможны несовместимые изменения API. Требуется ревью и проверка совместимости в обычном MR pipeline."
-        : "";
-      const description = `Устранение ${value.id} (${value.severity}).\n\nЗадача: ${value.task.url}\nРодитель: ${value.parent.url}\n\nЗависимости или опубликованный runtime обновлены; повторный аудит соответствующего источника выполнен.\nСборка образа и проверки проекта в nightly не запускались. Требуется проверка в обычном MR pipeline.\nИсходный commit: \`${cfg.sha}\`\nPipeline: ${cfg.pipeline_url}\n\nАвтоматическое слияние отключено. Необходимо ревью.${majorNotice}`;
-      const mr = await api.post(project + "/merge_requests", {
-        source_branch: branch,
-        target_branch: cfg.branch,
-        title: `Draft: 🚑 (${value.task.key}): устранение ${value.id}`,
-        description,
-        remove_source_branch: true,
-      });
-      return {
-        status: "created", mr: mr.web_url, sha: cfg.sha,
-        ...(dependencyUpdates.length ? { dependency_updates: dependencyUpdates } : {}),
-      };
-    });
+    return repairGroup(this, api, value, report, root);
   }
   async preflightRepair(api, report, root) {
     const tools = new Set(["git"]);
@@ -457,24 +326,38 @@ class Repairer extends Scanner {
         await this.preflightRepair(api, report, root);
         return 0;
       }
-      for (const value of report.findings) {
+      let pending = [...report.findings];
+      const linkErrors = [];
+      while (pending.length) {
+        const value = planRepairs(pending, root, report.runtime)[0];
+        let result;
         try {
-          ensure(value.task && value.parent, "YouTrack task was not resolved");
+          ensure(value.members.every((item) => item.task && item.parent), "YouTrack task was not resolved");
           ensure(!report.errors.length, blockedReason());
-          value.repair = await this.repairOne(api, value, report, root);
+          result = await this.repairOne(api, value, report, root);
+          if (result.mr_iid) {
+            try {
+              const linked = await (this.deps.publishRepairLinks || queueTracking)(report,
+                { ...this.env, NIGHTLY_SCAN_JOB_ID: report.config.scan_job_id || this.env.NIGHTLY_SCAN_JOB_ID },
+                this.deps, { repairMR: result.mr_iid });
+              ensure(!linked.errors.length, "YouTrack MR links were not fully updated");
+              result.youtrack_links = "updated";
+            } catch (error) {
+              result.youtrack_links = "blocked";
+              result.reason = "MR created; YouTrack links: " + diagnostic(error.message, this.env);
+              linkErrors.push(result.reason);
+            }
+          }
         } catch (error) {
-          value.repair = {
-            status: "blocked",
-            reason: diagnostic(error.message, this.env),
-          };
-          console.error(
-            "ERROR security repair [" +
-              value.id +
-              "]: " +
-              diagnostic(error.message, this.env),
-          );
+          result = { status: "blocked", reason: diagnostic(error.message, this.env), group: value.group.id, group_label: value.group.label };
+          console.error("ERROR security repair [" + value.members.map((item) => item.id).join(", ") + "]: " + diagnostic(error.message, this.env));
         }
+        const covered = new Set(result.advisories || value.members.map((item) => item.id));
+        for (const member of report.findings) if (covered.has(member.id)) member.repair = structuredClone(result);
+        pending = pending.filter((item) => !covered.has(item.id));
       }
+      report.errors.push(...linkErrors);
+
     } catch (error) {
       if (dry) throw error;
       report.errors.push(diagnostic(error.message, this.env));

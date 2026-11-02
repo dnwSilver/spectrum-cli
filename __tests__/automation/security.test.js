@@ -766,7 +766,7 @@ test.each(["npm", "runtime", "npm-major"])("%s Draft MR is prepared without inst
     report = { config: cfg, findings: [item], errors: [], runtime: { image: "registry.example/runtime:24.1.0.1@sha256:" + "1".repeat(64), dockerfile: "Dockerfile", platforms: ["linux/amd64"], "linux/amd64": { node: "24.1.0" } } };
   if (major)
     item.occurrences[0].fix = { name: "test-package", version: "2.0.0", isSemVerMajor: true };
-  let actions,
+  let actions, commitBody,
     lostMR = false;
   const posts = [];
   const api = {
@@ -776,11 +776,11 @@ test.each(["npm", "runtime", "npm-major"])("%s Draft MR is prepared without inst
         return actions
           ? [
               {
-                name: "hotfix/APP-1-security",
+                name: commitBody.branch,
                 commit: {
                   id: "b".repeat(40),
                   parent_ids: [sha],
-                  message: `fix(APP-1): remediate ${CVE} [skip ci]`,
+                  message: commitBody.commit_message,
                 },
               },
             ]
@@ -803,6 +803,7 @@ test.each(["npm", "runtime", "npm-major"])("%s Draft MR is prepared without inst
       posts.push([location, structuredClone(body)]);
       if (location.endsWith("/repository/commits")) {
         actions = body.actions;
+        commitBody = body;
         return { id: "b".repeat(40) };
       }
       if (lostMR) {
@@ -861,7 +862,8 @@ test.each(["npm", "runtime", "npm-major"])("%s Draft MR is prepared without inst
     expect(mr.description).toContain("`test-package` → `2.0.0`");
     expect(formatReport({ ...report, findings: [{ ...item, repair: result }] })).toContain("Мажорное обновление: test-package → 2.0.0");
   }
-  expect(mr.description).toContain("в nightly не запускались");
+  expect(mr.description).toContain("обычным CI/CD pipeline");
+  expect(commitBody.commit_message).not.toMatch(/\[(?:skip ci|ci skip)\]/i);
   expect(mr.description).not.toContain("Проверки проекта и повторный аудит выполнены");
   const commits = posts.filter(([location]) =>
     location.endsWith("/repository/commits"),
@@ -954,4 +956,16 @@ test("full-match migration rejects terminal newlines in IDs, versions and digest
   expect(DIGEST.test("sha256:" + "a".repeat(64) + "\n")).toBe(false);
   expect(COMMIT.test("a".repeat(40) + "\n")).toBe(false);
   expect(() => f.canonical([CVE + "\n"])).toThrow("stable");
+});
+
+test("MR link resolution reads existing tasks without reopening or rewriting them", async () => {
+  const api = new TrackerAPI(), tracker = new Tracker(api, "https://yt.example", {});
+  await tracker.ensure(value(), CFG);
+  api.issues[1].resolved = 123;
+  api.issues[1].description += "\nReviewer note";
+  const before = structuredClone(api.issues), writes = api.calls.length;
+  const found = await tracker.ensure(value(), CFG, { readOnly: true });
+  expect(found.task.key).toBe(api.issues[1].idReadable);
+  expect(api.issues).toEqual(before);
+  expect(api.calls).toHaveLength(writes);
 });

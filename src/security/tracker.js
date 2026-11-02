@@ -1,5 +1,5 @@
 const { ensure, stable } = require("../automation");
-const { projectText, parentText } = require("./task-text");
+const { projectText, parentText, repairLinks } = require("./task-text");
 const { HIGH, ids, intersects } = require("./findings");
 class Tracker {
   static FIELDS =
@@ -195,7 +195,50 @@ class Tracker {
       },
     ];
   }
-  async ensure(value, cfg) {
+  async projectChild(parent, value, cfg) {
+    const [link, children] = await this.linkedChildren(parent),
+      marker = `<!-- nightly-security project=${cfg.project_id} -->`,
+      slug = cfg.project_path.split("/").at(-1);
+    const escapedSlug = slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const belongs = (issue) =>
+      issue.project?.shortName === cfg.youtrack_project &&
+      ((issue.description || "").includes(marker) ||
+        new RegExp("в проекте\\s+" + escapedSlug + "(?:\\s|$)", "i").test(
+          issue.summary,
+        ));
+    const matches = new Map(
+      children.filter(belongs).map((issue) => [issue.id, issue]),
+    );
+    for (const alias of value.aliases)
+      for (const issue of await this.search(
+        `project: {${cfg.youtrack_project}} "${alias}"`,
+      ))
+        if (
+          (issue.description || "").includes(marker) &&
+          intersects(
+            ids(issue.summary).map((id) => id.toUpperCase()),
+            value.aliases,
+          )
+        )
+          matches.set(issue.id, issue);
+    ensure(matches.size <= 1, "Multiple project tasks match the same advisory");
+    return { link, children, matches, slug };
+  }
+  async linkMR(value, cfg, mr) {
+    const issue = await this.api.get("issues/" + value.task.id, { query: { fields: Tracker.FIELDS } });
+    ensure(issue.project.shortName === cfg.youtrack_project, "Project task belongs to a different YouTrack project");
+    const original = issue.description || "";
+    const previous = repairLinks(original);
+    const links = new Set(previous.match(/https?:\/\/[^\s<>]+/g) || []);
+    links.add(mr.web_url);
+    const block = "<!-- nightly-security merge-requests -->\n## Merge requests\n\n" +
+      [...links].sort().map((url) => "- <" + url + ">").join("\n") + "\n<!-- /nightly-security merge-requests -->";
+    const description = previous ? original.replace(previous, block) : original + "\n\n" + block;
+    if (description !== original) await this.api.post("issues/" + issue.id, { description });
+    const saved = await this.api.get("issues/" + issue.id, { query: { fields: Tracker.FIELDS } });
+    ensure(repairLinks(saved.description) === block, "YouTrack did not persist the repair MR link");
+  }
+  async ensure(value, cfg, { readOnly = false } = {}) {
     const parentProject = this.env.NIGHTLY_CVE_PROJECT || "CVE";
     ensure(
       /^[A-Za-z0-9_-]+(?![\s\S])/.test(cfg.youtrack_project) &&
@@ -232,6 +275,12 @@ class Tracker {
     ensure(parents.size <= 1, "Multiple parent issues match advisory aliases");
     let parent = parents.values().next().value;
     if (parent) parent = await this.api.get("issues/" + parent.id, { query: { fields: Tracker.FIELDS } });
+    if (readOnly) {
+      ensure(parent, "Existing CVE task is missing; MR links cannot create tasks");
+      const { matches } = await this.projectChild(parent, value, cfg);
+      ensure(matches.size === 1, "Existing project task is missing; MR links cannot create tasks");
+      return { parent: this.decorate(parent), task: this.decorate(matches.values().next().value) };
+    }
     const parentFields = Tracker.parentFields(value, parent);
     parentFields.push({ name: "Статья учета времени", value: { name: this.env.NIGHTLY_CVE_TIME_TRACKING_ARTICLE || "needs-definition" } });
     const severity = parentFields.find((field) => field.name === "Severity").value.name.toUpperCase();
@@ -241,32 +290,7 @@ class Tracker {
       (content.packages.length ? " — " + content.packages.join(", ") : "");
     parent ||= await this.create(parentProject, parentSummary, content.description, parentFields);
     parent = await this.sync(parent, { summary: parentSummary, description: content.description, fields: parentFields });
-    const [link, children] = await this.linkedChildren(parent),
-      marker = `<!-- nightly-security project=${cfg.project_id} -->`,
-      slug = cfg.project_path.split("/").at(-1);
-    const escapedSlug = slug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const belongs = (issue) =>
-      issue.project?.shortName === cfg.youtrack_project &&
-      ((issue.description || "").includes(marker) ||
-        new RegExp("в проекте\\s+" + escapedSlug + "(?:\\s|$)", "i").test(
-          issue.summary,
-        ));
-    const matches = new Map(
-      children.filter(belongs).map((issue) => [issue.id, issue]),
-    );
-    for (const alias of value.aliases)
-      for (const issue of await this.search(
-        `project: {${cfg.youtrack_project}} "${alias}"`,
-      ))
-        if (
-          (issue.description || "").includes(marker) &&
-          intersects(
-            ids(issue.summary).map((id) => id.toUpperCase()),
-            value.aliases,
-          )
-        )
-          matches.set(issue.id, issue);
-    ensure(matches.size <= 1, "Multiple project tasks match the same advisory");
+    const { link, children, matches, slug } = await this.projectChild(parent, value, cfg);
     const childFields = [
       { name: "Priority", value: { name: priority } },
       { name: "Статья учета времени", value: { name: cfg.time_article } },
@@ -274,8 +298,9 @@ class Tracker {
     ];
     if (cfg.subsystem) childFields.push({ name: "Subsystem", value: { name: cfg.subsystem } });
     const childSummary = `[${value.id}] Устранение уязвимости ${severity} в проекте ${slug}`;
-    const childDescription = projectText(value, cfg, severity);
-    let child = matches.values().next().value ||
+    const existingChild = matches.values().next().value;
+    const childDescription = projectText(value, cfg, severity, existingChild?.description);
+    let child = existingChild ||
       await this.create(cfg.youtrack_project, childSummary, childDescription, childFields);
     child = await this.sync(child, { summary: childSummary, description: childDescription, fields: childFields });
     if (!children.some((issue) => issue.id === child.id))

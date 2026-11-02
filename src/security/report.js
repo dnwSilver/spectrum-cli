@@ -29,7 +29,9 @@ function formatReport(report) {
     if (repair.mr)
       lines.push(
         `MR: ${repair.mr} · ` +
-          (repair.status === "created"
+          (repair.status === "updated"
+            ? "обновлён Draft MR; ожидает проверок CI"
+            : repair.status === "created"
             ? "создан Draft MR; ожидает проверок CI"
             : repair.status === "verified"
               ? "проверки пройдены"
