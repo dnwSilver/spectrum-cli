@@ -9,6 +9,12 @@ This is the changelog of the `spectrum-cli` npm package. Its version comes from
 `package.json`; the release commands use Git tags and `CHANGELOG.md` in the
 **target project** and do not update that project's `package.json`.
 
+## [Unreleased]
+
+### Fixed
+
+- YouTrack preflight учитывает псевдонимы полей проектных задач: поле «Тестировщик» с псевдонимом Tester больше не блокирует ночной tracker. Для полей родительской CVE-задачи, записываемых через REST, сохраняется проверка канонических имён.
+
 ## 🚀 [6.2.0] - 2026-10-30
 
 ### Added

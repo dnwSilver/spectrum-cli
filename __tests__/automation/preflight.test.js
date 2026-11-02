@@ -251,6 +251,49 @@ test("YouTrack validates user, both projects, fields and read access; does not c
   });
   expect(api.post).not.toHaveBeenCalled();
 });
+test.each([
+  ["Tester", true],
+  [" QA, Tester , Reviewers ", true],
+  [null, false],
+  ["Testers, QA", false],
+])("YouTrack resolves exact command aliases on project fields: %j", async (aliases, accepted) => {
+  const api = yt();
+  const originalGet = api.get.getMockImplementation();
+  api.get.mockImplementation((location, options) => {
+    if (location === "admin/projects/APP/customFields")
+      return [
+        { field: { name: "Тестировщик", aliases } },
+        { field: { name: "Статья учета времени", aliases: null } },
+        { field: { name: "Компонент", aliases: "Subsystem" } },
+      ];
+    return originalGet(location, options);
+  });
+  const result = checkYouTrackAccess(YT, { ...CFG, subsystem: "webapp" }, api);
+  if (accepted)
+    await expect(result).resolves.toMatchObject({ required_fields: "verified" });
+  else
+    await expect(result).rejects.toThrow("missing required fields: Tester");
+  expect(api.get).toHaveBeenCalledWith("admin/projects/APP/customFields", {
+    query: { fields: "field(name,aliases)", $top: 100 },
+  });
+  expect(api.post).not.toHaveBeenCalled();
+});
+test("YouTrack parent REST writes require canonical field names, not command aliases", async () => {
+  const api = yt();
+  const originalGet = api.get.getMockImplementation();
+  api.get.mockImplementation((location, options) => {
+    if (location === "admin/projects/CVE/customFields")
+      return [
+        { field: { name: "CVE ID" } },
+        { field: { name: "Severity" } },
+        { field: { name: "Priority" } },
+        { field: { name: "Тип", aliases: "Type" } },
+      ];
+    return originalGet(location, options);
+  });
+  await expect(checkYouTrackAccess(YT, CFG, api)).rejects.toThrow("missing required fields: Type");
+  expect(api.post).not.toHaveBeenCalled();
+});
 test.each([{ banned: true }, { missingProject: true }, { missingField: true }])(
   "YouTrack blocks before any creation for %j",
   async (options) => {
