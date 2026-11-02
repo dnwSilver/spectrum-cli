@@ -729,7 +729,9 @@ test("Mattermost report preserves links, incomplete status and message size", ()
     messageParts("a".repeat(6000) + "\n\n" + "b".repeat(6000)),
   ).toHaveLength(2);
 });
-test.each(["npm", "runtime"])("%s Draft MR is prepared without install/build/checks; orphan commit is recovered without duplicate or checkout changes", async (source) => {
+test.each(["npm", "runtime", "npm-major"])("%s Draft MR is prepared without install/build/checks; orphan commit is recovered without duplicate or checkout changes", async (mode) => {
+  const source = mode === "npm-major" ? "npm" : mode;
+  const major = mode === "npm-major";
   const root = dir();
   exec(["git", "init", "-q", root]);
   fs.writeFileSync(
@@ -762,6 +764,8 @@ test.each(["npm", "runtime"])("%s Draft MR is prepared without install/build/che
       parent: { key: "CVE-1", url: "https://yt/CVE-1" },
     },
     report = { config: cfg, findings: [item], errors: [], runtime: { image: "registry.example/runtime:24.1.0.1@sha256:" + "1".repeat(64), dockerfile: "Dockerfile", platforms: ["linux/amd64"], "linux/amd64": { node: "24.1.0" } } };
+  if (major)
+    item.occurrences[0].fix = { name: "test-package", version: "2.0.0", isSemVerMajor: true };
   let actions,
     lostMR = false;
   const posts = [];
@@ -820,7 +824,12 @@ test.each(["npm", "runtime"])("%s Draft MR is prepared without install/build/che
   repairer.run = (args, cwd, options) => {
     commands.push(args);
     if (args[0] === "npm") {
-      if (args[1] === "update")
+      if (args[1] === "install") {
+        expect(major).toBe(true);
+        expect(args).toEqual(["npm", "install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--save-exact", "--save-prod", "--", "test-package@2.0.0"]);
+        fs.writeFileSync(path.join(cwd, "package.json"), '{"dependencies":{"test-package":"2.0.0"}}\n');
+      }
+      if ((args[1] === "update" && !major) || args[1] === "install")
         fs.writeFileSync(
           path.join(cwd, "package-lock.json"),
           '{"fixed":true}\n',
@@ -840,12 +849,18 @@ test.each(["npm", "runtime"])("%s Draft MR is prepared without install/build/che
   await expect(repairer.repairOne(api, item, report, root)).rejects.toThrow(
     "timeout",
   );
-  expect((await repairer.repairOne(api, item, report, root)).status).toBe(
-    "created",
-  );
-  expect(commands.every((args) => args[0] === "git" || (args[0] === "npm" && args[1] === "update"))).toBe(true);
+  const result = await repairer.repairOne(api, item, report, root);
+  expect(result.status).toBe("created");
+  if (major)
+    expect(result.dependency_updates).toEqual([{ package: "test-package", version: "2.0.0", major: true }]);
+  expect(commands.every((args) => args[0] === "git" || (args[0] === "npm" && (args[1] === "update" || (major && args[1] === "install"))))).toBe(true);
   const mr = posts.find(([location]) => location.endsWith("/merge_requests"))[1];
   expect(mr.title).toMatch(/^Draft:/);
+  if (major) {
+    expect(mr.description).toContain("Мажорные обновления зависимостей");
+    expect(mr.description).toContain("`test-package` → `2.0.0`");
+    expect(formatReport({ ...report, findings: [{ ...item, repair: result }] })).toContain("Мажорное обновление: test-package → 2.0.0");
+  }
   expect(mr.description).toContain("в nightly не запускались");
   expect(mr.description).not.toContain("Проверки проекта и повторный аудит выполнены");
   const commits = posts.filter(([location]) =>
@@ -855,7 +870,7 @@ test.each(["npm", "runtime"])("%s Draft MR is prepared without install/build/che
   expect(commits[0][1].start_sha).toBe(sha);
   expect(actions.map((action) => action.file_path).sort()).toEqual([
     ".changelog/APP-1.security.md",
-    source === "npm" ? "package-lock.json" : "Dockerfile",
+    ...(major ? ["package-lock.json", "package.json"] : [source === "npm" ? "package-lock.json" : "Dockerfile"]),
   ]);
   expect(read(path.join(root, "package-lock.json")).fixed).toBe(false);
 });

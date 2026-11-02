@@ -35,6 +35,9 @@ function formatReport(report) {
               ? "проверки пройдены"
               : "уже открыт"),
       );
+    const majorUpdates = (repair.dependency_updates || []).filter((update) => update.major);
+    if (majorUpdates.length)
+      lines.push("Мажорное обновление: " + majorUpdates.map((update) => update.package + " → " + update.version).join(", ") + "; совместимость требует проверки.");
     if (repair.reason) lines.push("Ожидает исправления: " + repair.reason);
     if (value.tracking_error)
       lines.push("Ошибка YouTrack: " + value.tracking_error);

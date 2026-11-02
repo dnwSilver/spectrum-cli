@@ -68,6 +68,7 @@ class Repairer extends Scanner {
     return [base];
   }
   async fixNpm(root, value) {
+    const updates = [];
     const occurrences = value.occurrences.filter((entry) =>
       Object.hasOwn(entry, "entry"),
     );
@@ -104,10 +105,6 @@ class Repairer extends Scanner {
       );
       for (const [name, fix] of Object.entries(fixes)) {
         ensure(
-          !fix.isSemVerMajor,
-          "Remediation requires a major dependency upgrade",
-        );
-        ensure(
           pkgName.test(name) && /^\d+\.\d+\.\d+(?![\s\S])/.test(fix.version),
           "Invalid npm remediation",
         );
@@ -134,8 +131,10 @@ class Repairer extends Scanner {
           ],
           root,
         );
+        updates.push({ package: name, version: fix.version, major: fix.isSemVerMajor === true });
       }
     }
+    return updates;
   }
   async fixRuntime(root, value, report) {
     const runtime = report.runtime,
@@ -292,7 +291,7 @@ class Repairer extends Scanner {
       this.run(["git", "clone", "--no-hardlinks", "--no-checkout", root, work]);
       this.run(["git", "checkout", "--detach", cfg.sha], work);
       const allowed = new Set(["package.json", "package-lock.json"]);
-      if (value.sources.includes("npm")) await this.fixNpm(work, value);
+      const dependencyUpdates = value.sources.includes("npm") ? await this.fixNpm(work, value) : [];
       if (intersects(value.sources, ["runtime", "node"])) {
         await this.fixRuntime(work, value, report);
         allowed.add(report.runtime.dockerfile);
@@ -372,7 +371,13 @@ class Repairer extends Scanner {
           commit_message: expectedMessage,
           actions,
         });
-      const description = `Устранение ${value.id} (${value.severity}).\n\nЗадача: ${value.task.url}\nРодитель: ${value.parent.url}\n\nЗависимости или опубликованный runtime обновлены; повторный аудит соответствующего источника выполнен.\nСборка образа и проверки проекта в nightly не запускались. Требуется проверка в обычном MR pipeline.\nИсходный commit: \`${cfg.sha}\`\nPipeline: ${cfg.pipeline_url}\n\nАвтоматическое слияние отключено. Необходимо ревью.`;
+      const majorUpdates = dependencyUpdates.filter((update) => update.major);
+      const majorNotice = majorUpdates.length
+        ? "\n\n**Мажорные обновления зависимостей:**\n" +
+          majorUpdates.map((update) => `- \`${update.package}\` → \`${update.version}\``).join("\n") +
+          "\nВозможны несовместимые изменения API. Требуется ревью и проверка совместимости в обычном MR pipeline."
+        : "";
+      const description = `Устранение ${value.id} (${value.severity}).\n\nЗадача: ${value.task.url}\nРодитель: ${value.parent.url}\n\nЗависимости или опубликованный runtime обновлены; повторный аудит соответствующего источника выполнен.\nСборка образа и проверки проекта в nightly не запускались. Требуется проверка в обычном MR pipeline.\nИсходный commit: \`${cfg.sha}\`\nPipeline: ${cfg.pipeline_url}\n\nАвтоматическое слияние отключено. Необходимо ревью.${majorNotice}`;
       const mr = await api.post(project + "/merge_requests", {
         source_branch: branch,
         target_branch: cfg.branch,
@@ -380,7 +385,10 @@ class Repairer extends Scanner {
         description,
         remove_source_branch: true,
       });
-      return { status: "created", mr: mr.web_url, sha: cfg.sha };
+      return {
+        status: "created", mr: mr.web_url, sha: cfg.sha,
+        ...(dependencyUpdates.length ? { dependency_updates: dependencyUpdates } : {}),
+      };
     });
   }
   async preflightRepair(api, report, root) {
