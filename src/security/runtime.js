@@ -184,7 +184,23 @@ class API {
         continue;
       }
       if (res.status < 200 || res.status >= 300) {
-        const error = new Error(`API ${method} failed (HTTP ${res.status})`);
+        const secrets = { ...process.env };
+        for (const [key, value] of Object.entries(this.headers))
+          if (/authorization|token|password|secret|cookie/i.test(key)) {
+            secrets["API_TOKEN_HEADER_" + key] = value;
+            secrets["API_TOKEN_VALUE_" + key] = String(value).replace(/^(Bearer|Basic)\s+/i, "");
+          }
+        const endpoint = new URL(url);
+        let detail = "";
+        try {
+          const response = JSON.parse(res.body.toString("utf8"));
+          const message = response?.error_description || response?.message || response?.error || response?.errors;
+          if (message) detail = typeof message === "string" ? message : JSON.stringify(message);
+        } catch {
+          // HTML/proxy pages are not actionable API validation messages.
+        }
+        const context = diagnostic(endpoint.origin + endpoint.pathname + (detail ? ": " + detail : ""), secrets);
+        const error = new Error(`API ${method} failed (HTTP ${res.status}) at ${context}`);
         error.status = res.status;
         throw error;
       }

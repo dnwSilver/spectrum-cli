@@ -64,9 +64,14 @@ class Tracker {
     ensure(exact.length === 1, "Cannot resolve YouTrack project " + project);
     const body = { project: { id: exact[0].id }, summary, description };
     if (customFields !== undefined) body.customFields = customFields;
-    return this.api.request("POST", "issues", body, {
-      query: { fields: Tracker.FIELDS },
-    });
+    try {
+      return await this.api.request("POST", "issues", body, {
+        query: { fields: Tracker.FIELDS },
+      });
+    } catch (error) {
+      error.message = "Create YouTrack issue in " + project + ": " + error.message;
+      throw error;
+    }
   }
   static parentFields(value, parent = {}) {
     ensure(
