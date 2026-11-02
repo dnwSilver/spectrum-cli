@@ -106,6 +106,7 @@ async function npmFindings(report, aliases = osvAliases) {
           range: advisory.range || "",
           fix: entry.fixAvailable ?? false,
           url: advisory.url || "",
+          ...(advisory.title ? { title: advisory.title } : {}),
         }),
       );
     }
@@ -127,6 +128,7 @@ function trivyFindings(report) {
             fixed: item.FixedVersion || "",
             target: target.Target || "",
             url: item.PrimaryURL || "",
+            ...(item.Description || item.Title ? { description: item.Description || item.Title } : {}),
           }),
         );
   return mergeFindings(result);

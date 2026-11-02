@@ -1,12 +1,14 @@
-const { ensure } = require("../automation");
+const { ensure, stable } = require("../automation");
+const { projectText, parentText } = require("./task-text");
 const { HIGH, ids, intersects } = require("./findings");
 class Tracker {
   static FIELDS =
-    "id,idReadable,summary,description,resolved,project(id,shortName),customFields(name,value(name))";
+    "id,idReadable,summary,description,resolved,project(id,shortName),customFields(name,value(name,login))";
   constructor(api, base, env = process.env) {
     this.api = api;
     this.base = base.replace(/\/(?![\s\S])/, "");
     this.env = env;
+    this.projects = new Map();
   }
   async search(query) {
     const result = [];
@@ -56,14 +58,55 @@ class Tracker {
       if (batch.length < 100) return [matching[0].id, result];
     }
   }
-  async create(project, summary, description, customFields) {
+  async project(project) {
+    if (this.projects.has(project)) return this.projects.get(project);
     const projects = await this.api.get("admin/projects", {
       query: { query: project, fields: "id,shortName", $top: 100 },
     });
     const exact = projects.filter((item) => item.shortName === project);
     ensure(exact.length === 1, "Cannot resolve YouTrack project " + project);
-    const body = { project: { id: exact[0].id }, summary, description };
-    if (customFields !== undefined) body.customFields = customFields;
+    const fields = [];
+    for (let offset = 0; ; offset += 100) {
+      const batch = await this.api.get("admin/projects/" + exact[0].id + "/customFields", {
+        query: { fields: "field(name,aliases,fieldType(id))", $top: 100, $skip: offset },
+      });
+      ensure(Array.isArray(batch), "Invalid YouTrack project fields");
+      fields.push(...batch.map((item) => item.field).filter(Boolean));
+      if (batch.length < 100) break;
+    }
+    const result = { id: exact[0].id, fields };
+    this.projects.set(project, result);
+    return result;
+  }
+  async fields(project, desired) {
+    const schema = await this.project(project);
+    const types = {
+      string: "SimpleIssueCustomField",
+      "enum[1]": "SingleEnumIssueCustomField",
+      "enum[*]": "MultiEnumIssueCustomField",
+      "user[1]": "SingleUserIssueCustomField",
+      "user[*]": "MultiUserIssueCustomField",
+      "owned[1]": "SingleOwnedIssueCustomField",
+      "owned[*]": "MultiOwnedIssueCustomField",
+    };
+    return desired.map((item) => {
+      const matches = schema.fields.filter((field) =>
+        [field.name, ...(field.aliases || "").split(",").map((alias) => alias.trim())].includes(item.name),
+      );
+      ensure(matches.length === 1, "Cannot resolve YouTrack field " + item.name + " in " + project);
+      const field = matches[0], type = field.fieldType?.id;
+      ensure(types[type], "Unsupported YouTrack field type for " + field.name + " in " + project);
+      const multi = type.endsWith("[*]");
+      let value = item.value;
+      if (multi && !Array.isArray(value)) value = [value];
+      ensure(multi || !Array.isArray(value), "Expected a single value for " + field.name);
+      return { name: field.name, $type: types[type], value };
+    });
+  }
+  async create(project, summary, description, customFields) {
+    const schema = await this.project(project);
+    const body = { project: { id: schema.id }, summary, description };
+    if (customFields !== undefined) body.customFields = await this.fields(project, customFields);
     try {
       return await this.api.request("POST", "issues", body, {
         query: { fields: Tracker.FIELDS },
@@ -72,6 +115,37 @@ class Tracker {
       error.message = "Create YouTrack issue in " + project + ": " + error.message;
       throw error;
     }
+  }
+  static normalized(value) {
+    if (Array.isArray(value)) return value.map(Tracker.normalized).sort((a, b) => stable(a).localeCompare(stable(b)));
+    if (value && typeof value === "object")
+      return typeof value.login === "string" ? { login: value.login } : { name: value.name };
+    return value;
+  }
+  async sync(issue, { summary, description, fields }) {
+    const location = "issues/" + issue.id;
+    issue = await this.api.get(location, { query: { fields: Tracker.FIELDS } });
+    const expected = await this.fields(issue.project.shortName, fields);
+    const differences = (current) => {
+      const actual = new Map((current.customFields || []).map((field) => [field.name, field.value]));
+      return expected.filter((field) => stable(Tracker.normalized(actual.get(field.name))) !== stable(Tracker.normalized(field.value)));
+    };
+    const update = {};
+    if (summary !== undefined && issue.summary !== summary) update.summary = summary;
+    if (description !== undefined && issue.description !== description) update.description = description;
+    const changed = differences(issue);
+    if (changed.length) update.customFields = changed;
+    if (Object.keys(update).length) {
+      await this.api.post(location, update);
+      issue = await this.api.get(location, { query: { fields: Tracker.FIELDS } });
+    }
+    ensure(
+      !differences(issue).length &&
+        (summary === undefined || issue.summary === summary) &&
+        (description === undefined || issue.description === description),
+      "YouTrack did not persist required fields or text for " + issue.idReadable,
+    );
+    return issue;
   }
   static parentFields(value, parent = {}) {
     ensure(
@@ -103,37 +177,6 @@ class Tracker {
         value: { name: "Group" },
       },
     ];
-  }
-  async ensureParentFields(parent, value) {
-    const location = "issues/" + parent.id;
-    parent = await this.api.get(location, {
-      query: { fields: Tracker.FIELDS },
-    });
-    const expected = Tracker.parentFields(value, parent),
-      scalar = (value) =>
-        value && typeof value === "object" ? value.name : value;
-    const matches = (issue) => {
-      const actual = Object.fromEntries(
-        (issue.customFields || []).map((field) => [
-          field.name,
-          scalar(field.value),
-        ]),
-      );
-      return expected.every(
-        (field) => actual[field.name] === scalar(field.value),
-      );
-    };
-    if (!matches(parent)) {
-      await this.api.post(location, { customFields: expected });
-      parent = await this.api.get(location, {
-        query: { fields: Tracker.FIELDS },
-      });
-    }
-    ensure(
-      matches(parent),
-      "YouTrack did not persist required parent fields: CVE ID, Severity, Priority, Type=Group",
-    );
-    return parent;
   }
   async ensure(value, cfg) {
     const parentProject = this.env.NIGHTLY_CVE_PROJECT || "CVE";
@@ -170,25 +213,17 @@ class Tracker {
           parents.set(issue.id, issue);
       }
     ensure(parents.size <= 1, "Multiple parent issues match advisory aliases");
-    const details =
-      "Automated scan evidence (not an exploitability assessment).\n\n" +
-      JSON.stringify(value, null, 2) +
-      "\n\nPipeline: " +
-      cfg.pipeline_url;
-    const createdParent = !parents.size;
-    let parent =
-      parents.values().next().value ||
-      (await this.create(
-        parentProject,
-        `[${value.id}] ${value.severity}: устранение уязвимости`,
-        "<!-- nightly-security parent -->\n\n" + details,
-        Tracker.parentFields(value),
-      ));
-    if (
-      createdParent ||
-      (parent.description || "").includes("<!-- nightly-security parent -->")
-    )
-      parent = await this.ensureParentFields(parent, value);
+    let parent = parents.values().next().value;
+    if (parent) parent = await this.api.get("issues/" + parent.id, { query: { fields: Tracker.FIELDS } });
+    const parentFields = Tracker.parentFields(value, parent);
+    parentFields.push({ name: "Статья учета времени", value: { name: cfg.time_article } });
+    const severity = parentFields.find((field) => field.name === "Severity").value.name.toUpperCase();
+    const priority = parentFields.find((field) => field.name === "Priority").value.name;
+    const content = parentText(value, cfg, parent || {}, severity);
+    const parentSummary = `[${value.id}] Устранение уязвимости ${severity}` +
+      (content.packages.length ? " — " + content.packages.join(", ") : "");
+    parent ||= await this.create(parentProject, parentSummary, content.description, parentFields);
+    parent = await this.sync(parent, { summary: parentSummary, description: content.description, fields: parentFields });
     const [link, children] = await this.linkedChildren(parent),
       marker = `<!-- nightly-security project=${cfg.project_id} -->`,
       slug = cfg.project_path.split("/").at(-1);
@@ -215,28 +250,23 @@ class Tracker {
         )
           matches.set(issue.id, issue);
     ensure(matches.size <= 1, "Multiple project tasks match the same advisory");
-    const child =
-      matches.values().next().value ||
-      (await this.create(
-        cfg.youtrack_project,
-        `[${value.id}] Устранение уязвимости ${value.severity} в проекте ${slug}`,
-        marker + "\n\nРодитель: " + parent.idReadable + "\n\n" + details,
-      ));
-    await this.api.post("issues/" + parent.id + "/links/" + link + "/issues", {
-      id: child.id,
-    });
-    if ((child.description || "").includes(marker)) {
-      // Commands use field/value pairs; braces belong to search queries.
-      const commands = [
-        "Статья учета времени " + cfg.time_article,
-        "Tester " + cfg.tester,
-      ];
-      if (cfg.subsystem) commands.push("Subsystem " + cfg.subsystem);
-      await this.api.post("commands", {
-        query: commands.join(" "),
-        issues: [{ id: child.id }],
-      });
-    }
+    const childFields = [
+      { name: "Priority", value: { name: priority } },
+      { name: "Статья учета времени", value: { name: cfg.time_article } },
+      { name: "Tester", value: { login: cfg.tester } },
+    ];
+    if (cfg.subsystem) childFields.push({ name: "Subsystem", value: { name: cfg.subsystem } });
+    const childSummary = `[${value.id}] Устранение уязвимости ${severity} в проекте ${slug}`;
+    const childDescription = projectText(value, cfg, severity);
+    let child = matches.values().next().value ||
+      await this.create(cfg.youtrack_project, childSummary, childDescription, childFields);
+    child = await this.sync(child, { summary: childSummary, description: childDescription, fields: childFields });
+    if (!children.some((issue) => issue.id === child.id))
+      await this.api.post("issues/" + parent.id + "/links/" + link + "/issues", { id: child.id });
+    // A severity escalation in any repository must also update existing siblings.
+    for (const sibling of children)
+      if (sibling.id !== child.id)
+        await this.sync(sibling, { fields: [{ name: "Priority", value: { name: priority } }] });
     if (child.resolved) {
       const command = this.env.NIGHTLY_REOPEN_COMMAND ?? "State Новая";
       ensure(

@@ -217,7 +217,7 @@ async function checkYouTrackAccess(env, cfg, api) {
     );
     check(Array.isArray(fields), "Invalid YouTrack custom field response");
     const names = new Set(fields.map((field) => field.field?.name));
-    // Project fields are addressed by commands, which also accept aliases.
+    // Project aliases are resolved to canonical names before REST writes.
     // Parent customFields writes still require the canonical REST field name.
     if (project !== parentProject)
       for (const { field } of fields)
@@ -226,9 +226,10 @@ async function checkYouTrackAccess(env, cfg, api) {
             if (alias.trim()) names.add(alias.trim());
     const expected =
       project === parentProject
-        ? ["CVE ID", "Severity", "Priority", "Type"]
+        ? ["CVE ID", "Severity", "Priority", "Type", "Статья учета времени"]
         : [
             "Tester",
+            "Priority",
             "Статья учета времени",
             ...(cfg.subsystem ? ["Subsystem"] : []),
           ];

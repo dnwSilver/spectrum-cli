@@ -263,6 +263,7 @@ test.each([
     if (location === "admin/projects/APP/customFields")
       return [
         { field: { name: "Тестировщик", aliases } },
+        { field: { name: "Priority" } },
         { field: { name: "Статья учета времени", aliases: null } },
         { field: { name: "Компонент", aliases: "Subsystem" } },
       ];
