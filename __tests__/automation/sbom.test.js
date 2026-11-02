@@ -307,7 +307,7 @@ test("resolve always writes compatible reports, even when tool bootstrap fails",
       },
     }),
   ).toBe(2);
-  const output = path.join(root, "sbom-catalog/site:");
+  const output = path.join(root, "sbom-catalog", client.artifactPrefix("site:"));
   expect(fs.readdirSync(output).sort()).toEqual([
     "report.json",
     "report.md",
@@ -631,4 +631,14 @@ test("uncertain downstream POST is never retried", async () => {
   });
   await expect(client.trigger(["99.1.2"], ENV, transport)).rejects.toThrow();
   expect(transport).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ["site:", "site%3A"], ["site:admin:", "site%3Aadmin%3A"],
+  ["CON", "%43ON"], ["nul.json", "%6Eul.json"],
+  ["reports.", "reports%2E"], ["site", "site"], ["", ""],
+])("catalog prefix %s has a portable Windows path while Linux paths stay unchanged", (prefix, windows) => {
+  expect(client.artifactPrefix(prefix, "win32")).toBe(windows);
+  expect(client.artifactPrefix(prefix, "linux")).toBe(prefix);
+  expect(client.artifactPrefix(prefix, "darwin")).toBe(prefix);
 });

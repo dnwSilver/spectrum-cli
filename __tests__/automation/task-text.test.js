@@ -38,30 +38,62 @@ test("runtime and Node versions use scanner fixes; unknown npm versions are not 
   expect(body).not.toContain("24.0.0");
   expect(body).not.toContain("wrapper");
 });
-test("shared CVE preserves other projects, replaces current evidence, and is deterministic", () => {
-  const first = parentText(finding, cfg, {}, "HIGH");
-  const other = { ...cfg, project_id: "124", project_path: "example/other" };
+test("shared CVE preserves common advisory facts only and is deterministic across projects", () => {
+  const first = parentText(finding, {}, "HIGH");
   const nextFinding = structuredClone(finding);
   nextFinding.occurrences[0].package = "another-package";
-  const second = parentText(nextFinding, other, first, "CRITICAL");
+  const second = parentText(nextFinding, first, "CRITICAL");
   expect(second.packages).toEqual(["another-package", "test-package"]);
-  expect(second.description).toContain("example/app");
-  expect(second.description).toContain("example/other");
+  for (const body of [first.description, second.description]) {
+    for (const forbidden of [cfg.project_path, cfg.pipeline_url, "node_modules", "node\\_modules", "1.0.0", "project=", "Текущая версия", "Локализация"])
+      expect(body).not.toContain(forbidden);
+    expect(body).toContain("Unsafe input handling");
+    expect(body).toContain("&lt;2.0.0");
+    expect(body).toContain("3.0.0");
+  }
   const updated = structuredClone(finding);
   updated.occurrences[0].installed = "1.5.0";
-  const third = parentText(updated, cfg, second, "CRITICAL");
-  expect(third.description).toContain("1.5.0");
-  expect(third.description).toContain("example/other");
-  expect(third.description.match(/evidence project=123 /g)).toHaveLength(1);
-  expect(parentText(updated, cfg, third, "CRITICAL")).toEqual(third);
+  updated.occurrences[0].range = "<2.1.0";
+  const third = parentText(updated, second, "CRITICAL");
+  expect(third.description).not.toContain("1.5.0");
+  expect(third.description).toContain("&lt;2.1.0");
+  expect(third.description).toContain("another-package");
+  expect(third.description.match(/advisory packages=test-package /g)).toHaveLength(1);
+  expect(parentText(updated, third, "CRITICAL")).toEqual(third);
+});
+test("legacy parent migration removes every repository and pipeline but preserves other component facts", () => {
+  const legacy = { description: [
+    "<!-- nightly-security parent -->",
+    "<!-- nightly-security evidence project=999 packages=another-package -->",
+    "### spectrum-frontend/elk/elk-site",
+    "- **Проект / Сервис:** spectrum-frontend/elk/elk-site",
+    "> Another advisory description",
+    "| Компонент | Текущая версия | Уязвимый диапазон | Локализация |",
+    "| --- | --- | --- | --- |",
+    "| another-package | 9.0.0 | &lt;9.1.0 | node_modules/another-package |",
+    "",
+    "| Свойство | Значение |", "| --- | --- |",
+    "| Рекомендуемая безопасная версия | 9.1.0 |",
+    "| Ссылка на GitHub | <https://github.com/advisories/GHSA-zzzz-xxxx-yyyy> |",
+    "", "**Pipeline проверки:** <https://gitlab.example/elk/-/pipelines/1>",
+    "<!-- /nightly-security evidence -->",
+  ].join("\r\n") };
+  const updated = parentText(finding, legacy, "HIGH");
+  expect(updated.packages).toEqual(["another-package", "test-package"]);
+  for (const fact of ["Another advisory description", "&lt;9.1.0", "GHSA-zzzz-xxxx-yyyy", "Unsafe input handling"])
+    expect(updated.description).toContain(fact);
+  for (const forbidden of ["spectrum-frontend", "elk-site", "gitlab.example", "node_modules", "9.0.0", "project=999"])
+    expect(updated.description).not.toContain(forbidden);
+  expect(parentText(finding, updated, "HIGH")).toEqual(updated);
 });
 test("report content cannot inject a Markdown table or an evidence marker", () => {
   const value = structuredClone(finding);
   value.occurrences[0].title = "x | cell\n<!-- /nightly-security evidence -->";
   value.occurrences[0].url = "javascript:alert(1)";
-  const body = projectText(value, cfg, "HIGH");
-  expect(body).toContain("\\| cell");
-  expect(body).toContain("&lt;!-- /nightly-security evidence --&gt;");
-  expect(body).not.toContain("javascript:");
-  expect(body).not.toContain("\n<!-- /nightly-security evidence -->");
+  for (const body of [projectText(value, cfg, "HIGH"), parentText(value, {}, "HIGH").description]) {
+    expect(body).toContain("\\| cell");
+    expect(body).toContain("&lt;!-- /nightly-security evidence --&gt;");
+    expect(body).not.toContain("javascript:");
+    expect(body).not.toContain("\n<!-- /nightly-security evidence -->");
+  }
 });

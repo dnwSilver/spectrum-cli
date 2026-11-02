@@ -51,6 +51,7 @@ class TrackerAPI {
     this.calls = [];
     this.failLinkOnce = false;
     this.ignoredFields = new Set();
+    this.ignoreBotTag = false;
     this.schemas = {};
   }
   schema(project) {
@@ -60,7 +61,7 @@ class TrackerAPI {
       ["Статья учета времени", "enum[1]"],
     ] : [
       ["Priority", "enum[1]"], ["Статья учета времени", "enum[1]"],
-      ["Тестировщик", "user[*]", "Tester"], ["Компонент", "owned[1]", "Subsystem"],
+      ["Тестировщик", "user[*]", "Tester"], ["Компонент", "ownedField[1]", "Subsystem"],
     ]).map(([name, type, aliases]) => ({ field: { name, aliases, fieldType: { id: type } } }));
   }
   async get(location, { query } = {}) {
@@ -106,6 +107,7 @@ class TrackerAPI {
       project: { shortName: project },
       summary: data.summary,
       description: data.description,
+      tags: data.tags || [],
       customFields: this.schema(project).map(({ field }) => {
         const set = (data.customFields || []).find((item) => item.name === field.name);
         return set && !this.ignoredFields.has(field.name) ? set : {
@@ -128,6 +130,12 @@ class TrackerAPI {
       const parent = location.split("/")[1];
       this.links[parent] ||= new Set();
       this.links[parent].add(data.id);
+    } else if (location === "commands" && data.query === "tag BOT") {
+      if (!this.ignoreBotTag)
+        for (const target of data.issues) {
+          const issue = this.issues.find((item) => item.id === target.id);
+          if (!issue.tags.some((tag) => tag.name === "BOT")) issue.tags.push({ id: "bot-tag", name: "BOT" });
+        }
     } else if (/^issues\/[^/]+$/.test(location)) {
       const issue = this.issues.find(
         (issue) => issue.id === location.split("/")[1],
@@ -237,7 +245,7 @@ test.each(["HIGH", "CRITICAL"])(
       Severity: { name: severity === "HIGH" ? "High" : "Critical" },
       Priority: { name: severity === "HIGH" ? "Critical" : "Stopper" },
       Type: { name: "Group" },
-      "Статья учета времени": { name: "security-team" },
+      "Статья учета времени": { name: "needs-definition" },
     });
     expect(Object.fromEntries(api.issues[1].customFields.map((field) => [field.name, field.value]))).toEqual({
       Priority: fields.Priority,
@@ -257,6 +265,36 @@ test.each(["HIGH", "CRITICAL"])(
     expect(api.issues).toHaveLength(3);
   },
 );
+test("new parents and project tasks get BOT without duplicate writes on retry", async () => {
+  const api = new TrackerAPI(), tracker = new Tracker(api, "https://yt.example", {});
+  await tracker.ensure(value(), CFG);
+  expect(api.issues.map((issue) => issue.tags)).toEqual([
+    [{ id: "bot-tag", name: "BOT" }], [{ id: "bot-tag", name: "BOT" }],
+  ]);
+  expect(api.calls.filter(([, location, data]) => location === "commands" && data.query === "tag BOT")).toHaveLength(2);
+  const writes = api.calls.length;
+  await tracker.ensure(value(), CFG);
+  expect(api.calls).toHaveLength(writes);
+});
+test("existing tasks keep human tags when BOT is restored", async () => {
+  const api = new TrackerAPI(), tracker = new Tracker(api, "https://yt.example", {});
+  await tracker.ensure(value(), CFG);
+  for (const issue of api.issues) issue.tags = [{ id: "human-tag", name: "manual-review" }];
+  await tracker.ensure(value(), CFG);
+  for (const issue of api.issues)
+    expect(issue.tags).toEqual([{ id: "human-tag", name: "manual-review" }, { id: "bot-tag", name: "BOT" }]);
+  expect(api.issues).toHaveLength(2);
+});
+test("a missing BOT tag must persist and a failed creation tag reuses the same issue", async () => {
+  const api = new TrackerAPI(), tracker = new Tracker(api, "https://yt.example", {});
+  api.ignoreBotTag = true;
+  await expect(tracker.ensure(value(), CFG)).rejects.toThrow("did not persist BOT tag");
+  expect(api.issues).toHaveLength(1);
+  api.ignoreBotTag = false;
+  await tracker.ensure(value(), CFG);
+  expect(api.issues).toHaveLength(2);
+  expect(api.issues.every((issue) => issue.tags.some((tag) => tag.name === "BOT"))).toBe(true);
+});
 test("required parent fields must persist before creating child; retry repairs same issue", async () => {
   const api = new TrackerAPI(),
     tracker = new Tracker(api, "https://yt.example", {});
@@ -356,7 +394,7 @@ test("failed field update reuses existing tasks on the next run", async () => {
   expect(result.task.id).toBe(issueIds[1]);
   expect(api.issues[1].customFields.find((field) => field.name === "Тестировщик").value).toEqual([{ login: "test.qa" }]);
 });
-test("priority escalation updates siblings and preserves each repository's evidence", async () => {
+test("priority escalation updates siblings without putting project evidence in the parent", async () => {
   const api = new TrackerAPI(), tracker = new Tracker(api, "https://yt.example", {});
   await tracker.ensure(value(), CFG);
   await tracker.ensure({ ...value(), severity: "CRITICAL" }, {
@@ -365,10 +403,10 @@ test("priority escalation updates siblings and preserves each repository's evide
   expect(api.issues).toHaveLength(3);
   for (const issue of api.issues)
     expect(issue.customFields.find((field) => field.name === "Priority").value).toEqual({ name: "Stopper" });
-  expect(api.issues[0].description).toContain("example/webapp");
-  expect(api.issues[0].description).toContain("example/another-app");
+  expect(api.issues[0].description).not.toContain("example/webapp");
+  expect(api.issues[0].description).not.toContain("example/another-app");
   await tracker.ensure(value(), CFG);
-  expect(api.issues[0].description).toContain("example/another-app");
+  expect(api.issues[0].description).not.toContain("example/another-app");
   expect(api.issues[1].summary).toContain("CRITICAL");
 });
 test("changed evidence, tester, article and subsystem update only the same issues", async () => {
@@ -381,8 +419,8 @@ test("changed evidence, tester, article and subsystem update only the same issue
   expect(api.issues).toHaveLength(2);
   expect(api.issues[0].summary).toMatch(/updated-package$/);
   expect(api.issues[0].description).toContain("2.0.0");
-  for (const issue of api.issues)
-    expect(issue.customFields.find((field) => field.name === "Статья учета времени").value).toEqual({ name: "new-article" });
+  expect(api.issues[0].customFields.find((field) => field.name === "Статья учета времени").value).toEqual({ name: "needs-definition" });
+  expect(api.issues[1].customFields.find((field) => field.name === "Статья учета времени").value).toEqual({ name: "new-article" });
   expect(api.issues[1].customFields.find((field) => field.name === "Тестировщик").value).toEqual([{ login: "other.qa" }]);
   expect(api.issues[1].customFields.find((field) => field.name === "Компонент").value).toEqual({ name: "new-subsystem" });
 });
@@ -395,6 +433,53 @@ test("a single-user tester uses the project's actual field type", async () => {
   const tester = api.issues[1].customFields.find((field) => field.name === "Тестировщик");
   expect(tester.$type).toBe("SingleUserIssueCustomField");
   expect(tester.value).toEqual({ login: "test.qa" });
+});
+test.each([
+  ["ownedField[1]", "SingleOwnedIssueCustomField", { name: "webapp" }],
+  ["ownedField[*]", "MultiOwnedIssueCustomField", [{ name: "webapp" }]],
+])("real YouTrack owned type %s updates a legacy project task in place", async (type, expectedType, expectedValue) => {
+  const api = new TrackerAPI();
+  api.schemas.APP = api.schema("APP");
+  api.schemas.APP.find(({ field }) => field.aliases === "Subsystem").field.fieldType.id = type;
+  const parent = await api.request("POST", "issues", {
+    project: { id: "CVE" }, summary: "[" + CVE + "]", description: "old parent",
+  });
+  const child = await api.request("POST", "issues", {
+    project: { id: "APP" }, summary: "[" + CVE + "] Устранение в проекте webapp",
+    description: "Automated scan evidence\n{\"occurrences\": []}",
+  });
+  api.links[parent.id] = new Set([child.id]);
+  const tracker = new Tracker(api, "https://yt.example", {});
+  expect((await tracker.ensure(value(), CFG)).task.id).toBe(child.id);
+  expect(api.issues).toHaveLength(2);
+  expect(api.issues[1].description).toContain("## Описание и локализация уязвимости");
+  expect(api.issues[1].description).not.toContain("Automated scan evidence");
+  expect(api.issues[1].description).toContain(CFG.pipeline_url);
+  expect(api.issues[0].description).not.toContain(CFG.project_path);
+  expect(api.issues[0].description).not.toContain(CFG.pipeline_url);
+  const subsystem = api.issues[1].customFields.find((field) => field.name === "Компонент");
+  expect(subsystem.$type).toBe(expectedType);
+  expect(subsystem.value).toEqual(expectedValue);
+  const writes = api.calls.length;
+  await tracker.ensure(value(), CFG);
+  expect(api.calls).toHaveLength(writes);
+});
+test("unknown field type names the actual type and blocks invalid project writes", async () => {
+  const api = new TrackerAPI();
+  api.schemas.APP = api.schema("APP");
+  api.schemas.APP.find(({ field }) => field.aliases === "Subsystem").field.fieldType.id = "unsupported[*]";
+  const tracker = new Tracker(api, "https://yt.example", {});
+  await expect(tracker.ensure(value(), CFG)).rejects.toThrow("Unsupported YouTrack field type unsupported[*] for Компонент in APP");
+  expect(api.issues.filter((issue) => issue.project.shortName === "APP")).toHaveLength(0);
+});
+test("shared CVE article is configured independently of consumer articles", async () => {
+  const api = new TrackerAPI();
+  const tracker = new Tracker(api, "https://yt.example", { NIGHTLY_CVE_TIME_TRACKING_ARTICLE: "central-security" });
+  await tracker.ensure(value(), CFG);
+  await tracker.ensure(value(), { ...CFG, time_article: "another-project" });
+  const article = (issue) => issue.customFields.find((field) => field.name === "Статья учета времени").value;
+  expect(article(api.issues[0])).toEqual({ name: "central-security" });
+  expect(article(api.issues[1])).toEqual({ name: "another-project" });
 });
 test("ignored project priority prevents success until its value is persisted", async () => {
   const api = new TrackerAPI(), tracker = new Tracker(api, "https://yt.example", {});
@@ -471,7 +556,12 @@ test("isolated registry auth is removed even on failure", async () => {
       },
       async (env) => {
         auth = env.REGISTRY_AUTH_FILE;
-        expect(fs.statSync(auth).mode & 0o777).toBe(0o600);
+        // Windows reports inherited ACLs through stat.mode, not POSIX 0600 bits.
+        if (process.platform !== "win32")
+          expect(fs.statSync(auth).mode & 0o777).toBe(0o600);
+        expect(read(auth)).toEqual({ auths: {
+          "registry.example.com": { auth: Buffer.from("writer:secret").toString("base64") },
+        } });
         throw Error("stop");
       },
     ),

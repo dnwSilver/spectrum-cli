@@ -65,8 +65,10 @@ const checklist = [
   "- [ ] Запустить повторную проверку production-зависимостей (`npm audit --omit=dev`) и runtime-образа; убедиться, что уязвимость устранена.",
   "- [ ] Дождаться успешных проверок CI в MR.",
 ].join("\n");
+// A nonempty paragraph keeps YouTrack from visually joining adjacent tables.
+const tableSpacing = (body) => body.replace(/(\|[^\r\n]*\|)\r?\n(?:[ \t]*\r?\n)+(?=\|)/g, "$1\n\n&nbsp;\n\n");
 function projectText(value, cfg, severity) {
-  return [
+  return tableSpacing([
     `<!-- nightly-security project=${cfg.project_id} -->`,
     "",
     "## Общая информация",
@@ -80,35 +82,74 @@ function projectText(value, cfg, severity) {
     evidence(value, cfg),
     "",
     checklist,
+  ].join("\n"));
+}
+// Shared CVE facts must not contain installed versions, repository locations or
+// pipelines. Affected repositories are represented only by child issue links.
+function commonEvidence(value) {
+  const entries = value.occurrences || [];
+  const rows = unique(entries.map((entry) =>
+    `| ${text(entry.package || entry.entry || "Не указан")} | ${text(entry.range || "Не указан в отчёте")} |`,
+  ));
+  return [
+    ...unique(entries.map((entry) => entry.description || entry.title)).map((description) => `> ${text(description)}`),
+    "", "| Компонент | Уязвимый диапазон |", "| --- | --- |", ...rows,
+    "", "| Свойство | Значение |", "| --- | --- |",
+    `| Рекомендуемая безопасная версия | ${unique(entries.map(safeVersion)).join("; ") || "Не указана в отчёте"} |`,
+    ...references(value),
   ].join("\n");
 }
-function parentText(value, cfg, parent, severity) {
-  const blocks = new Map();
-  // Keep each repository's evidence when another repository updates a shared CVE.
-  const pattern = /<!-- nightly-security evidence project=(\d+) packages=([^\s>]*) -->\n([\s\S]*?)\n<!-- \/nightly-security evidence -->/g;
-  for (const match of (parent.description || "").matchAll(pattern)) {
-    try { blocks.set(match[1], { packages: decodeURIComponent(match[2]).split("\n"), body: match[3] }); }
-    catch { throw new Error("Cannot decode existing shared CVE evidence"); }
+function legacyCommonEvidence(body) {
+  const lines = body.split(/\r?\n/), rows = [];
+  let components = false;
+  for (const line of lines) {
+    if (line.startsWith("| Компонент |")) { components = true; continue; }
+    if (components && !line.startsWith("|")) components = false;
+    if (components && !line.startsWith("| ---")) {
+      const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
+      if (cells.length === 4) rows.push(`| ${cells[0]} | ${cells[2]} |`);
+    }
   }
-  blocks.set(String(cfg.project_id), {
-    packages: packages(value),
-    body: `### ${text(cfg.project_path)}\n\n${evidence(value, cfg)}`,
-  });
+  return [
+    ...lines.filter((line) => line.startsWith("> ")),
+    "", "| Компонент | Уязвимый диапазон |", "| --- | --- |", ...rows,
+    "", "| Свойство | Значение |", "| --- | --- |",
+    ...lines.filter((line) => /^\| (?:Рекомендуемая безопасная версия|Ссылка на NVD|Ссылка на GitHub|Источники) \|/.test(line)),
+  ].join("\n");
+}
+function parentText(value, parent, severity) {
+  const blocks = new Map();
+  const add = (encoded, body) => {
+    let names;
+    try { names = unique(decodeURIComponent(encoded).split("\n")); }
+    catch { throw new Error("Cannot decode existing shared CVE evidence"); }
+    blocks.set(names.join("\n"), { packages: names, body });
+  };
+  const oldPattern = /<!-- nightly-security evidence project=\d+ packages=([^\s>]*) -->\r?\n([\s\S]*?)\r?\n<!-- \/nightly-security evidence -->/g;
+  for (const match of (parent.description || "").matchAll(oldPattern))
+    add(match[1], legacyCommonEvidence(match[2]));
+  const pattern = /<!-- nightly-security advisory packages=([^\s>]*) -->\r?\n([\s\S]*?)\r?\n<!-- \/nightly-security advisory -->/g;
+  for (const match of (parent.description || "").matchAll(pattern)) add(match[1], match[2]);
+  const names = packages(value);
+  blocks.set(names.join("\n"), { packages: names, body: commonEvidence(value) });
   const allPackages = unique([...blocks.values()].flatMap((block) => block.packages));
-  const sections = [...blocks].sort(([a], [b]) => a.localeCompare(b)).map(([id, block]) => [
-    `<!-- nightly-security evidence project=${id} packages=${encodeURIComponent(block.packages.join("\n"))} -->`,
+  const sections = [...blocks].sort(([a], [b]) => a.localeCompare(b)).map(([, block]) => [
+    `<!-- nightly-security advisory packages=${encodeURIComponent(block.packages.join("\n"))} -->`,
     block.body,
-    "<!-- /nightly-security evidence -->",
+    "<!-- /nightly-security advisory -->",
   ].join("\n"));
   return {
     packages: allPackages,
-    description: [
+    description: tableSpacing([
       "<!-- nightly-security parent -->", "", "## Общая информация", "",
       `- **Уязвимость:** ${text(value.id)}`,
       `- **Уровень:** ${text(severity)}`,
       `- **Проблемные компоненты:** ${allPackages.map(text).join(", ") || "Не указаны в отчёте"}`,
-      "", "## Описание и локализация уязвимости", "", ...sections, "", checklist,
-    ].join("\n"),
+      "", "## Описание уязвимости", "", ...sections,
+      "", "## Необходимо", "",
+      "- [ ] Устранить уязвимость во всех затронутых проектах, перечисленных в дочерних задачах.",
+      "- [ ] Подтвердить устранение повторными проверками и завершить дочерние задачи.",
+    ].join("\n")),
   };
 }
 module.exports = { packages, projectText, parentText };

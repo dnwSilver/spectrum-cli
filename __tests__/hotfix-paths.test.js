@@ -12,6 +12,9 @@ const { hotfixStart, hotfixDeploy, hotfixClose } = require('../src/hotfix');
 describe.each([hotfixStart, hotfixDeploy, hotfixClose])('%p repository root check', (command) => {
     beforeEach(() => {
         jest.clearAllMocks();
+        fs.realpathSync.mockReset();
+        path.relative.mockReset();
+        delete fs.realpathSync.native;
         execFileSync.mockImplementation((executable, args) => {
             if (args.join(' ') === 'rev-parse --show-toplevel') return 'c:/Users/runner/work\n';
             // Reaching this branch error proves that the root check accepted the path.
@@ -31,6 +34,32 @@ describe.each([hotfixStart, hotfixDeploy, hotfixClose])('%p repository root chec
         expect(logError).toHaveBeenCalledWith('❌', 'Предпроверка не пройдена (%s): %s',
             'branch', expect.stringContaining('только на hotfix/*, main или master'));
         expect(execFileSync.mock.calls.some(([, args]) => args[0] === 'fetch')).toBe(false);
+    });
+
+    test('native Windows resolution accepts short-name aliases without bypassing the branch check', () => {
+        const canonical = 'C:\\Users\\runneradmin\\work';
+        fs.realpathSync.native = jest.fn(() => canonical);
+        path.relative.mockImplementation(path.win32.relative);
+        try {
+            expect(command()).toBe(false);
+            expect(fs.realpathSync.native).toHaveBeenCalledTimes(2);
+            expect(fs.realpathSync).not.toHaveBeenCalled();
+            expect(logError).toHaveBeenCalledWith('❌', 'Предпроверка не пройдена (%s): %s',
+                'branch', expect.stringContaining('только на hotfix/*, main или master'));
+        } finally { delete fs.realpathSync.native; }
+    });
+
+    test('native resolution still rejects a nested directory', () => {
+        fs.realpathSync.native = jest.fn()
+            .mockReturnValueOnce('C:\\Users\\runneradmin\\work')
+            .mockReturnValueOnce('C:\\Users\\runneradmin\\work\\nested');
+        path.relative.mockImplementation(path.win32.relative);
+        try {
+            expect(command()).toBe(false);
+            expect(logError).toHaveBeenCalledWith('❌', 'Предпроверка не пройдена (%s): %s',
+                'repository-root', 'Запустите hotfix из корня репозитория.');
+            expect(execFileSync).toHaveBeenCalledTimes(1);
+        } finally { delete fs.realpathSync.native; }
     });
 
     test.each([

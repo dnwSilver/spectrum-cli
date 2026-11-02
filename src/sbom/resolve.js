@@ -368,6 +368,15 @@ async function execute(env, directory, deps = {}, { dry = false } = {}) {
   }
   return { selection, errors };
 }
+function artifactPrefix(prefix, platform = process.platform) {
+  if (platform !== "win32") return prefix;
+  // Keep Linux CI artifact paths intact, but avoid Windows ADS, reserved device
+  // names and trailing-dot normalization. '%' is not allowed in the input.
+  let portable = prefix.replace(/:/g, "%3A").replace(/\.+$/, (dots) => "%2E".repeat(dots.length));
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(portable))
+    portable = "%" + portable.charCodeAt(0).toString(16).toUpperCase() + portable.slice(1);
+  return portable;
+}
 async function resolve(options = {}) {
   const dry = options.dry ?? isDryRun();
   const env = { ...process.env, ...(options.env || {}) },
@@ -379,7 +388,7 @@ async function resolve(options = {}) {
   const output = path.join(
     options.cwd || process.cwd(),
     "sbom-catalog",
-    prefix,
+    artifactPrefix(prefix),
   );
   const { selection, errors } = await temporary("sbom-resolve-", (dir) =>
     execute(env, dir, options.deps, { dry }),
@@ -409,6 +418,7 @@ async function resolve(options = {}) {
 }
 module.exports = {
   MissingCatalog,
+  artifactPrefix,
   authenticated,
   run,
   sourceDigests,

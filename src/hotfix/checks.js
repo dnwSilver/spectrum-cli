@@ -50,7 +50,10 @@ function context(mode, checks) {
     }
     const root = checks.check('repository-root', () => {
         const root = git('rev-parse', '--show-toplevel').trim();
-        if (path.relative(fs.realpathSync(root), fs.realpathSync(process.cwd())) !== '') {
+        // Native resolution expands Windows 8.3 aliases (RUNNER~1) as well as
+        // junctions; the JS realpath implementation can retain a short alias.
+        const realpath = fs.realpathSync.native || fs.realpathSync;
+        if (path.relative(realpath(root), realpath(process.cwd())) !== '') {
             throw new Error('Запустите hotfix из корня репозитория.');
         }
     }, 'команда запущена из корня Git-репозитория');
