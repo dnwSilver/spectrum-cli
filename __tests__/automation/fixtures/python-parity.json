@@ -1,0 +1,1305 @@
+[
+  {
+    "fn": "readTarball",
+    "args": [
+      {
+        "$buffer": "H4sIALaN4WoA/+3OwQrCMBCE4T6K7FliEkKhvk0oQVRMS1NLofjuxvYgSI9FPfzfZZa5zLa+vvpTOLRLqktqYrExnZXOzZl9ptbOvu9Xb0xpbbHTWz+y5p563+X5b2z9oUmivwU5SgxjL3sZQpfOTcxFVSmjrDx+/SEAAAAAAAAAAAAAAAAAYM0TCnkC1wAoAAA="
+      }
+    ],
+    "expected": {
+      "package.json": {
+        "$buffer": "eyJuYW1lIjoibmV4dCIsInZlcnNpb24iOiI5OS4xLjIifQ=="
+      }
+    }
+  },
+  {
+    "fn": "readTarball",
+    "args": [
+      {
+        "$buffer": "H4sIALaN4WoA/+3VzQqCQBSG4S7FZW0ax8yuR5yDTD8qaiVE995QBiGCC0VbvM/mDG7OB8M3FnFyilNRxWduj1WerSbmO1EYvqfTnU7wc3bftY50tPL8qYP0uVZ1XLr1c+z6Q4/n0gmwpLb3ytiqVkl+KexZjLpbk0qtbGakcU/CyB2D/deHTv/3frCn/3PI5CalJ40k11rWm6XjYGbf/ts0y0sx48veY/j/3+2/3gUB/Z9De+9LxwAAAAAAAAAAAAAAjPQCA+M9wAAoAAA="
+      }
+    ],
+    "expected": {
+      "package.json": {
+        "$buffer": "e30="
+      },
+      "dist/compiled/widget/index.js": {
+        "$buffer": "bmV2ZXIgZXhlY3V0ZSgp"
+      }
+    }
+  },
+  {
+    "fn": "readTarball",
+    "args": [
+      {
+        "$buffer": "H4sIALaN4WoA/+3OQQrCMBQE0BzFG8SG2vuEWkQqUkxFj29wJS6FUBfvbebzNzNLHud8muLlfJ1DI/tq6Pt3Vt9ZdR93/XcpDYewS3Fax7jkUh7HVtvCvaz5VuubFfy359YDAAAAAAAAAAAA+MkLsrJiJQAoAAA="
+      }
+    ],
+    "error": true
+  },
+  {
+    "fn": "readTarball",
+    "args": [
+      {
+        "$buffer": "H4sIALaN4WoA/+3OMQrCQBAF0BzFE2Q3YfE+iwSRpAhqgsd3sJKUQtTiveYP0/w/19NYz0Nq2zSsl6nZQw7HUl4Zthm6tzv+XS59aQ55lzUby+1er1H/ja4/9Pj1AAAAAAAAAAAAAD7yBAlYiG0AKAAA"
+      }
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [" packageName: 'widget', externals: externals, target: 'es5' "],
+    "expected": {
+      "packageName": "widget",
+      "externals": {},
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5' })\n    .target('compiled/widget')\n}\n",
+      "compiled/widget",
+      "widget"
+    ],
+    "expected": {
+      "request": "widget",
+      "externals": {},
+      "sha256": "f696336d91289227a0213bdae5364069c3f53295bb9a52dc1e7f17df132f69ec"
+    }
+  },
+  {
+    "fn": "npmSpec",
+    "args": ["widget", "1.2.3"],
+    "expected": ["widget", "1.2.3"]
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["widget", "1.2.3", "1.2.3"],
+    "expected": ["widget", "1.2.3"]
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["widget", "1.2.3", "widget@1.2.3"],
+    "expected": ["widget", "1.2.3"]
+  },
+  {
+    "fn": "registryIntegrity",
+    "args": [
+      {
+        "importers": {
+          "packages/next": {
+            "devDependencies": {
+              "widget": {
+                "specifier": "1.2.3",
+                "version": "1.2.3"
+              }
+            }
+          }
+        },
+        "packages": {
+          "widget@1.2.3": {
+            "resolution": {
+              "integrity": "sha512-abc"
+            }
+          }
+        }
+      },
+      "widget",
+      "1.2.3"
+    ],
+    "expected": "sha512-abc"
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "widget",
+      "externals": {
+        "helper": "next/dist/lib/helper"
+      },
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/helper' }, target: 'es5' })\n    .target('compiled/widget')\n}\n",
+      "compiled/widget",
+      "widget"
+    ],
+    "expected": {
+      "request": "widget",
+      "externals": {
+        "helper": "next/dist/lib/helper"
+      },
+      "sha256": "1a0b6e88e2c980e2b62f6ac167c8284c61d0bdf223bdea4c518759aa7ac9b0fd"
+    }
+  },
+  {
+    "fn": "versions",
+    "args": ["[]"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": ["{}"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": ["[\"latest\"]"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": ["[\"^16.0.0\"]"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": ["[\"--upload-pack=x\"]"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": ["[\"https://x\"]"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": ["[\"01.2.3\"]"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": ["[1]"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": [
+      "[\"1.2.3\", \"1.2.3\", \"1.2.3\", \"1.2.3\", \"1.2.3\", \"1.2.3\", \"1.2.3\", \"1.2.3\", \"1.2.3\", \"1.2.3\", \"1.2.3\"]"
+    ],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["registry.example.com/catalog"],
+    "expected": "registry.example.com/catalog/next"
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus.example:5000/catalog/test"],
+    "expected": "nexus.example:5000/catalog/test/next"
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["https://nexus.example/catalog"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus.example/catalog:latest"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus.example/catalog@sha256:abc"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus.example/../catalog"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus.example/catalog/"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus.example//catalog"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["/catalog"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["user@host/catalog"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["registry"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus.example:99999/catalog"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus.example:0/catalog"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus..example/catalog"],
+    "error": true
+  },
+  {
+    "fn": "publicationRepository",
+    "args": ["nexus.example/catalog/.hidden"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": ["[\"16.3.4\", \"17.0.0-canary.1\", \"16.3.4\"]"],
+    "expected": ["16.3.4", "17.0.0-canary.1"]
+  },
+  {
+    "fn": "versions",
+    "args": ["[\"99.1.2+build.3\"]"],
+    "expected": ["99.1.2+build.3"]
+  },
+  {
+    "fn": "npmSpec",
+    "args": ["widget", "npm:@scope/widget@1.2.3"],
+    "expected": ["@scope/widget", "1.2.3"]
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["widget", "npm:@scope/widget@1.2.3", "@scope/widget@1.2.3"],
+    "expected": ["@scope/widget", "1.2.3"]
+  },
+  {
+    "fn": "npmSpec",
+    "args": ["@scope/widget", "1.2.3"],
+    "expected": ["@scope/widget", "1.2.3"]
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["@scope/widget", "1.2.3", "@scope/widget@1.2.3"],
+    "expected": ["@scope/widget", "1.2.3"]
+  },
+  {
+    "fn": "registryIntegrity",
+    "args": [
+      {
+        "importers": {
+          "packages/next": {
+            "devDependencies": {
+              "widget": {
+                "specifier": "npm:@scope/widget@1.2.3",
+                "version": "@scope/widget@1.2.3"
+              }
+            }
+          }
+        },
+        "lockfileVersion": "9.0",
+        "packages": {
+          "@scope/widget@1.2.3": {
+            "resolution": {
+              "integrity": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      },
+      "@scope/widget",
+      "1.2.3"
+    ],
+    "expected": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "fn": "registryIntegrity",
+    "args": [
+      {
+        "packages": {
+          "widget@1.2.3": {
+            "resolution": {
+              "integrity": "sha512-any",
+              "tarball": "https://fork.invalid/widget.tgz"
+            }
+          }
+        }
+      },
+      "widget",
+      "1.2.3"
+    ],
+    "error": true
+  },
+  {
+    "fn": "npmSpec",
+    "args": ["widget", "^1.0.0"],
+    "expected": ["widget", "^1.0.0"]
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["widget", "^1.0.0", "1.2.3"],
+    "expected": ["widget", "1.2.3"]
+  },
+  {
+    "fn": "registryIntegrity",
+    "args": [
+      {
+        "importers": {
+          "packages/next": {
+            "devDependencies": {
+              "widget": {
+                "specifier": "^1.0.0",
+                "version": "1.2.3"
+              }
+            }
+          }
+        },
+        "lockfileVersion": "9.0",
+        "packages": {
+          "widget@1.2.3": {
+            "resolution": {
+              "integrity": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      },
+      "widget",
+      "1.2.3"
+    ],
+    "expected": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["widget", "^1.0.0", "/widget/1.2.3"],
+    "expected": ["widget", "1.2.3"]
+  },
+  {
+    "fn": "registryIntegrity",
+    "args": [
+      {
+        "importers": {
+          "packages/next": {
+            "devDependencies": {
+              "widget": "/widget/1.2.3"
+            },
+            "specifiers": {
+              "widget": "^1.0.0"
+            }
+          }
+        },
+        "lockfileVersion": "9.0",
+        "packages": {
+          "widget@1.2.3": {
+            "resolution": {
+              "integrity": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      },
+      "widget",
+      "1.2.3"
+    ],
+    "expected": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["widget", "^1.0.0", "1.2.3(peer@4.0.0)"],
+    "expected": ["widget", "1.2.3"]
+  },
+  {
+    "fn": "registryIntegrity",
+    "args": [
+      {
+        "importers": {
+          "packages/next": {
+            "devDependencies": {
+              "widget": {
+                "specifier": "^1.0.0",
+                "version": "1.2.3(peer@4.0.0)"
+              }
+            }
+          }
+        },
+        "lockfileVersion": "9.0",
+        "packages": {
+          "widget@1.2.3": {
+            "resolution": {
+              "integrity": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      },
+      "widget",
+      "1.2.3"
+    ],
+    "expected": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["widget", "^1.0.0", "/widget@1.2.3"],
+    "expected": ["widget", "1.2.3"]
+  },
+  {
+    "fn": "registryIntegrity",
+    "args": [
+      {
+        "importers": {
+          "packages/next": {
+            "devDependencies": {
+              "widget": "/widget@1.2.3"
+            },
+            "specifiers": {
+              "widget": "^1.0.0"
+            }
+          }
+        },
+        "lockfileVersion": "9.0",
+        "packages": {
+          "widget@1.2.3": {
+            "resolution": {
+              "integrity": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      },
+      "widget",
+      "1.2.3"
+    ],
+    "expected": "sha512-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "fn": "npmSpec",
+    "args": ["widget", "github:org/widget"],
+    "error": true
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["widget", "^1.0.0", "1.2.3(patch_hash=abc)"],
+    "error": true
+  },
+  {
+    "fn": "npmSpec",
+    "args": ["widget", "9.9.9"],
+    "expected": ["widget", "9.9.9"]
+  },
+  {
+    "fn": "exactResolution",
+    "args": ["widget", "9.9.9", "1.2.3"],
+    "error": true
+  },
+  {
+    "fn": "versions",
+    "args": ["[\"99.1.2\"]"],
+    "expected": ["99.1.2"]
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      "                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 "
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      "helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper',helper: 'next/dist/lib/helper'"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: {   ...externals,  \n helper: 'next/dist/lib/helper', }, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "widget",
+      "externals": {
+        "helper": "next/dist/lib/helper"
+      },
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { /* inherited */ ...externals, // explicit override\n helper: 'next/dist/lib/helper', }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "expected": {
+      "request": "widget",
+      "externals": {
+        "helper": "next/dist/lib/helper"
+      },
+      "sha256": "50af5b0a30f2fa7f5daa4a111f198d9d329342fbf022c1c345d588cabc71123a"
+    }
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/he/* comment */lper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/he/* comment */lper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib//helper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib//helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'wid/* comment */get', externals: externals, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "wid/* comment */get",
+      "externals": {},
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'wid/* comment */get', externals: externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "expected": {
+      "request": "widget",
+      "externals": {},
+      "sha256": "0cea441cedb34985a027f208604541f0ea8c8752e09e1319dd57a8ad9e986e80"
+    }
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      "\n      packageName: 'jsonwebtoken',\n      externals: {\n        ...externals,\n        semver: 'next/dist/lib/semver-noop',\n      },\n    "
+    ],
+    "expected": {
+      "packageName": "jsonwebtoken",
+      "externals": {
+        "semver": "next/dist/lib/semver-noop"
+      }
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_jsonwebtoken(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('jsonwebtoken')))\n    .ncc({\n      packageName: 'jsonwebtoken',\n      externals: {\n        ...externals,\n        semver: 'next/dist/lib/semver-noop',\n      },\n    })\n    .target('src/compiled/jsonwebtoken')\n}\n",
+      "src/compiled/jsonwebtoken",
+      "jsonwebtoken"
+    ],
+    "expected": {
+      "request": "jsonwebtoken",
+      "externals": {
+        "semver": "next/dist/lib/semver-noop"
+      },
+      "sha256": "06ac3f2048140f507582e0872834d8472d1435df0b97a1fb08d770129c762e73"
+    }
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', bundleName: 'widget-alias', externals: externals, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "widget",
+      "bundleName": "widget-alias",
+      "externals": {},
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget-alias')))\n    .ncc({ packageName: 'widget', bundleName: 'widget-alias', externals: externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "expected": {
+      "request": "widget-alias",
+      "externals": {},
+      "sha256": "5b14a6f98b4670750725168fc6e74f3e91e2e7e99bf324390684f540538dd8b9"
+    }
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', bundleName: opts.alias, externals: externals, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget-alias')))\n    .ncc({ packageName: 'widget', bundleName: opts.alias, externals: externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/helper', '@scope/helper/sub': 'next/dist/compiled/helper', }, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "widget",
+      "externals": {
+        "helper": "next/dist/lib/helper",
+        "@scope/helper/sub": "next/dist/compiled/helper"
+      },
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/helper', '@scope/helper/sub': 'next/dist/compiled/helper', }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "expected": {
+      "request": "widget",
+      "externals": {
+        "helper": "next/dist/lib/helper",
+        "@scope/helper/sub": "next/dist/compiled/helper"
+      },
+      "sha256": "395e98e5674bcb22f60c35693909e79ed055bdcde05cfc349b0e05b71546033f"
+    }
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...other, helper: 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...other, helper: 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, ...other }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, ...other }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, ...externals }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, ...externals }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { helper: 'next/dist/lib/helper', ...externals }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { helper: 'next/dist/lib/helper', ...externals }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, ['helper']: 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, ['helper']: 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: resolve('next/dist/lib/helper') }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: resolve('next/dist/lib/helper') }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: `next/dist/lib/helper` }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: `next/dist/lib/helper` }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: target }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: target }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/helper', 'helper': 'next/dist/lib/other' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/helper', 'helper': 'next/dist/lib/other' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, __proto__: 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, __proto__: 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'next/dist/../evil' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'next/dist/../evil' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/./helper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/./helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'https://evil.example/helper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'https://evil.example/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/helper\\x2fother' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/helper\\x2fother' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: '/tmp/helper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: '/tmp/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: 'other-package/helper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'other-package/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, '../helper': 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, '../helper': 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, helper: { nested: 'next/dist/lib/helper' } }, target: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: { nested: 'next/dist/lib/helper' } }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, 'widget': 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "widget",
+      "externals": {
+        "widget": "next/dist/lib/helper"
+      },
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, 'widget': 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, 'widget/internal': 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "widget",
+      "externals": {
+        "widget/internal": "next/dist/lib/helper"
+      },
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, 'widget/internal': 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: '@scope/widget', externals: { ...externals, '@scope/widget': 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "@scope/widget",
+      "externals": {
+        "@scope/widget": "next/dist/lib/helper"
+      },
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('@scope/widget')))\n    .ncc({ packageName: '@scope/widget', externals: { ...externals, '@scope/widget': 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "@scope/widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: '@scope/widget', externals: { ...externals, '@scope/widget/internal': 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "@scope/widget",
+      "externals": {
+        "@scope/widget/internal": "next/dist/lib/helper"
+      },
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('@scope/widget')))\n    .ncc({ packageName: '@scope/widget', externals: { ...externals, '@scope/widget/internal': 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "@scope/widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget-alias/sub')))\n    .ncc({ packageName: 'widget', externals: { ...externals, 'widget': 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: { ...externals, 'widget-alias': 'next/dist/lib/helper' }, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "widget",
+      "externals": {
+        "widget-alias": "next/dist/lib/helper"
+      },
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget-alias/sub')))\n    .ncc({ packageName: 'widget', externals: { ...externals, 'widget-alias': 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: externals, target: 'es5', plugin: 'custom' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5', plugin: 'custom' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: externals, target: 'es5', target: opts.target "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5', target: opts.target })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: externals, target: 'es5', packageName: 'widget' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5', packageName: 'widget' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: externals, target: 'es5', ...opts "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5', ...opts })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: externals, target: 'es5', externals: externals "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5', externals: externals })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: 'widget', externals: externals, target: 'es5', ['target']: 'es5' "
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5', ['target']: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: { ...externals, helper: 'next/dist/lib/helper' }, target: 'es5' })\n    .target('src/compiled/widget')\n  mutateBundle()\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": ["packageName: 'widget', 'externals',"],
+    "error": true
+  },
+  {
+    "fn": "nccOptions",
+    "args": [
+      " packageName: '@scope/widget', externals: externals, target: 'es5' "
+    ],
+    "expected": {
+      "packageName": "@scope/widget",
+      "externals": {},
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('@scope/widget/dist/index.js')))\n    .ncc({ packageName: '@scope/widget', externals: externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "@scope/widget"
+    ],
+    "expected": {
+      "request": "@scope/widget",
+      "externals": {},
+      "sha256": "a48b3b7c2ed564e33ee3f65f5ab8ec1376798899922031793e09763a89b5f480"
+    }
+  },
+  {
+    "fn": "nccOptions",
+    "args": [" packageName: 'widget', externals, target: 'es5' "],
+    "expected": {
+      "packageName": "widget",
+      "externals": {},
+      "target": "es5"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "expected": {
+      "request": "widget",
+      "externals": {},
+      "sha256": "49b9f69d76aae8f66e8d68eda9a03f50b127e944c4980f1b0f8df42edce0f2e7"
+    }
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source('src/bundles/widget.js')\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5' })\n    .run(transform).target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  customPatch()\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  },
+  {
+    "fn": "recipeDetails",
+    "args": [
+      "export async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\nexport async function ncc_widget(task, opts) {\n  await task\n    .source(relative(__dirname, require.resolve('widget')))\n    .ncc({ packageName: 'widget', externals: externals, target: 'es5' })\n    .target('src/compiled/widget')\n}\n",
+      "src/compiled/widget",
+      "widget"
+    ],
+    "error": true
+  }
+]

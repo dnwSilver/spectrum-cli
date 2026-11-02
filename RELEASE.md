@@ -1,183 +1,64 @@
-# 🚀 Инструкции по релизам Spectrum CLI
+# Релизы Spectrum CLI и проектов, использующих CLI
 
-## 📋 Подготовка к релизу
+Здесь описаны два независимых процесса. **Версия npm-пакета `spectrum-cli`** хранится в `package.json` этого репозитория. Команды `spectrum release` и `spectrum hotfix` выполняются **в репозитории приложения**: его версия берется из Git-тегов и заголовков его `CHANGELOG.md`. Эти команды не меняют `package.json` приложения и не публикуют сам CLI в npm.
 
-### Предварительные требования
+## Публикация npm-пакета `spectrum-cli`
 
-1. **NPM аккаунт** с правами на публикацию пакета
-2. **GitHub токены** настроены в репозитории:
-   - `NPM_TOKEN` - токен для публикации в npm
-   - `GITHUB_TOKEN` (автоматический)
+[`.github/workflows/release.yml`](./.github/workflows/release.yml) запускается при push тегов `v*`, `release/*` и `hotfix/*`. Версия подготавливаемого выпуска указана в `package.json`; последнюю опубликованную версию проверяйте через `npm view spectrum-cli version`. В workflow из имени тега извлекается стабильная версия `X.Y.Z`. Тег должен указывать на коммит с той же версией в `package.json`, иначе `npm publish` попытается опубликовать версию из пакета, а не из тега.
 
-### Настройка токенов
+Перед созданием нового тега:
 
-#### NPM Token
-```bash
-# Создать токен на npmjs.com
-# Settings → Access Tokens → Generate New Token → Automation
+1. Обновите `package.json`, `package-lock.json` и раздел этой версии в [CHANGELOG.md](./CHANGELOG.md); убедитесь, что версия и будущий тег совпадают.
+2. Выполните `npm ci` и `npm test`, проверьте `git diff` и зафиксируйте изменения в `main`.
+3. После проверки коммита создайте `vX.Y.Z` и отправьте `main` и тег в `origin`. Отправка тега запускает публикацию; повторно использовать версию npm нельзя.
 
-# Добавить в GitHub Secrets:
-# Repository Settings → Secrets → Actions → NPM_TOKEN
-```
-
-#### GitHub Token
-Автоматически доступен как `GITHUB_TOKEN` в Actions.
-
-## 🔄 Процесс релиза
-
-### 1. Подготовка версии
+Workflow на Node.js 22 выполняет `npm ci` и `npm test`, создает архив `dist/spectrum-cli-X.Y.Z.tar.gz`, GitHub Release и запускает `npm publish --access public --provenance`. Для npm используется secret `NPM_TOKEN`, для GitHub Release — предоставляемый Actions `GITHUB_TOKEN`. После workflow отдельно проверьте опубликованные версии и содержимое релиза:
 
 ```bash
-# Убедитесь что вы на актуальной ветке
-git checkout main
-git pull origin main
-
-# Увеличьте версию (используя сам Spectrum CLI!)
-spectrum version up patch   # для patch: 1.0.0 → 1.0.1
-spectrum version up minor   # для minor: 1.0.0 → 1.1.0
-spectrum version up major   # для major: 1.0.0 → 2.0.0
+npm view spectrum-cli version
+npm view spectrum-cli@X.Y.Z dist-tags
 ```
 
-### 2. Обновление CHANGELOG.md
+В текущем workflow текст GitHub Release извлекается из заголовка `## 🚀 [X.Y.Z]` или `## [X.Y.Z]` в `CHANGELOG.md`. Заголовок `## 🩹 [X.Y.Z]` этим шагом не распознается; при таком теге проверьте и при необходимости вручную исправьте описание GitHub Release. Workflow также не сверяет версию тега с `package.json` до публикации.
 
-Вручную обновите `CHANGELOG.md`:
+Тестовый workflow [`.github/workflows/test.yml`](./.github/workflows/test.yml) проверяет Node.js 20 на Ubuntu, Windows и macOS, включая справку новой команды `chart start`. Отдельный job проверяет синтаксис всех модулей `src` на Node.js 20.
 
-```markdown
-## [Unreleased]
+## Релиз приложения командой `spectrum release`
 
-### 🆕 Added
-_Новая функциональность для следующего релиза_
-
-## 🚀 [1.0.3] - 2024-09-19
-
-### 🆕 Added
-- Добавлена новая команда XYZ
-- Улучшена производительность
-
-### 🛠 Changed  
-- Изменен формат вывода команды ABC
-
-### 🪲 Fixed
-- Исправлена ошибка с обработкой файлов
-```
-
-### 3. Коммит изменений
+Предусловия команд и ограничения веток приведены в [README.md](./README.md#preflight-проверки-по-командам). Для `changelog append` используйте ветку `<type>/<YOUTRACK-ID>[-slug]` и создавайте fragments в `.changelog/`. Поддерживаемые суффиксы: `breaking`, `added`, `changed`, `deprecated`, `removed`, `fixed`, `security`, `support`. Каждая непустая строка начинается с `- `. `hotfix` — название процесса, не суффикс fragment. До первого `1.0.0` типы `breaking`, `removed` и `added` требуют minor, остальные — patch. С `1.0.0` `breaking` и `removed` требуют major, `added` — minor, остальные — patch. Классификация breaking и описание миграции сохраняются.
 
 ```bash
-# Добавить изменения
-git add package.json CHANGELOG.md
-
-# Коммит с сообщением
-git commit -m "🔖 Release v1.0.3
-
-- Updated version to 1.0.3
-- Updated CHANGELOG.md"
-
-# Отправить в репозиторий
-git push origin main
+spectrum changelog append "Описание изменения"
+spectrum changelog check
 ```
 
-### 4. Создание тега и релиза
+`changelog check` проверяет формат `CHANGELOG.md` через Prettier и все fragments. `changelog write` нормализует поддерживаемые заголовки релизов и форматирует `CHANGELOG.md` через Prettier; он не создает fragment и не собирает релиз.
 
-```bash
-# Создать тег
-git tag v1.0.3
+На чистой и актуальной integration-ветке `dev`/`develop` выполните `spectrum release start`. Команда требует опубликованный stable-тег `release/X.Y.Z`, `hotfix/X.Y.Z` либо старый `vX.Y.Z`, достижимый из `origin/main`/`origin/master`. Она вычисляет следующую версию по fragments, собирает верхний раздел `CHANGELOG.md`, удаляет использованные fragments, создает коммит и атомарно пушит его в integration и production. Открытый неопубликованный раздел при повторном запуске дополняется без нового повышения версии. Для прямого push в production должны подходить правила защиты ветки.
 
-# Отправить тег (запустит автоматический релиз)
-git push origin v1.0.3
-```
+Для явного перехода с `0.x` на первый стабильный `1.0.0` используйте `spectrum release start --stable`. Другой открытый релиз блокирует переход. Флаг не принимает произвольную версию и не используется после `1.0.0`. Обычная подготовка и alpha CI должны сохранять major равным нулю до этого решения.
 
-### 5. Автоматический процесс
+После проверки обновленного production запустите `spectrum release deploy` на чистой и актуальной `main`/`master`. Команда создает и отправляет только тег `release/X.Y.Z` по верхнему заголовку changelog. После успешного внешнего stable pipeline выполните `spectrum release close`: команда сливает production в integration и пушит integration. CLI не подтверждает успешность внешнего CI, публикации образов или деплоя.
 
-После `git push origin v1.0.3` автоматически запускается:
+## Изолированный хотфикс приложения
 
-1. **GitHub Actions** выполняет:
-   - ✅ Тестирование кода
-   - 📦 Создание архива релиза  
-   - 📝 Генерация changelog из CHANGELOG.md
-   - 🚀 Создание GitHub Release
-   - 📤 Публикация в NPM Registry
+Создайте `hotfix/<TASK>[-slug]` от актуальной production-ветки либо работайте непосредственно на `main`/`master`. Добавьте только patch fragments и выполните `spectrum hotfix start`. Команда локально подготавливает верхний раздел `## 🩹 [X.Y.Z]`, удаляет собранные fragments и не делает commit, push, merge или tag. Включите исправление, `CHANGELOG.md` и удаления fragments в MR в production.
 
-2. **Результат:**
-   - GitHub Release с архивом
-   - NPM пакет доступен: `npm install -g spectrum-cli`
-   - Обновление доступно: `npm update -g spectrum-cli`
+После merge и проверки production выполните `spectrum hotfix deploy` на чистой ветке `main`/`master`, совпадающей с `origin`: команда отправит только тег `hotfix/X.Y.Z` на текущий коммит. После успешного внешнего stable pipeline запустите `spectrum hotfix close` для слияния production в `dev`/`develop`. Команды хотфикса не меняют файлы версий приложения.
 
-## 🧪 Тестирование релиза
+Если создание коммита, push или публикация тега завершились ошибкой, сначала проверьте `git status`, локальные и удаленные ветки и теги. Не удаляйте опубликованный тег и не выполняйте `git reset` по универсальной инструкции: действие зависит от того, какие шаги уже завершились.
 
-### NPM релиз
-```bash
-# Проверить что пакет доступен
-npm view spectrum-cli
+## Доставка команд автоматизации в CI
 
-# Установить и протестировать
-npm install -g spectrum-cli@latest
-spectrum --help
-spectrum --version
-```
+Версия 5.1.0 добавляет `nextjs licenses`, `sbom catalog resolve/populate` и
+`security scan/track/reconcile/repair`. Перед выпуском проверяйте `npm test`
+и состав `npm pack`: JavaScript-модули входят в пакет, Python и тестовые
+fixtures в исполняемый пакет не входят.
 
-### GitHub релиз
-```bash
-# Проверить релиз на GitHub
-curl -s https://api.github.com/repos/dnwsilver/spectrum-cli/releases/latest
-
-# Скачать и протестировать архив
-curl -L https://github.com/dnwsilver/spectrum-cli/archive/v1.0.3.tar.gz | tar -xz
-cd spectrum-cli-1.0.3
-npm install
-./index.js --help
-```
-
-## 🔧 Откат релиза
-
-### Если что-то пошло не так:
-
-#### NPM
-```bash
-# Снять версию с NPM (в течение 72 часов)
-npm unpublish spectrum-cli@1.0.3
-```
-
-#### GitHub
-```bash
-# Удалить тег локально и удаленно
-git tag -d v1.0.3
-git push --delete origin v1.0.3
-
-# Удалить релиз через GitHub UI или API
-gh release delete v1.0.3
-```
-
-## 📊 Мониторинг релизов
-
-### NPM статистика
-- [npm statistics](https://npmjs.com/package/spectrum-cli)
-- [npm trends](https://npmtrends.com/spectrum-cli)
-
-### GitHub статистика
-- GitHub Insights → Traffic
-- GitHub Insights → Community
-
-## 🚨 Частые проблемы
-
-### `npm publish` ошибка
-- Проверить права доступа к пакету
-- Убедиться что версия уникальна
-- Проверить `NPM_TOKEN` в GitHub Secrets
-
-### GitHub Actions не запускаются  
-- Проверить что тег начинается с `v`
-- Убедиться что Actions включены в репозитории
-
-## 🎯 Best Practices
-
-1. **Всегда тестировать** перед релизом
-2. **Следовать SemVer** при выборе версии  
-3. **Обновлять CHANGELOG.md** перед каждым релизом
-4. **Тестировать релиз** после публикации
-5. **Мониторить** download статистику
-6. **Быстро реагировать** на issues после релиза
-
----
-
-*Следуйте этим инструкциям для стабильных и предсказуемых релизов* ✨
+Порядок доставки: публикация npm-пакета CLI → сборка/сканирование/публикация
+служебных образов в registry установки → выпуск CI-компонентов →
+обновление потребителей.
+Релиз CLI сам по себе не пересобирает образы и не обновляет компоненты.
+Параметры и блокировки jobs проверяются в репозиториях компонентов отдельно
+от поведения команд. Локальные тесты с fake API не подтверждают живую
+приёмку GitLab, YouTrack, registry или Mattermost.

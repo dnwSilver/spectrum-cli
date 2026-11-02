@@ -14,6 +14,13 @@ npm install -g spectrum-cli
 spectrum --help
 ```
 
+Перед выполнением команд workflow CLI проверяет опубликованную версию `spectrum-cli`
+в npm Registry. Если доступна новая версия, показывает текущую и новую версии и
+команду `spectrum upgrade`. Она запускает `npm install -g spectrum-cli`.
+Проверка ограничена 200 мс; недоступность Registry не влияет на выполнение
+команды и не выводит ошибку. С `--dry` или `--no-verify` проверка обновлений
+не выполняется.
+
 ### 🔧 Из исходников
 
 ```bash
@@ -34,26 +41,97 @@ npm install
 # Показать справку
 spectrum --help
 # Показать текущую версию CLI
-spectrum -v | --version
+spectrum -v  # или spectrum --version
 
-# 📦 Управление версиями
-spectrum version up major    # Поднять major версию (1.0.0 → 2.0.0)
-spectrum version up minor    # Поднять minor версию (1.0.0 → 1.1.0)
-spectrum version up patch    # Поднять patch версию (1.0.0 → 1.0.1)
+# Обновить установленный CLI
+spectrum upgrade
 
 # 🚀 Управление релизами
-spectrum release start       # Полный цикл релиза
-spectrum release close       # Закрыть релиз и смержить в dev
-spectrum release deploy      # Деплой релиза (создать тег)
+spectrum release start [--stable]    # Схлопнуть fragments и атомарно отправить release commit в dev и main/master
+spectrum release deploy              # Создать стабильный тег release/X.Y.Z из заголовка CHANGELOG
+spectrum release close               # Свести stable main/master в dev
+
+# Срочный patch без переноса незавершённого dev в production
+spectrum hotfix start                # Локальная подготовка 🩹 CHANGELOG на hotfix/* или main/master
+spectrum hotfix deploy               # После merge MR: stable-тег на актуальном main/master
+spectrum hotfix close                # После stable pipeline: main/master → dev
 
 # 📈 Теги chart
-spectrum chart create 1.2.3  # Создать и запушить chart-$name-$version
+spectrum chart start         # Создать тег по CHANGELOG.md чарта и дождаться публикации в Helm-registry
+spectrum chart start --no-wait # Не ждать публикации после отправки тега
+spectrum chart start --force # Разрешить версию не выше последнего remote-тега, если ее еще нет в registry и Git
 spectrum chart deploy  # Обновить helmrelease.yaml до последнего chart-тега и запушить
+spectrum chart deploy --instances sd,cbch  # Обновить только выбранные инстансы instances/<name>
 spectrum chart verify ~/repo  # Сравнить ingress paths AS IS vs TO BE для Next.js исходников
 
 # 📝 Управление changelog
-spectrum changelog append "Сообщение"  # Добавить запись в CHANGELOG.md
+spectrum changelog append "Сообщение"  # Создать fragment в .changelog/
+spectrum changelog check               # Проверить CHANGELOG.md и все fragments
+spectrum changelog write               # Выравнять заголовки CHANGELOG.md и запустить Prettier
+
+# 🔑 GitLab токены
+spectrum token rotate  # Пролить SC_BOT_PAT в CI variables
+
+# CI: Next.js, SBOM и security
+spectrum nextjs licenses
+spectrum sbom catalog resolve
+spectrum sbom catalog populate
+spectrum security scan
+spectrum security track
+spectrum security reconcile
+spectrum security repair
 ```
+
+По умолчанию команды с действием показывают, какая предпроверка успешно пройдена;
+при ошибке выводят её имя и причину. Независимые предпроверки продолжают
+выполняться после ошибки; зависимые проверки без нужных данных помечаются как
+невыполненные. Шаги команды запускаются, только если все проверки прошли.
+
+`-n, --no-verify` доступен во всех 21 командах с действием: пропускает
+preflight и проверку обновлений CLI, затем запускает действия команды.
+Чтение необходимых входных данных (версии, fragments, пути, конфигурация,
+токены) остаётся частью подготовки к действию. Ошибки чтения и самих операций
+по-прежнему останавливают выполнение. Флаг не отменяет выбор типа fragment,
+запрос токенов, подтверждение публикации chart или ожидание registry.
+Для отключения ожидания у `chart start` отдельно укажите `--no-wait`.
+Прежний короткий флаг `chart start -n` теперь означает `--no-verify`.
+Release/hotfix используют локальные теги и сохранённые refs `origin/*`
+для определения базовой версии, без preflight fetch и сверки с сервером.
+`release start -n` дополняет верхний версионный раздел, если он новее локальной
+stable-версии. Число и порядок более старых разделов не проверяются;
+их содержимое сохраняется без пересборки.
+
+```bash
+spectrum release start -n
+spectrum chart start --no-verify --no-wait
+spectrum security repair -ns
+```
+
+`--dry` и `--no-verify` несовместимы: CLI завершится с ошибкой до действий.
+Без `--no-verify` сохраняются обычные предпроверки.
+
+`-s, --silence` скрывает сообщения об успешно пройденных предпроверках.
+Ошибки проверок и итоговое сообщение команды остаются видны; флаг можно
+совмещать с `-d, --dry`.
+`-d, --dry` выполняет все предпроверки,
+показывает их результаты и не запускает шаги записи, создания тегов,
+публикации или деплоя. Предпроверки могут обращаться к `origin`, registry и
+GitLab; `token rotate -d` запрашивает токены и проверяет доступ к целям, но не
+изменяет CI variables. Если конфиг токенов отсутствует, `--dry` завершится
+ошибкой и не создаст его. Для `upgrade -d` предпроверок нет: команда сообщает
+об успехе, не запуская npm.
+
+| Короткий флаг | Полный флаг | Где действует |
+| --- | --- | --- |
+| `-d` | `--dry` | Все команды с действием: только предпроверки |
+| `-s` | `--silence` | Все команды с действием: скрыть успешные предпроверки |
+| `-f` | `--force` | `chart start`: разрешить версию не больше последнего тега на `origin`; остальные preflight сохраняются, если не задан `--no-verify` |
+| `-n` | `--no-verify` | Все команды с действием: пропустить preflight и сразу выполнить действия |
+| — | `--no-wait` | `chart start`: не ждать появления версии в Helm-registry после push; по умолчанию команда ждёт |
+| — | `--stable` | `release start`: переход с 0.x на 1.0.0 |
+| `-i <names>` | `--instances <names>` | `chart deploy`: выбрать инстансы через запятую |
+| `-h` | `--help` | Справка CLI и команд |
+| `-v` | `--version` | Версия CLI |
 
 ### Справка по командам:
 
@@ -61,14 +139,22 @@ spectrum changelog append "Сообщение"  # Добавить запись 
 # Справка по релизам
 spectrum release --help
 
-# Справка по версиям
-spectrum version up --help
+# Справка по хотфиксам
+spectrum hotfix --help
 
 # Справка по changelog
 spectrum changelog --help
 
 # Справка по chart
 spectrum chart --help
+
+# Справка по токенам
+spectrum token --help
+
+# Справка по CI-командам
+spectrum nextjs --help
+spectrum sbom catalog --help
+spectrum security --help
 ```
 
 ## ✨ Особенности
@@ -89,84 +175,225 @@ spectrum chart --help
 
 ```
 spectrum-cli/
-├── index.js           # 🚀 Главный CLI интерфейс
-├── src/               # 📁 Исходный код
-│   ├── utils.js       # 🛠️ Утилиты и логирование
-│   ├── git.js         # 📝 Git операции
-│   ├── version.js     # 📦 Управление версиями SemVer
-│   ├── changelog.js   # 📋 Работа с CHANGELOG.md
-│   ├── chart.js       # 📈 Создание и push chart тегов
-│   ├── development.js # ⚡ Dev команды (внутренние)
-│   └── release.js     # 🚀 Release процесс
-├── package.json       # 📦 Конфигурация проекта
-├── install.sh         # 🔧 Автоматический установщик
-├── INSTALL.md         # 📋 Инструкции по установке
-└── README.md          # 📖 Документация
+├── index.js             # Точка входа CLI
+├── .changelog/          # Записи для следующего релиза
+├── src/
+│   ├── cli/             # Команды, справка и запуск действий
+│   ├── common/          # Общие утилиты и версии
+│   ├── git/             # Git операции
+│   ├── preflight/       # Независимые предпроверки по областям
+│   ├── changelog/       # Fragments, конфиг и релизные разделы
+│   ├── chart/           # Метаданные, теги, registry, verify и deploy
+│   ├── release/         # Версии и этапы обычного релиза
+│   ├── hotfix/          # Проверки и этапы hotfix
+│   ├── token/           # Конфиг, GitLab API и ротация
+│   ├── integrations/    # Общие функции внешних сервисов
+│   ├── automation/      # Общие операции ввода-вывода для CI
+│   ├── nextjs/          # LICENSE standalone-пакетов
+│   ├── sbom/            # Поиск и публикация OCI-каталогов
+│   └── security/        # Аудит, задачи и исправления
+├── __tests__/           # Модульные и интеграционные тесты
+├── package.json
+├── install.sh
+├── INSTALL.md
+└── README.md
 ```
+
+Входы модулей находятся в `index.js` соответствующих каталогов. Например,
+`require('./src/chart')` загружает `src/chart/index.js`; в корне `src` файлов нет.
 
 ### Команды
 
-| Команда                     | Описание                            |
-| --------------------------- | ----------------------------------- |
-| `spectrum release start`    | Запустить полный цикл релиза        |
-| `spectrum release deploy`   | Деплой релиза                       |
-| `spectrum release close`    | Закрыть релиз                       |
-| `spectrum version up major` | Увеличить major версию              |
-| `spectrum version up minor` | Увеличить minor версию              |
-| `spectrum version up patch` | Увеличить patch версию              |
-| `spectrum changelog append` | Добавить запись в changelog         |
-| `spectrum chart create`     | Создать и запушить chart тег        |
-| `spectrum chart deploy`     | Обновить chart версию в helmrelease |
-| `spectrum chart verify`     | Проверить ingress paths chart       |
+Ниже перечислены все команды с действием из `spectrum --help` и справки
+вложенных групп. Каждая поддерживает `-n, --no-verify`, `-d, --dry` и
+`-s, --silence`.
+
+| Команда | Аргументы и дополнительные опции | Назначение |
+| --- | --- | --- |
+| `spectrum upgrade` | — | Обновить CLI через npm |
+| `spectrum release start` | `--stable` | Собрать fragments и отправить release commit в dev и main/master |
+| `spectrum release deploy` | — | Создать и отправить стабильный тег `release/X.Y.Z` |
+| `spectrum release close` | — | Свести main/master в dev |
+| `spectrum hotfix start` | — | Подготовить hotfix CHANGELOG локально |
+| `spectrum hotfix deploy` | — | Отправить тег `hotfix/X.Y.Z` после merge в production |
+| `spectrum hotfix close` | — | Свести production в dev после stable pipeline |
+| `spectrum changelog append` | `<message>` | Создать changelog fragment |
+| `spectrum changelog check` | — | Проверить CHANGELOG.md и fragments |
+| `spectrum changelog write` | — | Нормализовать заголовки и отформатировать CHANGELOG.md |
+| `spectrum chart start` | `-f, --force`, `--no-wait` | Создать и отправить chart-тег, дождаться registry |
+| `spectrum chart deploy` | `-i, --instances <names>` | Обновить helmrelease и опубликовать изменения |
+| `spectrum chart verify` | `<source_path>` | Сравнить ingress paths с маршрутами Next.js |
+| `spectrum token rotate` | — | Пролить `SC_BOT_PAT` в CI variables |
+| `spectrum nextjs licenses` | — | Сохранить LICENSE compiled-пакетов в standalone |
+| `spectrum sbom catalog resolve` | — | Найти OCI-каталоги зависимостей образа |
+| `spectrum sbom catalog populate` | — | Построить и опубликовать OCI-каталоги |
+| `spectrum security scan` | — | Проверить npm-зависимости и runtime |
+| `spectrum security track` | — | Найти или создать задачи YouTrack |
+| `spectrum security reconcile` | — | Запустить tracker и получить номера задач |
+| `spectrum security repair` | — | Исправить зависимости, проверить и создать MR |
 
 ### 🛡️ Preflight-проверки по командам
 
-- `spectrum release start`: `git-repo` (внутри git-репозитория), `clean-working-tree` (нет незакоммиченных изменений), `main-and-dev-branches` (есть `origin/main` и `origin/develop`), `package-version` (версия в `package.json` существует и валидный semver), `changelog-exists` (есть `CHANGELOG.md`), `changelog-prettier-check` (`prettier --check CHANGELOG.md`).
-- `spectrum release close`: `git-repo`, `clean-working-tree`, `main-and-dev-branches`.
-- `spectrum release deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `package-version`, `tag-missing` (тега `v<version>` нет локально и на `origin`).
-- `spectrum version up major`: `package-json-exists` (есть `package.json`), `package-version`, `clean-working-tree`.
-- `spectrum version up minor`: `package-json-exists`, `package-version`, `clean-working-tree`.
-- `spectrum version up patch`: `package-json-exists`, `package-version`, `clean-working-tree`.
-- `spectrum changelog append <message>`: `changelog-exists`, `prettier-available` (доступен `prettier` или `npx --yes prettier`), `changelog-prettier-check`.
-- `spectrum chart create <version>`: `git-repo`, `clean-working-tree`, `on-main-branch`, `valid-semver` (переданный `<version>` — semver), `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), `tag-missing` (тега `chart-<name>-<version>` нет локально и на `origin`).
-- `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main`), `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
-- `spectrum chart verify <source_path>`: `git-repo`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
+Этот список описывает запуск без `--no-verify`.
+
+- `spectrum release start`: чистая и актуальная dev-ветка, `dev` содержит `origin/main` или `origin/master`, стабильный тег, достижимый из production-ветки, согласованная опубликованная история `CHANGELOG.md` и не более одного открытого релиза. При первом запуске нужны валидные fragments и свободная версия; повторный дополняет открытый раздел без повышения версии. `package.json` не читается.
+- `spectrum release deploy`: чистая и актуальная main/master, стабильная версия `X.Y.Z` из верхнего заголовка `CHANGELOG.md`, отсутствие этой версии среди локальных и remote-тегов всех трёх форм. Команда не создает RC-теги.
+- `spectrum release close`: чистая и актуальная main/master, версия из верхнего заголовка `CHANGELOG.md` и remote stable-тег поддерживаемой формы, указывающий на текущий commit.
+- `spectrum changelog append <message>`: `git-repo`, `changelog-exists`, валидные ID задачи, git identity и тип fragment. Команда не изменяет общий `CHANGELOG.md`.
+- `spectrum changelog check`: `git-repo`, `changelog-exists`, `changelog-prettier-check`, наличие и формат всех changelog fragments. С `--no-verify` команда завершается без проверок.
+- `spectrum changelog write`: `git-repo`, `changelog-exists`, доступность Prettier.
+- `spectrum chart start`: `git-repo`, `clean-working-tree`, `on-main-branch`, `single-chart` (ровно один `charts/<chart-name>/Chart.yaml`), валидный верхний SemVer-заголовок в `charts/<chart-name>/CHANGELOG.md`, отсутствие тега `chart-<name>-<version>` локально и на `origin`, отсутствие этой версии чарта в Helm-registry. Для запроса registry нужен `SC_DEVELOPER_PAT` (PAT со scope `api` и доступом к проекту; роль Owner не требуется); ошибка доступа блокирует команду. Право отправки chart-тега определяется отдельно правилами protected tags. `-f, --force` обходит только проверку повышения версии относительно последнего remote-тега. После push команда по умолчанию ждёт версию в registry; `--no-wait` отключает ожидание.
+
+Для обратной совместимости chart-команды принимают `SC_OWNER_PAT`, если
+`SC_DEVELOPER_PAT` не задана или пуста. `SC_OWNER_PAT` deprecated: поддержка
+будет удалена в следующей версии. При её использовании CLI один раз за процесс
+выводит предупреждение с просьбой перейти на `SC_DEVELOPER_PAT`. Если заданы обе
+переменные, используется `SC_DEVELOPER_PAT` без предупреждения.
+
+- `spectrum chart deploy`: `git-repo`, `clean-working-tree`, `on-main-branch` (текущая ветка `main/master`), `branch-up-to-date`, `remote-origin` (настроен `origin`), `remote-reachable` (доступен `origin`), `single-chart`, `helmrelease-files` (найдены `helmrelease.yaml`).
+- `spectrum chart verify <source_path>`: `git-repo`, `branch-up-to-date`, `single-values-yaml` (ровно один `charts/**/values.yaml`), `values-ingress-sections` (есть `ingress.paths.api/pages/assets`), `source-path-directory`, `next-project`, `build-command-support`.
+- `spectrum token rotate`: `load-config` (есть валидный `~/.config/spectrum-cli/config.yaml`), `ask-tokens` (owner PAT и `SC_BOT_PAT` только в памяти), `check-access` (все группы и проекты доступны owner PAT).
 
 ## 🔄 Workflow релиза
 
 ### `spectrum release start`
 
-1. Переключается на dev ветку
-2. Создает release/X.Y.Z ветку
-3. Обновляет заголовок в CHANGELOG.md
-4. Удаляет пустые секции из changelog
-5. Добавляет новый блок Unreleased
-6. Коммитит изменения
-7. Пушит release ветку
-8. Выводит прямую ссылку на создание Merge Request
+Выполняется на `dev`:
+
+1. Проверяет чистую актуальную dev-ветку, включающую `origin/main` или `origin/master`, changelog и fragments.
+2. После `git fetch origin --prune --tags` находит максимальный stable-тег среди `release/X.Y.Z`, `hotfix/X.Y.Z` и `vX.Y.Z`, достижимый из production-ветки.
+3. Если открытого релиза нет, вычисляет версию по fragments. До `1.0.0`: `breaking`, `removed` и `added` → minor, остальные → patch. Начиная с `1.0.0`: `breaking` и `removed` → major, `added` → minor, остальные → patch. Если раздел уже открыт в main/master, сохраняет его версию и дату, объединяет прежние записи с новыми по разделам без дублей. Тип новых fragments не повышает уже выбранную версию.
+4. Форматирует и проверяет `CHANGELOG.md`, затем удаляет использованные fragments.
+5. Коммитит изменения и атомарно пушит dev в `origin/dev` и `origin/main` или `origin/master`, без Merge Request. Если новых записей нет, пустой коммит не создаётся; можно повторить отправку после её сбоя.
+
+Первый стабильный выпуск создаётся явно: `spectrum release start --stable`
+вычисляет ровно `1.0.0` от опубликованного `0.x`. Другой открытый релиз блокирует
+переход; повтор подготовки открытого `1.0.0` допустим. Флаг запрещён после
+перехода на `1.x`. Он выполняет обычный workflow `release start`, включая commit
+и push; `--dry` запускает только предпроверки. Обычный запуск от `0.3.7` с
+breaking/removed даёт `0.4.0`, с исправлением — `0.3.8`; исходные типы записей
+сохраняются. Alpha CI должен применять ту же политику к своей базовой версии.
+
+Сброс прежней высокой нумерации на `0.x` не выполняется этой командой: это
+отдельная миграция с архивом changelog и ссылок тегов, согласованием dev/master и
+исключением старых тегов из расчёта версии. Нельзя запускать `release start`,
+пока опубликованная история в dev и production различается.
+
+Например, повторный `release start` дополняет открытый `1.4.0`; после публикации
+`release/1.4.0` новые fragments уже формируют следующий релиз. Изменение
+опубликованной истории и конфликтующие открытые версии блокируют команду.
+
+Команда не изменяет `package.json`, lock-файлы и не создает `release/*`-веток. Прямой push в stable-ветку должен быть разрешен правилами защиты репозитория; non-fast-forward обновление не выполняется.
 
 ### `spectrum release close`
 
-1. Переключается на main ветку
-2. Обновляет main ветку
-3. Переключается на dev ветку
-4. Мержит main в dev
-5. Пушит dev ветку
+1. Читает версию из верхнего заголовка `CHANGELOG.md` и проверяет, что remote stable-теги этой версии указывают на текущий commit main/master.
+2. Обновляет main/master и dev.
+3. Мержит main/master в dev.
+4. Пушит синхронизированный `dev`.
 
 ### `spectrum release deploy`
 
-1. Переключается на main ветку
-2. Создает тег с текущей версией
-3. Пушит тег в remote
+1. Проверяет актуальную main/master и читает версию `X.Y.Z` из верхнего заголовка `CHANGELOG.md`.
+2. Создает единственный release-тег `release/X.Y.Z`.
+3. Пушит тег в `origin`. RC-теги CLI не создает.
 
-### `spectrum chart create <version>`
+### Формат стабильных тегов
+
+Новые обычные релизы получают `release/X.Y.Z`, хотфиксы — `hotfix/X.Y.Z`.
+Старый `vX.Y.Z` эквивалентен `release/X.Y.Z`: он участвует в поиске последней
+версии и проверке занятости номера. Старые теги не нужно переименовывать.
+Нумерация общая: после `release/1.2.3` и `hotfix/1.2.4` следующий patch — `1.2.5`.
+Выпустить занятый номер под другим префиксом нельзя. В changelog и версиях
+образов остаётся `X.Y.Z`, без `release/` и `hotfix/`. Это имена **тегов**, не веток.
+
+Все hotfix-команды сначала проверяют ветку: разрешены только `hotfix/*`, `main`
+или `master`. `dev`, `develop`, `feature/*` и detached HEAD отклоняются до fetch.
+Для `start` подходят `hotfix/<TASK>[-slug]` и production-ветка `main/master`,
+содержащая актуальный origin. Локальные исправления и commits допустимы.
+`deploy` и `close` требуют чистый production commit, совпадающий с origin.
+
+### Изолированный цикл хотфикса
+
+Создайте `hotfix/<TASK>` или `hotfix/<TASK>-<slug>` от актуального `origin/main`
+или `origin/master`, либо работайте прямо в актуальной production-ветке
+`main/master`. Включайте только срочное исправление и его patch fragments
+(`fixed`, `security`, `support` либо другой совместимый patch-тип).
+`added`, `breaking` и `removed` требуют обычного релиза. Все команды запускаются из корня
+репозитория; для `start` нужен Prettier, как для обычной сборки changelog.
+
+1. **`spectrum hotfix start`** обновляет сведения об origin и выбирает опубликованный
+   stable-тег, достижимый из production. Цель — этот stable плюс один patch.
+   Как и `release start`, команда читает все файлы текущей `.changelog/` независимо
+   от того, когда они попали в Git. Проверяет их общими правилами changelog и
+   допускает только patch-типы; файлы `added`, `breaking` и `removed` требуют обычного релиза.
+   Формат CHANGELOG.md проверяется только в текущей ветке. История может отличаться
+   от stable-тега: её исправления не блокируют хотфикс. Снимок production используется
+   для сохранения записей уже подготовленного хотфикса, без строгой проверки старых заголовков.
+   Команда формирует верхний раздел `## 🩹 [X.Y.Z] - YYYY-MM-DD` и удаляет только
+   собранные fragments. Она не делает commit, staging, push, merge или tag,
+   не меняет файлы версий и сохраняет посторонние локальные изменения.
+2. Повторный `start` дополняет тот же неопубликованный раздел, сохраняя дату и
+   существующие записи без дублей. Дата необязательна: раздел без даты останется
+   без даты. Старые заголовки с `🚀`, `🩹`, без значка и с датами через точки
+   читаются без переписывания опубликованной истории. Без новых fragments подготовленный раздел
+   остаётся без изменений. Например, от `v6.35.0` первый и повторные запуски
+   готовят `6.35.1`; только после публикации `hotfix/6.35.1` следующий хотфикс получит
+   `6.35.2`.
+3. Проверьте diff, закоммитьте и отправьте исправление по правилам проекта.
+   **В MR из hotfix в production уже должны быть верхний patch-раздел и удаления
+   использованных fragments.** Merge выполняется отдельно после ревью. Если
+   другой хотфикс уже в production, сначала перенесите его изменения в свою
+   ветку и повторите подготовку: пока stable-тега нет, раздел и версия общие.
+4. После доставки подготовленного исправления в production через MR или
+   разрешённый проектом push и проверки RC выполните **`spectrum hotfix deploy`** на чистом
+   `main/master`, точно совпадающем с origin. Команда проверяет следующий patch,
+   отсутствие несобранных hotfix fragments,
+   создаёт `hotfix/X.Y.Z` на проверенном SHA и отправляет **только этот тег**.
+   Повтор после ошибки push допускает существующий локальный тег лишь на том же
+   SHA; опубликованный тег не перемещается. Ветки не сливаются.
+5. После успешного stable pipeline выполните **`spectrum hotfix close`** на том же
+   чистом production commit с тегом `hotfix/X.Y.Z`. Команда обновит `dev/develop` только
+   fast-forward, смержит production в integration и отправит integration.
+   Незавершённая работа и fragments в dev сохраняются. Локальные неопубликованные
+   commits блокируют автоматическую отправку; конфликт остаётся для ручного
+   разрешения, без push. При неуспешном push готового merge проверьте локальный
+   diff и согласуйте ветку вручную — повторный `close` не отправляет локальные
+   commits без проверки.
+
+CLI не проверяет статус CI и не управляет кластером: проверка RC, успешного stable
+pipeline и фактического выката выполняется отдельно в системе доставки. Обычный
+`release start` не используется в этом цикле: он отправляет integration в production.
+`changelog check` проверяет исходные fragments до сборки; после сборки сам `hotfix start`
+проверяет подготовленный раздел. CI проекта должен принимать собранные заметки в MR,
+не требуя повторного fragment для уже включённой записи.
+
+### Цикл версий и CI
+
+Источник версии — Git-теги `release/X.Y.Z`, `hotfix/X.Y.Z` и legacy `vX.Y.Z`. Файлы версий (`package.json`, `Makefile`) не читаются ни CLI, ни CI:
+
+| Событие | Источник версии | Артефакт |
+| --- | --- | --- |
+| stable-тег `v1.0.0` | git-тег | `1.0.0` |
+| коммиты в dev | тег `v1.0.0` + бамп из `.changelog/` | `1.1.0-alpha.SHORTSHA` |
+| `release start` на dev | fragments схлопнуты в `## 🚀 [1.1.0]` | release commit в `dev` и `main/master` |
+| merge в main/master | заголовок CHANGELOG `1.1.0` | `1.1.0-rc.1`, затем `rc.2`, ... |
+| stable-тег `release/1.1.0` | git-тег | проверенный RC продвигается в `1.1.0` |
+| merge stable в dev (`release close`) | тег `release/1.1.0` + бамп fragments | `X.Y.Z-alpha.SHORTSHA` |
+
+Номер RC хранится в registry и переиспользуется при retry того же commit SHA.
+Новые stable-теги — `release/X.Y.Z` и `hotfix/X.Y.Z`; старые `vX.Y.Z` сохраняются. Stable pipeline проверяет OCI
+revision обязательных образов и копирует точные RC digest без пересборки. Эту
+CI-часть реализует подключенный release component, а не Spectrum CLI.
+
+### `spectrum chart start`
 
 1. Ищет `Chart.yaml` в `charts/<chart-name>/Chart.yaml` и читает поле `name`
 2. Проверяет, что текущая ветка — `main`
-3. Проверяет semver для переданной версии
+3. Читает версию из верхнего заголовка `charts/<chart-name>/CHANGELOG.md` и проверяет SemVer
 4. Собирает тег `chart-<name>-<version>`
-5. Проверяет, что такого тега еще нет
-6. Создает тег и пушит его в `origin`
+5. Проверяет, что такого тега еще нет локально и на `origin`, а версия отсутствует в Helm-registry
+6. Создает тег и пушит его в `origin`, затем ждёт появления версии в registry; `--no-wait` отключает ожидание
 
 ### `spectrum chart deploy`
 
@@ -185,47 +412,106 @@ spectrum-cli/
 4. Печатает diff только по изменениям: лишние пути (`-`) и недостающие (`+`) с цветовой подсветкой
 5. Завершает команду с ошибкой, если есть расхождения
 
+### `spectrum token rotate`
+
+Пролив уже созданного PAT `SC_BOT_PAT` в CI/CD variables групп и проектов. Команда токен не выпускает.
+
+**Конфиг:** `~/.config/spectrum-cli/config.yaml`
+
+Если файла нет, команда создаст его:
+
+```yaml
+bot: bot
+token_ttl_months: 12
+groups: []
+projects: []
+```
+
+- `bot` и `token_ttl_months` читаются только из конфига.
+- Скрытым вводом запрашиваются два токена. Оба живут только в памяти.
+- Owner PAT: ходит в API, проверяет доступ, читает/удаляет/создает CI variables. Для групп нужен Owner, для проектов — Maintainer+.
+- `SC_BOT_PAT`: только значение, которое пишется в CI variable.
+- Для каждой группы и проекта CI variable `SC_BOT_PAT` удаляется (если есть) и создается заново как masked and hidden.
+- Description переменной: `PAT от бота <bot>, владелец Колосов. Истекает YYYY-MM-DD.` Дата = сегодня + `token_ttl_months`.
+
+1. Загружает или создает конфиг
+2. Запрашивает owner PAT
+3. Запрашивает `SC_BOT_PAT`
+4. Проверяет доступ ко всем группам и проектам owner PAT
+5. Обновляет CI variables во всех целях
+
 ## 📝 Работа с Changelog
 
 ### `spectrum changelog append "Сообщение"`
 
-Умная команда для добавления записей в CHANGELOG.md с автоматическим определением контекста:
+Команда создает независимый файл `.changelog/<task>-<branch>.<type>.md`. Разработчики больше не редактируют общий блок `Unreleased`, поэтому параллельные ветки не конфликтуют в `CHANGELOG.md`.
+
+Рабочая ветка должна полностью соответствовать `<type>/<YOUTRACK-ID>` или
+`<type>/<YOUTRACK-ID>-<slug>`, например `feature/AR-123` или
+`bugfix/ABBVJSOP-1-timeout`. YouTrack ID начинается сразу после первого `/` и
+соответствует `[A-Z]+-[0-9]+`; отсутствующий ID больше не запрашивается
+интерактивно и не придумывается.
 
 **✨ Основные возможности:**
 - 🔍 **Автоматическое извлечение** номера задачи из названия ветки
-- 🤔 **Интерактивный запрос** номера задачи если не найден
+- 🧭 **Строгая проверка** GitFlow-префикса и YouTrack ID в имени ветки
 - 👤 **Проверка Git config** с подсказками по настройке
 - 🎯 **Умное определение раздела** по типу ветки
-- 🎨 **Контекстный вывод** с цветовым выделением
-- 🧹 **Автоматическая очистка** дефолтного текста
-- ✅ **Проверка Prettier** перед изменениями `CHANGELOG.md` (команда остановится при ошибке)
+- 🧩 **Дополнение существующего fragment** той же задачи без дублирования строк
+- 🔀 **Автоматическая сборка** общего changelog во время `spectrum release start`
 
 **📋 Поддерживаемые типы веток:**
-- `feature/` → выбор между Added, Changed, Deprecated, Removed
+- `feature/`, `feat/` → выбор между Breaking change, Added, Changed, Deprecated, Removed
 - `bugfix/`, `fix/` → автоматически Fixed
 - `support/` → выбор между Support, Security
 - другие → показ всех разделов
 
+**📋 Типы fragment и SemVer:**
+
+| Суффикс | Раздел | До `1.0.0` | С `1.0.0` |
+| --- | --- | --- | --- |
+| `breaking` | Breaking change | minor | major |
+| `removed` | Removed | minor | major |
+| `added` | Added | minor | minor |
+| `changed`, `deprecated` | Соответствующий раздел | patch | patch |
+| `fixed`, `security`, `support` | Соответствующий раздел | patch | patch |
+
 **📌 Пример использования:**
+
 ```bash
 # На ветке feature/ABC-123-new-component
 spectrum changelog append "Добавлен новый компонент кнопки"
 
-# Результат в CHANGELOG.md:
+# Результат:
+# .changelog/ABC-123-feature-new-component.added.md
 # - ABC-123 Добавлен новый компонент кнопки. [Ваше Имя](ваш@email.com)
 ```
 
-### 🔍 Линтинг CHANGELOG с Prettier
+Fragment должен содержать только непустые Markdown-строки, начинающиеся с `- `. Один fragment может содержать несколько записей одного типа. Fragment коммитится вместе с изменением и удаляется только автоматикой релиза.
 
-- Перед любыми изменениями changelog выполняется проверка наличия `prettier` и команда `prettier --check CHANGELOG.md`.
-- Если `prettier` недоступен или проверка не пройдена, выполнение прекращается с ошибкой.
-- Запуск через `npx` поддерживается автоматически: используется `npx --yes prettier` при наличии.
+### `spectrum changelog check`
+
+Команда предназначена для локальной и CI-проверки перед merge:
+
+- проверяет формат `CHANGELOG.md` через Prettier;
+- требует хотя бы один fragment в `.changelog/`;
+- проверяет имя `<name>.<type>.md`, поддерживаемый тип и формат каждой строки;
+- не изменяет файлы.
 
 > Совет: Приведите файл к нужному формату командой:
 >
 > ```bash
-> npx --yes prettier --write CHANGELOG.md
+> spectrum changelog write
 > ```
+
+### `spectrum changelog write`
+
+Команда приводит все релизные заголовки `CHANGELOG.md` к виду `## 🚀 [X.Y.Z]`,
+`## 🩹 [X.Y.Z]` или `## [X.Y.Z]` с необязательной датой, затем запускает Prettier.
+Старые даты через точки и текст записей сохраняются. Неверный заголовок, включая
+`Unreleased`, останавливает команду без удаления записей. При ошибке Prettier
+исходный `CHANGELOG.md` восстанавливается. Файлы `.changelog/` команда не меняет;
+commit и push не выполняет.
 
 ## 🎯 Философия
 
@@ -260,3 +546,255 @@ MIT License - см. [LICENSE](./LICENSE)
 ---
 
 _Создано для автоматизации повседневных задач разработки_ 🛠️
+
+## Команды для CI: Next.js, SBOM и security
+
+Начиная с 5.1.0 логика команд написана на JavaScript и входит в npm-пакет.
+Команды не задают вопросов и не проверяют обновления CLI. Они не запускают
+release/hotfix preflight, рассчитанный на интерактивную работу разработчика.
+
+| Команда | Назначение | Результат |
+| --- | --- | --- |
+| `spectrum nextjs licenses` | Сохранить исходные LICENSE уже включённых compiled-пакетов Next.js | JSON summary в stdout; код 2 при неполном результате |
+| `spectrum sbom catalog resolve` | Найти Next в immutable образе, проверить OCI-каталоги, запросить отсутствующие версии | `sbom-catalog/<prefix>/{selection.json,report.json,report.md}` |
+| `spectrum sbom catalog populate` | Построить каталог по официальному npm tarball и историческому Git tree | `sbom-catalog-updater/{report.json,report.md}` |
+| `spectrum security scan` | Проверить `npm audit --omit=dev`, runtime и фактическую версию Node | `security-report/findings.json`, raw evidence, `scan.env` |
+| `spectrum security reconcile` | Запустить центральный tracker и получить ссылки на задачи | `security-report/tracked.json` |
+| `spectrum security track` | Найти/создать общие CVE и проектные задачи | `security-report/tracked.json` в центральном pipeline |
+| `spectrum security repair` | Исправить одну проектную задачу за MR, выполнить проверки и повторный аудит | `security-report/{final.json,message.json}` |
+
+На Windows сегмент пути отчётов SBOM кодируется для совместимости с файловой
+системой: например, `site:` → `site%3A`. В Linux пути артефактов CI сохраняются
+как `sbom-catalog/site:/`.
+
+Код 0 означает успешное выполнение, 1 — ошибку security/запуска, 2 — неполный
+результат SBOM или LICENSE. Команды работают в текущем каталоге. Отсутствующие
+credentials/некорректные отчёты приводят к ошибке, а не к чистому аудиту.
+Автоматическое слияние MR отключено; сетевые записи не повторяются вслепую.
+
+Компоненты передают свои inputs через job-local окружение. `security scan`
+читает `NIGHTLY_YOUTRACK_PROJECT`, `NIGHTLY_YOUTRACK_TIME_TRACKING_ARTICLE`,
+`NIGHTLY_YOUTRACK_TESTER`, необязательный `NIGHTLY_YOUTRACK_SUBSYSTEM`,
+`NIGHTLY_DOCKERFILE`, `NIGHTLY_PLATFORMS` и `NIGHTLY_CHECK_NODE`.
+Токены `GLAB_BOT_PAT` и `YOUTRACK_PRIVATE_TOKEN` остаются секретными CI variables;
+Родительская CVE и проектные задачи получают тег `BOT` при создании и обновлении.
+Тег добавляется отдельно с сохранением остальных тегов; повторный запуск не дублирует запись.
+Чтобы метку видели коллеги и мог использовать CI-бот, настройте общий тег `BOT`
+с правами просмотра для команды и применения для учётной записи автоматики.
+По умолчанию новый тег YouTrack личный; добавление тега командой не меняет его видимость.
+Найденные задачи синхронизируются при отличиях заголовка, Markdown-описания и
+управляемых полей. Заголовок CVE заканчивается списком пакетов. Приоритет
+проектных задач совпадает с общей CVE: HIGH → Critical (Критическая), CRITICAL →
+Stopper (Неотложная); ранее обнаруженный CRITICAL не понижается из-за другого
+проекта. Статья учёта времени, тестировщик и подсистема из настройки проекта
+задаются только проектной задаче. Общая CVE использует независимую статью
+`NIGHTLY_CVE_TIME_TRACKING_ARTICLE` (по умолчанию `needs-definition`). Поля записываются через REST по реальным
+именам и типам, включая многозначного тестировщика с псевдонимом Tester
+и подсистемы `ownedField[1]` / `ownedField[*]`.
+Описание содержит сведения сканера, локализацию, безопасную версию, ссылки и
+чеклист; неизвестные версии не выдумываются. Общая CVE хранит только общие сведения об уязвимости и компонентах: без путей
+репозиториев, установленных версий, локализации и pipeline. Старые проектные
+блоки мигрируют в общий формат при обновлении. Затронутые проекты определяются
+по дочерним задачам; ссылка на родителя в тексте подзадачи не дублируется.
+
+YouTrack-токен нужен только центральному tracker. Для registry используются
+`NEXUS_USER`/`NEXUS_PASSWORD` либо стандартные CI registry credentials.
+Секреты автоматизации исключаются из окружения npm-подпроцессов.
+
+`sbom catalog resolve` читает `SBOM_CATALOG_CLIENT_ENABLED=true`,
+`SBOM_CATALOG_FRAMEWORK=nextjs`, `SBOM_CATALOG_PREFIX` (по умолчанию `site:`),
+`SBOM_CATALOG_REPOSITORY`, `DOCKER_IMAGE`, `APP_VERSION` и стандартные GitLab
+`CI_*` variables. Чтение каталога использует `SBOM_CATALOG_USER` и
+`SBOM_CATALOG_PASSWORD`, если заданы. `populate` требует защищённый `main`,
+`NEXT_CATALOG_VERSIONS` (JSON-массив 1..10 точных версий) и центральные
+`NEXUS_USER`/`NEXUS_PASSWORD`. Namespace записи задаёт только доверенная
+project variable `SBOM_CATALOG_PUBLISH_REPOSITORY`.
+
+Внешние инструменты: Linux amd64 для SBOM bootstrap; Git для каталога,
+Trivy для аудита опубликованных runtime-образов и HTTPS Registry API для чтения тегов, digest и метаданных. SBOM-команды скачивают
+закреплённые ORAS/Syft с проверкой SHA-256, ограничениями размера и времени.
+Python для этих команд не требуется. Они не выполняют код из npm tarball
+или upstream build-рецептов. Неоднозначное происхождение остаётся unresolved.
+Поля CVE, Severity, Priority и Type=Group проверяются до создания подзадач;
+CRITICAL получает Stopper (Неотложная), HIGH — Critical (Критическая).
+
+Образы и адреса сервисов задаёт CI-конфигурация конкретной установки.
+CLI не содержит дефолтов для YouTrack, registry или внутренних GitLab-проектов.
+Само наличие команды `track` не сериализует процессы: job должен оставаться
+в одном центральном проекте с `resource_group: nightly-youtrack-global`.
+Отдельный consumer lock `nightly-security-fix` защищает исправления проекта.
+
+Для проверки миграции:
+
+```sh
+npm ci
+npm test -- --runInBand
+npm pack --dry-run
+```
+
+Тесты используют локальные Git-репозитории и fake API. Зафиксированные parity
+fixtures получены из прежнего Python-кода; исполняемый Python в пакет не входит.
+Публикация CLI, образов, компонентов и запуск живого pipeline — отдельные шаги.
+
+### Ошибки ночного процесса
+
+Ошибки `security track`, `reconcile` и `repair` выводятся в stderr с именем фазы. При ошибке отдельного
+исправления указывается advisory ID; при блокировке repair — исходные ошибки scan/tracking. Это действует
+и с `--silence`: флаг скрывает успешные preflight-сообщения, а не ошибки. Артефакты продолжают сохраняться.
+Credentials удаляются из диагностических сообщений и новых ошибок отчёта.
+
+CLI по-прежнему использует `GLAB_BOT_PAT`. CI-компонент перед запуском подставляет в него
+`GITLAB_PRIVATE_TOKEN`, если `GLAB_BOT_PAT` пуст. Уже заданный bot token сохраняется. Эта подстановка
+выполняется отдельно в consumer job и в центральном tracker; переменные между проектами не пересылаются.
+
+### npm registry и проверка runtime
+
+`security scan` и повторный audit после исправлений всегда вызывают:
+
+```sh
+npm audit --registry=https://registry.npmjs.org/ --omit=dev --audit-level=high --json
+```
+
+Публичный registry указан прямо в argv команды, как в локальном алиасе `na`. Nexus-авторизация для аудита
+не создаётся. Настройки registry в проектном `.npmrc` и user config не меняются: установка и обновление
+зависимостей продолжают использовать конфигурацию проекта. Порог ночного процесса — HIGH/CRITICAL.
+Ошибки audit сохраняют HTTP-код и причину с удалением credentials из диагностических сообщений.
+
+Ночной процесс готовит изменения и создаёт отдельный Draft MR на проектную задачу. Он не устанавливает
+полное дерево зависимостей, не запускает проектные проверки и не собирает контейнерные образы. npm-исправления
+меняют manifest/lockfile с `--package-lock-only --ignore-scripts` и проходят повторный production audit.
+Если совместимого обновления недостаточно, repair допускает мажорную версию, предложенную npm audit,
+только для прямой production/optional-зависимости. Устанавливается конкретная версия без `--force`;
+мажорное обновление отмечается в Draft MR и отчёте. Сохранены повторный аудит, запрет новых
+HIGH/CRITICAL и ручное ревью; успешный аудит не подтверждает совместимость API приложения.
+Runtime-исправления выбирают уже опубликованный образ того же Node major, повторно сканируют его на всех
+настроенных платформах и меняют `FROM`/digest. Сборка и проверки проекта выполняются обычным MR pipeline;
+статус нового исправления — `created`, а не `verified`.
+
+Теги и digest читаются через HTTPS Registry API v2 с проверкой SHA-256 содержимого manifest.
+Trivy работает с `--image-src remote`; Docker/Buildah, Skopeo, umoci, chroot и binfmt/QEMU не требуются.
+Версия Node берётся из platform-specific manifest annotation `com.google.distroless.nodejs.version`
+или `NODE_VERSION`/одноимённой distroless label в конфигурации просканированного образа. Config blob
+при отсутствии ImageConfig в отчёте Trivy читается напрямую из registry и сверяется с digest/размером в manifest.
+При пересборке runtime annotation исходного manifest может потеряться: владелец runtime должен сохранять
+версию в отдельной `LABEL com.google.distroless.nodejs.version="<version>"`. Ночной repair владельца
+(`NIGHTLY_RUNTIME_PUBLISH_VARIABLE`) обновляет эту LABEL вместе с `FROM` и тегом публикации. Бинарный файл
+не исполняется; версия не угадывается по тегу. Отсутствующие или противоречивые метаданные при включённом
+`NIGHTLY_CHECK_NODE` считаются ошибкой сканирования. Это проверка опубликованных метаданных, а не фактического
+вывода `node --version`.
+
+Прежние `NIGHTLY_CHECK_COMMANDS` и `NIGHTLY_NODE_BINARY` больше не используются. Настройки MR CI остаются
+в проекте. Защиты от неполного сканирования, дублирующих MR и изменения исходной ветки сохраняются.
+
+### Preflight для команд автоматизации
+
+Обязательные deployment-настройки задаются явно:
+
+| Команда | Настройки |
+| --- | --- |
+| `security track` | `YOUTRACK_URL`, `YOUTRACK_PRIVATE_TOKEN`, `CI_API_V4_URL`, `GLAB_BOT_PAT`, идентификаторы consumer job/project и component SHA |
+| `security reconcile` | `NIGHTLY_TRACKER_PROJECT`, `NIGHTLY_COMPONENT_SHA`, `NIGHTLY_SCAN_JOB_ID`, `CI_PROJECT_ID`, GitLab API/token; при пустом отчёте сеть не нужна |
+| `security repair` | GitLab API/token и результаты scan/tracking; при пустом отчёте запись и проверка токена не нужны |
+| `sbom catalog resolve` | `SBOM_CATALOG_REPOSITORY`, `DOCKER_IMAGE`, `APP_VERSION`; `SBOM_CATALOG_UPDATER_PROJECT` для запроса отсутствующих версий |
+| `sbom catalog populate` | `SBOM_CATALOG_PUBLISH_REPOSITORY`, `NEXUS_USER`, `NEXUS_PASSWORD`, защищённый main и точные `NEXT_CATALOG_VERSIONS` |
+| `security scan/repair` с `NEXUS_*` | Дополнительно явный `NIGHTLY_REGISTRY_HOSTS`; один логин без пароля или наоборот считается ошибкой |
+
+В GitLab выполняются GET `/user`, `/personal_access_tokens/self` и чтение
+целевых проектов. Проверяются активность токена, scope `api` для записи
+(`api`/`read_api` для чтения), эффективная роль Developer/Reporter и состояние
+проекта. Fine-grained/прочие токены, для которых introspection не подтверждает
+эти scope, не считаются проверенными. Защита веток/тегов дополнительно
+проверяется сервером при конкретной операции.
+
+Для `security reconcile` роль проверяется в проекте `NIGHTLY_TRACKER_PROJECT`:
+там токен запускает центральный pipeline. Для `security repair` Developer нужен
+в проекте приложения. Учитывается доступ через родительские и приглашённые группы: если сводных
+`permissions.project_access/group_access` недостаточно, CLI читает
+`GET /projects/:id/members/all/:user_id` для пользователя текущего токена.
+Доступ к приложению сам по себе не подтверждает доступ к tracker-проекту. Ошибки доступа содержат проект,
+пользователя фактически использованного токена, уровень роли и операцию без значения токена.
+
+В YouTrack выполняются GET `/users/me`, чтение двух проектов, их полей и
+поиск задач. До создания первой задачи проверяются активность пользователя,
+доступность проектов и обязательные поля. Ответы 401/403, недоступность и
+неверный TLS приводят к ошибке с названием проверки; секреты/тела ответов
+не выводятся. Инспекция полей не требует тестового изменения проекта.
+
+Writer выполняет ORAS login и чтение точного namespace до скачивания исходников
+и построения каталога. Preflight сохраняется в отчёте. Чтение/логин не доказывают
+права Create/Update/Link Issue, доступ к приватным полям, workflow-переходам или
+registry push: эти права проверяются соответствующими операциями. Они явно
+помечены `checked_by_operations`/`checked_by_publish`, без ложного статуса
+«запись проверена». Preflight не создаёт задач, MR, upload-сессий или пробных
+каталогов. Ошибка preflight останавливает следующие изменения и остаётся
+в JSON/Markdown/notification-артефактах, когда исходный отчёт уже доступен.
+
+Источник контрактов: [GitLab token scopes](https://docs.gitlab.com/security/tokens/access_token_scopes/),
+[YouTrack My User Profile](https://www.jetbrains.com/help/youtrack/devportal/resource-api-users-me.html),
+[YouTrack project fields](https://www.jetbrains.com/help/youtrack/devportal/resource-api-admin-projects-projectID-customFields.html).
+
+### No-verify, dry и silence для команд автоматизации
+
+Все семь команд `nextjs licenses`, `sbom catalog resolve/populate` и
+`security scan/track/reconcile/repair` поддерживают `-n, --no-verify`, `-d, --dry` и
+`-s, --silence`, включая сочетания `-ns` и `-ds`.
+
+```sh
+spectrum nextjs licenses --dry
+spectrum sbom catalog populate --dry --silence
+spectrum security repair -ds
+spectrum security repair --no-verify --silence
+```
+
+`--dry` выполняет предпроверки настроек, файлов, инструментов и доступов,
+после чего останавливается перед действиями команды. Он не копирует LICENSE,
+не выполняет npm audit/Trivy/Syft scan или исправления, не создаёт задачи,
+MR и downstream pipeline, не публикует каталоги и не перезаписывает отчёты.
+Для проверки используются GET-запросы, чтение image descriptor и metadata
+Git/проектов; SBOM preflight может загрузить закреплённые инструменты во
+временную папку и выполнить registry login с временным auth-файлом.
+Временные файлы удаляются; исходники, lockfiles и существующие артефакты
+сохраняются. При неполных входных отчётах dry завершается с ошибкой.
+
+`--silence` скрывает только сообщения об успешно пройденных предпроверках.
+Ошибки, предупреждения, результаты команды и итог dry остаются видимыми.
+Это тот же смысл флага, что у release/hotfix команд. Без dry выполняются
+обычные действия и сохраняются прежние коды завершения 0/1/2.
+
+`--no-verify` пропускает предварительные проверки доступов GitLab/YouTrack,
+registry и соответствия tracker ref. Команда сразу переходит к своим действиям:
+аудиту, копированию LICENSE, работе с каталогами, задачами или исправлениям.
+Загрузка входных отчётов, аутентификация для операций, проверка целостности
+артефактов и проверочные команды после исправления остаются частью действия.
+Пропущенные preflight не получают статус «проверено» в отчёте.
+
+### CI launcher: independent CLI versions
+
+`spectrum-ci <command and flags>` installs command implementations independently
+of the toolbox image. It is also shipped as dependency-free `ci-bootstrap.cjs`
+for extraction into Node/npm/tar images. Minimum selected CLI is 6.2.0.
+
+| Selector | Behavior |
+| --- | --- |
+| `SPECTRUM_CLI_VERSION` | Exact npm version, major or minor; default `6` |
+| `SPECTRUM_CLI_REF` | Named branch/tag of the public CLI repo; overrides npm selection |
+| `SPECTRUM_CLI_REQUESTED_VERSION/REF` | CI component input overrides |
+| `SPECTRUM_CLI_IDENTITY_FILE` | Save/restore one exact version or Git SHA in an artifact |
+| `SPECTRUM_CLI_IDENTITY` | Downstream frozen identity; overrides local selectors |
+| `SPECTRUM_CLI_GITHUB_TOKEN` | Optional GitHub read token for higher Git-mode API limits; sent only to api.github.com |
+| `SPECTRUM_CLI_CACHE_DIR` | npm download cache; default `.spectrum-cli-cache` |
+
+Git mode uses HTTPS archives, its lockfile and a fixed repository; Git is not
+required. A moving branch cannot replace the selected SHA within a workflow.
+If history is force-pushed away, the job fails and requires a new pipeline.
+GitHub API limits/network errors are reported without fallback to another source.
+An installed npm selector is resolved to the exact version once per workflow.
+Installations are temporary, lifecycle scripts are disabled, installer credentials
+are stripped and public npm is explicit. Application npm config/node_modules are
+unchanged. Resolved source is printed to stderr; command stdout/exit status and
+all command flags are preserved. `--dry` does not write a CLI identity artifact.
+
+Nightly reports record the selected identity; reconcile forwards it to the central
+tracker and repair rejects mismatches. The catalogue client forwards the same
+identity to its writer. Named component branches can select the corresponding
+tracker branch while component SHA verification stays enabled.

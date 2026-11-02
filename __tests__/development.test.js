@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-jest.mock("../src/utils", () => ({
+jest.mock("../src/common/utils", () => ({
   getPackageManager: jest.fn(),
   execCommand: jest.fn(),
   logError: jest.fn(),
 }));
 
-const { getPackageManager, execCommand, logError } = require("../src/utils");
-const development = require("../src/development");
+const { getPackageManager, execCommand, logError } = require("../src/common/utils");
+const development = require("../src/cli/development");
 
 describe("development", () => {
   beforeEach(() => {

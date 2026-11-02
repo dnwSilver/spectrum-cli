@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+      - 'release/*'
+      - 'hotfix/*'
 
 permissions:
   contents: write
@@ -30,12 +32,20 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test || true  # Continue even if no tests
+        run: npm test
+
+      - name: Resolve stable version
+        id: version
+        run: |
+          VERSION=$(node -e 'const tag = require("./src/release/stable-tags").parseStableTag(process.env.GITHUB_REF_NAME); if (!tag) process.exit(1); process.stdout.write(tag.version);')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create release archive
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir -p dist
-          tar -czf dist/spectrum-cli-${{ github.ref_name }}.tar.gz \
+          tar -czf "dist/spectrum-cli-${RELEASE_VERSION}.tar.gz" \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='dist' \
@@ -44,11 +54,16 @@ jobs:
 
       - name: Generate changelog
         id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           if [ -f CHANGELOG.md ]; then
-            # Extract current version changelog
-            VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
-            CHANGELOG=$(awk "/## \[?${VERSION}\]?|## 🚀 \[${VERSION}\]/,/^## |^$/{if(/^## |^$/ && NR>1) exit; print}" CHANGELOG.md | head -n -1)
+            # Extract the current version block up to the next release heading.
+            CHANGELOG=$(awk -v version="$VERSION" '
+              $0 ~ "^## (🚀 )?\\[" version "\\]([[:space:]]|$)" { in_release=1 }
+              in_release && /^## / && $0 !~ "^## (🚀 )?\\[" version "\\]([[:space:]]|$)" { exit }
+              in_release { print }
+            ' CHANGELOG.md)
             echo "changelog<<EOF" >> $GITHUB_OUTPUT
             echo "$CHANGELOG" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT

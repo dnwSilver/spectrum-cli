@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const { execSync } = require('child_process');
-const utils = require('../src/utils');
+const utils = require('../src/common/utils');
 
 // Mock fs and execSync
 jest.mock('fs');
@@ -192,52 +192,29 @@ describe('Utils', () => {
         });
     });
 
-    describe('getVersion', () => {
-        test('should return version from package.json', () => {
-            fs.readFileSync.mockReturnValue('{"version": "1.2.3"}');
-            const result = utils.getVersion();
-            expect(result).toBe('1.2.3');
-            expect(fs.readFileSync).toHaveBeenCalledWith('package.json', 'utf8');
-        });
-
-        test('should return null if package.json does not exist', () => {
-            fs.readFileSync.mockImplementation(() => {
-                throw new Error('File not found');
-            });
-            const result = utils.getVersion();
-            expect(result).toBeNull();
-        });
-
-        test('should return null if package.json is invalid JSON', () => {
-            fs.readFileSync.mockReturnValue('invalid json');
-            const result = utils.getVersion();
-            expect(result).toBeNull();
-        });
-    });
-
     describe('getRemoteUrl', () => {
         test('should parse SSH remote url', () => {
-            execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project.git');
+            execSync.mockReturnValue('git@gitlab.example.com:group/project.git');
             const result = utils.getRemoteUrl();
-            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+            expect(result).toBe('https://gitlab.example.com/group/project');
         });
 
         test('should parse SSH remote url without .git suffix', () => {
-            execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project');
+            execSync.mockReturnValue('git@gitlab.example.com:group/project');
             const result = utils.getRemoteUrl();
-            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+            expect(result).toBe('https://gitlab.example.com/group/project');
         });
 
         test('should parse HTTPS remote url', () => {
-            execSync.mockReturnValue('https://gitlab.spectrumdata.tech/group/project.git');
+            execSync.mockReturnValue('https://gitlab.example.com/group/project.git');
             const result = utils.getRemoteUrl();
-            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+            expect(result).toBe('https://gitlab.example.com/group/project');
         });
 
         test('should parse HTTPS remote url without .git suffix', () => {
-            execSync.mockReturnValue('https://gitlab.spectrumdata.tech/group/project');
+            execSync.mockReturnValue('https://gitlab.example.com/group/project');
             const result = utils.getRemoteUrl();
-            expect(result).toBe('https://gitlab.spectrumdata.tech/group/project');
+            expect(result).toBe('https://gitlab.example.com/group/project');
         });
 
         test('should return null when git command fails', () => {
@@ -255,10 +232,10 @@ describe('Utils', () => {
 
     describe('getMergeRequestUrl', () => {
         test('should build MR url with encoded branches', () => {
-            execSync.mockReturnValue('git@gitlab.spectrumdata.tech:group/project.git');
+            execSync.mockReturnValue('git@gitlab.example.com:group/project.git');
             const result = utils.getMergeRequestUrl('release/1.2.3', 'main');
             expect(result).toBe(
-                'https://gitlab.spectrumdata.tech/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main'
+                'https://gitlab.example.com/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main'
             );
         });
 

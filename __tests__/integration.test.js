@@ -25,23 +25,13 @@ describe('Spectrum CLI Integration Tests', () => {
         // Create minimal CHANGELOG.md
         const changelog = `# Changelog
 
-## [Unreleased]
+All notable changes to this project will be documented in this file.
+
+## 🚀 [1.0.0] - 2026-01-01
 
 ### 🆕 Added
 
-_Список новой функциональности._
-
-### 🛠 Changed
-
-_Список изменившейся функциональности._
-
-### 🪲 Fixed
-
-_Список исправлений багов._
-
-### 📦 Support
-
-_Список правок для обеспечения технической поддержки._
+- Initial release.
 `;
         fs.writeFileSync('CHANGELOG.md', changelog);
         
@@ -64,13 +54,8 @@ _Список правок для обеспечения технической 
     });
 
     describe('Utils Functions', () => {
-        test('should get version from package.json', () => {
-            const utils = require('../src/utils');
-            expect(utils.getVersion()).toBe('1.0.0');
-        });
-
         test('should detect npm package manager', () => {
-            const utils = require('../src/utils');
+            const utils = require('../src/common/utils');
             fs.writeFileSync('package-lock.json', '{}');
             expect(utils.getPackageManager()).toBe('npm');
         });
@@ -78,15 +63,15 @@ _Список правок для обеспечения технической 
 
     describe('Version Functions', () => {
         test('should increment version numbers correctly', () => {
-            const version = require('../src/version');
+            const version = require('../src/common/version');
             expect(version.upVersion('1.2.3', 'major')).toBe('2.0.0');
             expect(version.upVersion('1.2.3', 'minor')).toBe('1.3.0');
             expect(version.upVersion('1.2.3', 'patch')).toBe('1.2.4');
         });
 
-        test('should get version from package.json', () => {
-            const utils = require('../src/utils');
-            expect(utils.getVersion()).toBe('1.0.0');
+        test('should read the release version from the changelog heading', () => {
+            const preflight = require('../src/preflight');
+            expect(preflight.getChangelogReleaseVersion()).toBe('1.0.0');
         });
     });
 
@@ -100,7 +85,7 @@ _Список правок для обеспечения технической 
         test('should detect section from branch type', () => {
             // Create mock branches and test section detection logic directly
             const testCases = [
-                { branch: 'feature/TEST-123-new', expected: ['### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed'] },
+                { branch: 'feature/TEST-123-new', expected: ['### 💥 Breaking change', '### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed'] },
                 { branch: 'bugfix/BUG-456-fix', expected: ['### 🪲 Fixed'] },  
                 { branch: 'support/DOC-789-update', expected: ['### 📦 Support', '### 🔐 Security'] },
                 { branch: 'custom/OTHER-999-unknown', expected: [] }
@@ -115,7 +100,7 @@ _Список правок для обеспечения технической 
                 } else if (branchLower.includes('bugfix') || branchLower.includes('fix')) {
                     result = ['### 🪲 Fixed'];
                 } else if (branchLower.includes('feature') || branchLower.includes('feat')) {
-                    result = ['### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed'];
+                    result = ['### 💥 Breaking change', '### 🆕 Added', '### 🛠 Changed', '### 📜 Deprecated', '### 🗑 Removed'];
                 }
                 
                 expect(result).toEqual(expected);
@@ -124,36 +109,35 @@ _Список правок для обеспечения технической 
     });
 
     describe('Error Handling', () => {
-        test('should handle missing package.json', () => {
-            fs.unlinkSync('package.json');
-            const utils = require('../src/utils');
-            expect(utils.getVersion()).toBeNull();
+        test('should handle missing CHANGELOG.md', () => {
+            fs.unlinkSync('CHANGELOG.md');
+            const preflight = require('../src/preflight');
+            expect(preflight.getChangelogReleaseVersion()).toBeNull();
+            expect(preflight.requireChangelogReleaseVersion().ok).toBe(false);
         });
 
-        test('should handle invalid JSON in package.json', () => {
-            fs.writeFileSync('package.json', 'invalid json');
-            const utils = require('../src/utils');
-            expect(utils.getVersion()).toBeNull();
+        test('should handle a changelog without release headings', () => {
+            fs.writeFileSync('CHANGELOG.md', '# Changelog\n\nПока без релизов.\n');
+            const preflight = require('../src/preflight');
+            expect(preflight.getChangelogReleaseVersion()).toBeNull();
         });
     });
 });
 
 describe('Basic Functionality Tests', () => {
     test('should export all required functions', () => {
-        const utils = require('../src/utils');
+        const utils = require('../src/common/utils');
         expect(typeof utils.logSuccess).toBe('function');
         expect(typeof utils.logError).toBe('function');
-        expect(typeof utils.getVersion).toBe('function');
         expect(typeof utils.getCurrentBranch).toBe('function');
 
-        const version = require('../src/version');
+        const version = require('../src/common/version');
         expect(typeof version.upVersion).toBe('function');
-        expect(typeof version.setVersion).toBe('function');
-
-        expect(typeof utils.getVersion).toBe('function');
+        expect(typeof version.compareVersions).toBe('function');
 
         const changelog = require('../src/changelog');
         expect(typeof changelog.changelogAppend).toBe('function');
+        expect(typeof changelog.changelogCheck).toBe('function');
         expect(typeof changelog.formatMessage).toBe('function');
 
         const git = require('../src/git');
@@ -165,13 +149,13 @@ describe('Basic Functionality Tests', () => {
         expect(typeof release.releaseClose).toBe('function');
 
         const chart = require('../src/chart');
-        expect(typeof chart.chartCreateTag).toBe('function');
+        expect(typeof chart.chartStart).toBe('function');
         expect(typeof chart.getChartName).toBe('function');
         expect(typeof chart.isSemver).toBe('function');
     });
 
     test('should have correct colors object', () => {
-        const utils = require('../src/utils');
+        const utils = require('../src/common/utils');
         expect(utils.colors).toHaveProperty('red');
         expect(utils.colors).toHaveProperty('green');
         expect(utils.colors).toHaveProperty('yellow');

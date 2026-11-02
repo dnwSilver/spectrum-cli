@@ -1,0 +1,78 @@
+jest.mock('fs', () => ({ ...jest.requireActual('fs'), realpathSync: jest.fn() }));
+jest.mock('path', () => ({ ...jest.requireActual('path'), relative: jest.fn() }));
+jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), execFileSync: jest.fn() }));
+jest.mock('../src/common/utils', () => ({ ...jest.requireActual('../src/common/utils'), logError: jest.fn() }));
+
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+const { logError } = require('../src/common/utils');
+const { hotfixStart, hotfixDeploy, hotfixClose } = require('../src/hotfix');
+
+describe.each([hotfixStart, hotfixDeploy, hotfixClose])('%p repository root check', (command) => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        fs.realpathSync.mockReset();
+        path.relative.mockReset();
+        delete fs.realpathSync.native;
+        execFileSync.mockImplementation((executable, args) => {
+            if (args.join(' ') === 'rev-parse --show-toplevel') return 'c:/Users/runner/work\n';
+            // Reaching this branch error proves that the root check accepted the path.
+            if (args.join(' ') === 'branch --show-current') return 'dev\n';
+            throw new Error('Unexpected Git operation');
+        });
+    });
+
+    test.each([
+        ['c:\\Users\\runner\\work', 'C:\\Users\\runner\\work'],
+        ['C:/Users/runner/work', 'C:\\Users\\runner\\work'],
+        ['C:\\Users\\Runner\\work', 'c:\\users\\runner\\work'],
+    ])('accepts equivalent Windows roots %s and %s', (root, cwd) => {
+        path.relative.mockImplementation(path.win32.relative);
+        fs.realpathSync.mockReturnValueOnce(root).mockReturnValueOnce(cwd);
+        expect(command()).toBe(false);
+        expect(logError).toHaveBeenCalledWith('❌', 'Предпроверка не пройдена (%s): %s',
+            'branch', expect.stringContaining('только на hotfix/*, main или master'));
+        expect(execFileSync.mock.calls.some(([, args]) => args[0] === 'fetch')).toBe(false);
+    });
+
+    test('native Windows resolution accepts short-name aliases without bypassing the branch check', () => {
+        const canonical = 'C:\\Users\\runneradmin\\work';
+        fs.realpathSync.native = jest.fn(() => canonical);
+        path.relative.mockImplementation(path.win32.relative);
+        try {
+            expect(command()).toBe(false);
+            expect(fs.realpathSync.native).toHaveBeenCalledTimes(2);
+            expect(fs.realpathSync).not.toHaveBeenCalled();
+            expect(logError).toHaveBeenCalledWith('❌', 'Предпроверка не пройдена (%s): %s',
+                'branch', expect.stringContaining('только на hotfix/*, main или master'));
+        } finally { delete fs.realpathSync.native; }
+    });
+
+    test('native resolution still rejects a nested directory', () => {
+        fs.realpathSync.native = jest.fn()
+            .mockReturnValueOnce('C:\\Users\\runneradmin\\work')
+            .mockReturnValueOnce('C:\\Users\\runneradmin\\work\\nested');
+        path.relative.mockImplementation(path.win32.relative);
+        try {
+            expect(command()).toBe(false);
+            expect(logError).toHaveBeenCalledWith('❌', 'Предпроверка не пройдена (%s): %s',
+                'repository-root', 'Запустите hotfix из корня репозитория.');
+            expect(execFileSync).toHaveBeenCalledTimes(1);
+        } finally { delete fs.realpathSync.native; }
+    });
+
+    test.each([
+        [path.win32, 'C:\\repo', 'C:\\repo\\nested'],
+        [path.win32, 'C:\\repo', 'D:\\repo'],
+        [path.posix, '/repo', '/repo/nested'],
+        [path.posix, '/Repo', '/repo'],
+    ])('rejects distinct roots with native path semantics', (platformPath, root, cwd) => {
+        path.relative.mockImplementation(platformPath.relative);
+        fs.realpathSync.mockReturnValueOnce(root).mockReturnValueOnce(cwd);
+        expect(command()).toBe(false);
+        expect(logError).toHaveBeenCalledWith('❌', 'Предпроверка не пройдена (%s): %s',
+            'repository-root', 'Запустите hotfix из корня репозитория.');
+        expect(execFileSync).toHaveBeenCalledTimes(1);
+    });
+});

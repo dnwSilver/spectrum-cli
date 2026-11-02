@@ -1,10 +1,11 @@
 {
   "name": "spectrum-cli",
-  "version": "1.2.2",
+  "version": "6.2.0",
   "description": "🚀 Modern CLI for development workflow automation - release management, versioning, and changelog generation",
   "main": "index.js",
   "bin": {
-    "spectrum": "./index.js"
+    "spectrum": "./index.js",
+    "spectrum-ci": "./ci-bootstrap.cjs"
   },
   "scripts": {
     "test": "jest",
@@ -15,6 +16,7 @@
   },
   "files": [
     "index.js",
+    "ci-bootstrap.cjs",
     "src/",
     "README.md",
     "LICENSE",
@@ -49,7 +51,9 @@
     "url": "https://github.com/dnwSilver/spectrum-cli/issues"
   },
   "dependencies": {
-    "commander": "^11.1.0"
+    "commander": "^11.1.0",
+    "semver": "7.8.5",
+    "yaml": "2.9.1"
   },
   "engines": {
     "node": ">=20.0.0",
@@ -71,9 +75,9 @@
     "testEnvironment": "node",
     "collectCoverageFrom": [
       "index.js",
-      "src/command-executor.js",
-      "src/development.js",
-      "src/utils.js"
+      "src/cli/command-executor.js",
+      "src/cli/development.js",
+      "src/common/utils.js"
     ],
     "testMatch": [
       "**/__tests__/**/*.js",

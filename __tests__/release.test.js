@@ -6,32 +6,38 @@ jest.mock("../src/git", () => ({
 }));
 
 jest.mock("../src/changelog", () => ({
-  changelogChangeHeader: jest.fn(),
-  changelogRemoveEmptyChapters: jest.fn(),
-  changelogAddUnreleasedBlock: jest.fn(),
-  changelogCommit: jest.fn(),
+  changelogBuildRelease: jest.fn(),
+  changelogRemoveFragments: jest.fn(),
 }));
 
-jest.mock("../src/utils", () => ({
-  getVersion: jest.fn(),
+jest.mock("../src/common/utils", () => ({
   logSuccess: jest.fn(),
   logError: jest.fn(),
   execCommand: jest.fn(),
   execSilent: jest.fn(),
   getCurrentBranch: jest.fn(),
   getMainBranch: jest.fn(),
-  getMergeRequestUrl: jest.fn(),
+  getDevelopBranch: jest.fn(),
   colors: {},
 }));
-jest.mock("../src/command-executor", () => ({
+
+jest.mock("../src/cli/command-executor", () => ({
+  ...jest.requireActual("../src/cli/command-executor"),
   runCommand: jest.fn(),
+}));
+
+jest.mock("../src/common/version", () => ({
+  ...jest.requireActual("../src/common/version"),
+  upVersion: jest.fn(),
 }));
 
 const git = require("../src/git");
 const changelog = require("../src/changelog");
-const utils = require("../src/utils");
-const { runCommand } = require("../src/command-executor");
+const utils = require("../src/common/utils");
+const version = require("../src/common/version");
+const { runCommand } = require("../src/cli/command-executor");
 const release = require("../src/release");
+const { FRAGMENT_TYPES } = require("../src/changelog/config");
 
 describe("release", () => {
   beforeEach(() => {
@@ -39,117 +45,257 @@ describe("release", () => {
     git.goToDevBranch.mockReturnValue(true);
     git.goToMainBranch.mockReturnValue(true);
     git.updateCurrentBranch.mockReturnValue(true);
-    changelog.changelogChangeHeader.mockReturnValue(true);
-    changelog.changelogRemoveEmptyChapters.mockReturnValue(true);
-    changelog.changelogAddUnreleasedBlock.mockReturnValue(true);
-    changelog.changelogCommit.mockReturnValue(true);
+    changelog.changelogBuildRelease.mockReturnValue(true);
+    changelog.changelogRemoveFragments.mockReturnValue(true);
     utils.execCommand.mockReturnValue(true);
+    utils.execSilent.mockReturnValue("");
+    version.upVersion.mockImplementation((oldVersion, bump) => {
+      const [major, minor, patch] = oldVersion.split(".").map(Number);
+      if (bump === "major") return `${major + 1}.0.0`;
+      if (bump === "minor") return `${major}.${minor + 1}.0`;
+      return `${major}.${minor}.${patch + 1}`;
+    });
   });
 
-  test("releaseCreate fails when version missing", () => {
-    utils.getVersion.mockReturnValue(null);
-
-    expect(release.releaseCreate()).toBe(false);
-    expect(utils.logError).toHaveBeenCalledWith("❌", "Не удалось получить версию из package.json");
+  test("derives the highest SemVer bump from fragment metadata", () => {
+    expect(release.detectBumpType([{ bump: "patch" }, { bump: "major" }, { bump: "minor" }])).toBe("major");
+    expect(release.detectBumpType([{ bump: "patch" }, { bump: "minor" }])).toBe("minor");
+    expect(release.detectBumpType([{ bump: "patch" }])).toBe("patch");
+    expect(release.detectBumpType([])).toBe("patch");
   });
 
-  test("releaseCreate success", () => {
-    utils.getVersion.mockReturnValue("1.2.3");
-    utils.getCurrentBranch.mockReturnValue("release/1.2.3");
-
-    expect(release.releaseCreate()).toBe(true);
-    expect(git.goToDevBranch).toHaveBeenCalled();
-    expect(git.updateCurrentBranch).toHaveBeenCalled();
-    expect(utils.execCommand).toHaveBeenCalledWith("git switch -c release/1.2.3");
+  test("resolves release versions from the stable tag baseline", () => {
+    expect(release.resolveReleaseVersion("1.1.0", [{ bump: "patch" }])).toEqual({
+      bumpType: "patch",
+      newVersion: "1.1.1",
+    });
+    expect(release.resolveReleaseVersion("1.1.0", [{ bump: "fixed" }, { bump: "minor" }])).toEqual({
+      bumpType: "minor",
+      newVersion: "1.2.0",
+    });
+    expect(release.resolveReleaseVersion("1.1.0", [{ bump: "major" }])).toEqual({
+      bumpType: "major",
+      newVersion: "2.0.0",
+    });
+    expect(release.resolveReleaseVersion("4.2.3", [
+      { type: "removed", bump: FRAGMENT_TYPES.removed.bump },
+      { type: "fixed", bump: FRAGMENT_TYPES.fixed.bump },
+    ])).toEqual({ bumpType: "major", newVersion: "5.0.0" });
   });
 
-  test("releaseCreate fails when switch fails", () => {
-    utils.getVersion.mockReturnValue("1.2.3");
-    utils.execCommand.mockReturnValue(false);
-
-    expect(release.releaseCreate()).toBe(false);
-  });
-
-  test("releaseCreate fails when goToDevBranch fails", () => {
-    git.goToDevBranch.mockReturnValue(false);
-    expect(release.releaseCreate()).toBe(false);
-  });
-
-  test("releaseCreate fails when updateCurrentBranch fails", () => {
-    git.updateCurrentBranch.mockReturnValue(false);
-    expect(release.releaseCreate()).toBe(false);
-  });
-
-  test("releasePush success with MR url", () => {
-    utils.getCurrentBranch.mockReturnValue("release/1.2.3");
+  test("releasePush publishes the release commit to dev and main atomically", () => {
     utils.getMainBranch.mockReturnValue("main");
-    utils.getMergeRequestUrl.mockReturnValue(
-      "https://gitlab.spectrumdata.tech/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main"
-    );
+    const context = { devBranch: "dev", mainBranch: "main", newVersion: "1.2.3" };
 
-    expect(release.releasePush()).toBe(true);
-    expect(utils.execCommand).toHaveBeenCalledWith("git push origin release/1.2.3");
-    expect(utils.getMergeRequestUrl).toHaveBeenCalledWith("release/1.2.3", "main");
+    expect(release.releasePush(context)).toBe(true);
+    expect(utils.execCommand).toHaveBeenCalledWith(
+      "git push --atomic origin dev:dev dev:main"
+    );
     expect(utils.logSuccess).toHaveBeenCalledWith(
-      "🌐",
-      "Создать Merge Request: %s",
-      "https://gitlab.spectrumdata.tech/group/project/-/merge_requests/new?merge_request[source_branch]=release%2F1.2.3&merge_request[target_branch]=main"
+      "📤",
+      "Релиз атомарно отправлен в origin/%s и origin/%s.",
+      "dev",
+      "main"
     );
-    expect(git.goToMainBranch).toHaveBeenCalled();
+    expect(git.goToMainBranch).not.toHaveBeenCalled();
   });
 
-  test("releasePush success without MR url", () => {
-    utils.getCurrentBranch.mockReturnValue("release/1.2.3");
+  test.each([
+    ["0.0.0", [{ bump: "major" }], "minor", "0.1.0"],
+    ["0.3.7", [{ bump: "major" }, { bump: "minor" }], "minor", "0.4.0"],
+    ["0.3.7", [{ type: "removed", bump: FRAGMENT_TYPES.removed.bump }], "minor", "0.4.0"],
+    ["0.3.7", [{ bump: "minor" }], "minor", "0.4.0"],
+    ["0.3.7", [{ bump: "patch" }], "patch", "0.3.8"],
+    ["0.3.7", [], "patch", "0.3.8"],
+  ])("keeps initial development %s in 0.x", (baseline, fragments, bumpType, newVersion) => {
+    expect(release.resolveReleaseVersion(baseline, fragments)).toEqual({ bumpType, newVersion });
+  });
+
+  test("promotes to 1.0.0 only with an explicit stable option", () => {
+    expect(release.resolveReleaseVersion("0.3.7", [{ bump: "patch" }], { stable: true }))
+      .toEqual({ bumpType: "major", newVersion: "1.0.0" });
+    expect(release.resolveReleaseVersion("1.3.7", [], { stable: true })).toBeNull();
+    expect(release.resolveReleaseVersion("invalid", [])).toBeNull();
+  });
+
+  test("releaseStart applies explicit promotion and rejects conflicting open releases", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseStart({ stable: true });
+    const check = spec.checks.find(({ name }) => name === "detect-bump-type");
+    const context = { stableVersion: "0.3.7", changelogFragments: [{ bump: "patch" }] };
+    expect(check.run(context)).toEqual({ ok: true, data: { bumpType: "major", newVersion: "1.0.0" } });
+    expect(check.run({ ...context, openReleaseVersion: "0.4.0" }).ok).toBe(false);
+    expect(check.run({ ...context, stableVersion: "1.0.0" }).ok).toBe(false);
+    expect(check.run({ ...context, openReleaseVersion: "1.0.0" }).data.newVersion).toBe("1.0.0");
+  });
+
+  test("releaseStart keeps a pre-1.0 open release during repeated preparation", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseStart();
+    const check = spec.checks.find(({ name }) => name === "detect-bump-type");
+    expect(check.run({ stableVersion: "0.3.7", openReleaseVersion: "0.4.0", changelogFragments: [{ bump: "major" }] }))
+      .toEqual({ ok: true, data: { bumpType: "major", newVersion: "0.4.0" } });
+    expect(version.upVersion).not.toHaveBeenCalled();
+  });
+
+  test("releasePush handles push failures and missing branch context", () => {
     utils.getMainBranch.mockReturnValue("main");
-    utils.getMergeRequestUrl.mockReturnValue(null);
+    const context = { devBranch: "dev", mainBranch: "main", newVersion: "1.2.3" };
 
-    expect(release.releasePush()).toBe(true);
-    expect(utils.logSuccess).not.toHaveBeenCalledWith("🌐", expect.any(String), expect.any(String));
-    expect(git.goToMainBranch).toHaveBeenCalled();
-  });
+    expect(release.releasePush(context)).toBe(true);
 
-  test("releasePush fail", () => {
-    utils.getCurrentBranch.mockReturnValue("release/1.2.3");
     utils.execCommand.mockReturnValue(false);
-
-    expect(release.releasePush()).toBe(false);
-    expect(utils.logSuccess).not.toHaveBeenCalledWith("🌐", expect.any(String), expect.any(String));
+    expect(release.releasePush(context)).toBe(false);
+    expect(utils.logError).toHaveBeenCalledWith(
+      "❌",
+      expect.stringContaining("Релиз не отправлен"),
+      expect.stringContaining("git push --atomic")
+    );
+    expect(release.releasePush({})).toBe(false);
   });
 
-  test("releaseClose delegates to executor", async () => {
-    runCommand.mockResolvedValue(true);
-    await expect(release.releaseClose()).resolves.toBe(true);
-    expect(runCommand).toHaveBeenCalled();
+  test("releaseStart wires fragment validation, bump, assembly, cleanup, and publication in order", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+
+    const spec = await release.releaseStart();
+
+    expect(spec.checks.map((check) => check.name)).toEqual([
+      "git-repo",
+      "clean-working-tree",
+      "branch-up-to-date",
+      "main-and-dev-branches",
+      "on-dev-branch",
+      "dev-contains-main",
+      "stable-version",
+      "changelog-exists",
+      "release-state",
+      "changelog-prettier-check",
+      "changelog-fragments",
+      "detect-bump-type",
+    ]);
+    expect(spec.steps.map((step) => step.name)).toEqual([
+      "build-release-changelog",
+      "format-changelog",
+      "lint-changelog",
+      "remove-changelog-fragments",
+      "commit-release",
+      "push-dev-and-main",
+    ]);
+
+    const bumpCheck = spec.checks.find((check) => check.name === "detect-bump-type");
+    const bumpResult = bumpCheck.run({
+      stableVersion: "1.4.2",
+      changelogFragments: [{ bump: "patch" }, { bump: "major" }],
+    });
+    expect(bumpResult).toEqual({
+      ok: true,
+      data: {
+        bumpType: "major",
+        newVersion: "2.0.0",
+      },
+    });
+    expect(version.upVersion).toHaveBeenCalledWith("1.4.2", "major");
   });
 
-  test("releaseStart delegates to executor", async () => {
-    runCommand.mockResolvedValue(false);
-    await expect(release.releaseStart()).resolves.toBe(false);
-    expect(runCommand).toHaveBeenCalled();
+  test("releaseStart rejects a version already used by a hotfix branch", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseStart();
+    utils.execSilent.mockReturnValueOnce("hotfix/AR-123-1.3.0");
+
+    const bumpCheck = spec.checks.find((check) => check.name === "detect-bump-type");
+    expect(bumpCheck.run({
+      stableVersion: "1.2.0",
+      changelogFragments: [{ bump: "minor" }],
+    }).ok).toBe(false);
   });
 
-  test("releaseClose merge step failure", async () => {
+  test("releaseStart reuses an open version and still rejects reserved or published versions", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseStart();
+    const check = spec.checks.find(({ name }) => name === "detect-bump-type");
+    const context = { stableVersion: "1.2.0", openReleaseVersion: "1.3.0", changelogFragments: [{ bump: "major" }] };
+    expect(check.run(context)).toEqual({ ok: true, data: { bumpType: "major", newVersion: "1.3.0" } });
+    expect(version.upVersion).not.toHaveBeenCalled();
+    utils.execSilent.mockReturnValueOnce("hotfix/AR-123-1.3.0");
+    expect(check.run(context).ok).toBe(false);
+    utils.execSilent.mockReturnValueOnce("").mockReturnValueOnce("").mockReturnValueOnce("v1.3.0");
+    expect(check.run(context).ok).toBe(false);
+  });
+
+  test("releaseCommit skips empty commits and does not stage a missing fragments directory", () => {
+    expect(release.releaseCommit({ newVersion: "1.3.0", changelogFragments: [] })).toBe(true);
+    expect(utils.execCommand).toHaveBeenCalledWith("git add --all -- CHANGELOG.md");
+    expect(utils.execCommand).not.toHaveBeenCalledWith(expect.stringContaining("git commit"));
+  });
+
+  test("releaseStart steps collapse fragments and stage only changelog artifacts", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseStart();
+
+    const context = { newVersion: "1.3.0", changelogFragments: [{ filePath: ".changelog/a.added.md" }] };
+    expect(spec.steps[0].run(context)).toBe(true);
+    expect(changelog.changelogBuildRelease).toHaveBeenCalledWith(context);
+    expect(spec.steps[3].run(context)).toBe(true);
+    expect(changelog.changelogRemoveFragments).toHaveBeenCalledWith(context);
+
+    utils.execSilent.mockReturnValue("3.0.0");
+    expect(spec.steps[1].run(context)).toBe(true);
+    expect(utils.execCommand).toHaveBeenCalledWith(
+      "npx --yes prettier --write CHANGELOG.md"
+    );
+
+    expect(spec.steps[4].run(context)).toBe(true);
+    expect(utils.execCommand).toHaveBeenCalledWith(
+      "git add --all -- CHANGELOG.md .changelog"
+    );
+    expect(utils.execCommand).toHaveBeenCalledWith(
+      'git commit --message "📝 Подготовить релиз 1.3.0." --no-verify'
+    );
+    expect(utils.execCommand).not.toHaveBeenCalledWith(expect.stringContaining("package.json"));
+  });
+
+  test("releaseStart fails format and lint steps cleanly without prettier", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseStart();
+
+    utils.execSilent.mockReturnValue(null);
+    expect(spec.steps[1].run({})).toBe(false);
+    expect(spec.steps[2].run({})).toBe(false);
+  });
+
+  test("releaseClose reads the release version from the changelog heading", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseClose();
+
+    expect(spec.checks.map((check) => check.name)).toEqual([
+      "git-repo",
+      "clean-working-tree",
+      "branch-up-to-date",
+      "on-main-branch",
+      "main-and-dev-branches",
+      "changelog-release-version",
+      "stable-tag-at-head",
+    ]);
+  });
+
+  test("releaseClose only syncs stable into dev and exposes merge and push failures", async () => {
+    runCommand.mockImplementation(async (spec) => spec);
+    const spec = await release.releaseClose();
+
     utils.getMainBranch.mockReturnValue("main");
-    utils.execCommand.mockImplementation((cmd) => cmd !== "git merge main");
-    runCommand.mockImplementation(async (spec) => spec.steps[4].run({}));
+    utils.execCommand.mockImplementation((command) => command !== "git merge main");
+    expect(spec.steps[4].run({})).toBe(false);
 
-    await expect(release.releaseClose()).resolves.toBe(false);
-  });
-
-  test("releaseClose push step failure", async () => {
     utils.getCurrentBranch.mockReturnValue("dev");
-    utils.execCommand.mockImplementation((cmd) => cmd !== "git push origin dev -o ci.skip");
-    runCommand.mockImplementation(async (spec) => spec.steps[5].run({}));
-
-    await expect(release.releaseClose()).resolves.toBe(false);
-  });
-
-  test("releaseStart lint-changelog step covers failed preflight", async () => {
-    const preflight = require("../src/preflight");
-    jest.spyOn(preflight, "requireChangelogFormatted").mockReturnValue({ ok: false, reason: "bad format" });
-    runCommand.mockImplementation(async (spec) => spec.steps[3].run({}));
-
-    await expect(release.releaseStart()).resolves.toBe(false);
-    preflight.requireChangelogFormatted.mockRestore();
+    utils.execCommand.mockImplementation((command) => command !== "git push origin dev");
+    expect(spec.steps[5].run({ devBranch: "dev" })).toBe(false);
+    expect(spec.steps.map((step) => step.name)).toEqual([
+      "switch-main",
+      "update-main",
+      "switch-dev",
+      "update-dev",
+      "merge-main-into-dev",
+      "push-dev",
+    ]);
   });
 });
