@@ -292,16 +292,39 @@ test("orphan child survives link timeout; resolved task reopens", async () => {
   api.issues[1].resolved = 123;
   await tracker.ensure(value(), CFG);
   expect(api.issues).toHaveLength(2);
-  expect(api.calls.some(([, , body]) => body.query === "State {Новая}")).toBe(
+  expect(api.calls.some(([, , body]) => body.query === "State Новая")).toBe(
     true,
   );
   expect(
     api.calls.some(
       ([, , body]) =>
         body.query ===
-        "Статья учета времени {security-team} Tester {test.qa} Subsystem {webapp}",
+        "Статья учета времени security-team Tester test.qa Subsystem webapp",
     ),
   ).toBe(true);
+});
+test("failed field command reuses existing tasks on the next run", async () => {
+  const api = new TrackerAPI();
+  const tracker = new Tracker(api, "https://yt.example", {});
+  const post = api.post.bind(api);
+  let failCommand = true;
+  api.post = async (location, body) => {
+    if (location === "commands" && failCommand) {
+      failCommand = false;
+      throw Object.assign(Error("invalid command"), { status: 400 });
+    }
+    return post(location, body);
+  };
+  await expect(tracker.ensure(value(), CFG)).rejects.toThrow("invalid command");
+  expect(api.issues).toHaveLength(2);
+  const issueIds = api.issues.map((issue) => issue.id);
+  const result = await tracker.ensure(value(), CFG);
+  expect(api.issues.map((issue) => issue.id)).toEqual(issueIds);
+  expect(result.task.id).toBe(issueIds[1]);
+  expect(api.calls.at(-1)).toEqual(["POST", "commands", {
+    query: "Статья учета времени security-team Tester test.qa Subsystem webapp",
+    issues: [{ id: issueIds[1] }],
+  }]);
 });
 test("ambiguous parents and injected field commands block writes", async () => {
   const api = new TrackerAPI(),

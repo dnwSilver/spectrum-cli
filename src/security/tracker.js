@@ -226,18 +226,19 @@ class Tracker {
       id: child.id,
     });
     if ((child.description || "").includes(marker)) {
+      // Commands use field/value pairs; braces belong to search queries.
       const commands = [
-        "Статья учета времени {" + cfg.time_article + "}",
-        "Tester {" + cfg.tester + "}",
+        "Статья учета времени " + cfg.time_article,
+        "Tester " + cfg.tester,
       ];
-      if (cfg.subsystem) commands.push("Subsystem {" + cfg.subsystem + "}");
+      if (cfg.subsystem) commands.push("Subsystem " + cfg.subsystem);
       await this.api.post("commands", {
         query: commands.join(" "),
         issues: [{ id: child.id }],
       });
     }
     if (child.resolved) {
-      const command = this.env.NIGHTLY_REOPEN_COMMAND ?? "State {Новая}";
+      const command = this.env.NIGHTLY_REOPEN_COMMAND ?? "State Новая";
       ensure(
         command,
         "Resolved task still has findings; configure a reopen command",

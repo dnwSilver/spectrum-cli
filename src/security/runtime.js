@@ -199,6 +199,15 @@ class API {
         } catch {
           // HTML/proxy pages are not actionable API validation messages.
         }
+        // YouTrack command errors can encode Cyrillic as numeric HTML entities.
+        // Decode before redaction so encoded credentials cannot bypass masking.
+        detail = detail.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (entity, value) => {
+          const hex = value[0].toLowerCase() === "x";
+          const code = Number.parseInt(hex ? value.slice(1) : value, hex ? 16 : 10);
+          return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)
+            ? String.fromCodePoint(code)
+            : entity;
+        });
         const context = diagnostic(endpoint.origin + endpoint.pathname + (detail ? ": " + detail : ""), secrets);
         const error = new Error(`API ${method} failed (HTTP ${res.status}) at ${context}`);
         error.status = res.status;

@@ -62,3 +62,18 @@ test("creation failure identifies the destination project and preserves HTTP sta
   });
   expect(api.request).toHaveBeenCalledTimes(1);
 });
+
+test("YouTrack numeric HTML error entities are readable and decoded credentials stay masked", async () => {
+  const token = "token-sensitive";
+  const encodedToken = Array.from(token, (char) => "&#" + char.codePointAt(0) + ";").join("");
+  const api = new API("https://issues.example/api", { Authorization: "Bearer " + token }, async () => response({
+    error_description: "&#1054;&#1078;&#1080;&#1076;&#1072;&#1077;&#1090;&#1089;&#1103; &#x54;ester: " + encodedToken + " &#99999999;",
+  }));
+  let error;
+  try { await api.post("commands", {}); }
+  catch (caught) { error = caught; }
+  expect(error.message).toContain("Ожидается Tester: [REDACTED]");
+  expect(error.message).toContain("&#99999999;");
+  expect(error.message).not.toContain(token);
+  expect(error.message).not.toContain(encodedToken);
+});
