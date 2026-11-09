@@ -36,19 +36,19 @@ function runner(env = {}) {
 test('major selection freezes the exact npm version across subsequent jobs and preserves child exit status', async () => {
   const file = path.join(root, 'report/cli.json');
   const first = runner({ SPECTRUM_CLI_IDENTITY_FILE: file, SPECTRUM_CLI_VERSION: '6' });
-  expect(await first.bootstrap.execute(['security', 'scan'])).toBe(0);
+  expect(await first.bootstrap.execute(['nextjs', 'licenses'])).toBe(0);
   expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ schemaVersion: 1, source: 'npm', version: '6.2.1' });
   const next = runner({ SPECTRUM_CLI_IDENTITY_FILE: file, TEST_EXIT: '7' });
   next.latest('6.3.0');
-  expect(await next.bootstrap.execute(['security', 'repair', '--silence'])).toBe(7);
+  expect(await next.bootstrap.execute(['sbom', 'catalog', 'resolve', '--silence'])).toBe(7);
   expect(next.calls[0].args.at(-1)).toBe('spectrum-cli@6.2.1');
-  expect(next.output[0].args).toEqual(['security', 'repair', '--silence']);
+  expect(next.output[0].args).toEqual(['sbom', 'catalog', 'resolve', '--silence']);
 });
 test('dry forwards flags and does not create an identity artifact', async () => {
   const file = path.join(root, 'report/cli.json');
   const { bootstrap, output } = runner({ SPECTRUM_CLI_IDENTITY_FILE: file });
-  expect(await bootstrap.execute(['security', 'scan', '-ds'])).toBe(0);
-  expect(output[0].args).toEqual(['security', 'scan', '-ds']);
+  expect(await bootstrap.execute(['nextjs', 'licenses', '-ds'])).toBe(0);
+  expect(output[0].args).toEqual(['nextjs', 'licenses', '-ds']);
   expect(fs.existsSync(file)).toBe(false);
 });
 test('downstream input overrides local selectors, and conflicting artifact identities fail', async () => {
@@ -85,7 +85,7 @@ test('installer credentials are stripped, scripts are disabled, cache is explici
 });
 test('older CLI cannot silently lose identity forwarding', async () => {
   const { bootstrap } = runner({ SPECTRUM_CLI_VERSION: '6.1.2' });
-  await expect(bootstrap.execute(['security', 'scan'])).rejects.toThrow('requires CLI 6.2.0');
+  await expect(bootstrap.execute(['nextjs', 'licenses'])).rejects.toThrow('requires CLI 6.2.0');
 });
 function gitFixture() {
   const repo = path.join(root, 'repo'); packageAt(repo);
@@ -116,7 +116,7 @@ test('branch installs a fixed archive without Git in the installer and remains p
     expect(url).toBe('https://codeload.github.com/dnwSilver/spectrum-cli/tar.gz/' + sha);
     return { ok: true, arrayBuffer: async () => archive };
   });
-  expect(await next.bootstrap.execute(['security', 'track'])).toBe(0);
+  expect(await next.bootstrap.execute(['sbom', 'catalog', 'populate'])).toBe(0);
   expect(next.output[0].cli.sha).toBe(sha);
 });
 test('a forced/mismatched branch cannot substitute code for the frozen commit', async () => {
@@ -124,7 +124,7 @@ test('a forced/mismatched branch cannot substitute code for the frozen commit', 
   const { bootstrap, run } = runner({ SPECTRUM_CLI_IDENTITY: JSON.stringify(fixed) });
   bootstrap.fetch = async url => ({ ok: true, json: async () => url.includes('/git/ref/') ? { ref: 'refs/heads/main', object: { type: 'commit', sha: 'b'.repeat(40) } } :
     { status: 'diverged', merge_base_commit: { sha: 'c'.repeat(40) } } });
-  await expect(bootstrap.execute(['security', 'track'])).rejects.toThrow('no longer on the selected ref');
+  await expect(bootstrap.execute(['sbom', 'catalog', 'populate'])).rejects.toThrow('no longer on the selected ref');
   expect(run).not.toHaveBeenCalled();
 });
 test('malformed identities and raw commit selectors are rejected', async () => {

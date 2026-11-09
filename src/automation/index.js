@@ -73,30 +73,6 @@ function safePath(value, absolute = false) {
       .every((part) => part && part !== "." && part !== "..")
   );
 }
-function repositoryPath(root, relative) {
-  ensure(safePath(relative), "Expected a repository-relative path");
-  const base = fs.realpathSync(root);
-  const target = path.resolve(base, relative);
-  let cursor = base;
-  for (const part of relative.split("/")) {
-    cursor = path.join(cursor, part);
-    if (
-      fs.existsSync(cursor) ||
-      (() => {
-        try {
-          fs.lstatSync(cursor);
-          return true;
-        } catch {
-          return false;
-        }
-      })()
-    ) {
-      const real = fs.realpathSync(cursor);
-      ensure(real.startsWith(base + path.sep), "Path leaves repository");
-    }
-  }
-  return target;
-}
 function exec(
   args,
   {
@@ -297,7 +273,6 @@ module.exports = {
   remove,
   temporary,
   safePath,
-  repositoryPath,
   exec,
   sleep,
   request,

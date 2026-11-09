@@ -9,7 +9,6 @@ const mockUpdate = { checkForUpdates: jest.fn(), upgrade: jest.fn() };
 
 const mockNextjs = { licenses: jest.fn() };
 const mockSbom = { resolve: jest.fn(), populate: jest.fn() };
-const mockSecurity = { scan: jest.fn(), track: jest.fn(), reconcile: jest.fn(), repair: jest.fn() };
 
 const mockState = {
   root: null,
@@ -107,7 +106,6 @@ jest.mock("../src/hotfix", () => mockHotfix);
 jest.mock("../src/cli/update-check", () => mockUpdate);
 jest.mock("../src/nextjs", () => mockNextjs);
 jest.mock("../src/sbom", () => mockSbom);
-jest.mock("../src/security", () => mockSecurity);
 jest.mock("../package.json", () => ({ version: "9.9.9" }), { virtual: true });
 
 describe("index CLI wiring", () => {
@@ -119,7 +117,7 @@ describe("index CLI wiring", () => {
     jest.clearAllMocks();
     jest.resetModules();
     mockUpdate.checkForUpdates.mockResolvedValue(undefined);
-    for (const module of [mockNextjs, mockSbom, mockSecurity]) {
+    for (const module of [mockNextjs, mockSbom]) {
       Object.values(module).forEach(handler => handler.mockReset().mockResolvedValue(0));
     }
     process.exit = jest.fn();
@@ -147,8 +145,8 @@ describe("index CLI wiring", () => {
       command._commands.forEach(collect);
     };
     collect(mockState.root);
-    expect(actions).toHaveLength(21);
-    const automation = new Set(["licenses", "resolve", "populate", "scan", "track", "reconcile", "repair"]);
+    expect(actions).toHaveLength(17);
+    const automation = new Set(["licenses", "resolve", "populate"]);
     const workflow = actions.filter(command => !automation.has(command._name));
     expect(workflow).toHaveLength(14);
     for (const command of actions.filter(command => automation.has(command._name))) {
@@ -164,10 +162,6 @@ describe("index CLI wiring", () => {
     ["nextjs licenses", mockNextjs, "licenses"],
     ["sbom catalog resolve", mockSbom, "resolve"],
     ["sbom catalog populate", mockSbom, "populate"],
-    ["security scan", mockSecurity, "scan"],
-    ["security track", mockSecurity, "track"],
-    ["security reconcile", mockSecurity, "reconcile"],
-    ["security repair", mockSecurity, "repair"],
   ])("%s invokes its handler without an update check", async (path, module, method) => {
     const command = path.split(" ").reduce(
       (parent, name) => parent._commands.find(child => child._name === name),
@@ -181,10 +175,10 @@ describe("index CLI wiring", () => {
     expect(process.exitCode).toBe(0);
   });
 
-  test.each(["nextjs licenses", "sbom catalog resolve", "sbom catalog populate", "security scan", "security track", "security reconcile", "security repair"])("%s forwards dry/silence in async command context", async path => {
+  test.each(["nextjs licenses", "sbom catalog resolve", "sbom catalog populate"])("%s forwards dry/silence in async command context", async path => {
     const { isDryRun, reportPreflight } = require('../src/cli/command-executor');
     const command = path.split(" ").reduce((parent, name) => parent._commands.find(child => child._name === name), mockState.root);
-    const target = path.startsWith('nextjs') ? mockNextjs : path.startsWith('sbom') ? mockSbom : mockSecurity;
+    const target = path.startsWith('nextjs') ? mockNextjs : mockSbom;
     const method = path.split(' ').pop();
     const log = jest.spyOn(console, 'log').mockImplementation(() => {});
     try {

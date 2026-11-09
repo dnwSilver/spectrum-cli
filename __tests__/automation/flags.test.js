@@ -3,49 +3,9 @@ const { fs, path, temp, remove, save, read, sha } = io;
 const { spawnSync } = require("node:child_process");
 const { runAutomationAction } = require("../../src/cli/run-action");
 const { reportPreflight } = require("../../src/cli/command-executor");
-const { checkGitlabAccess } = require("../../src/preflight/automation");
 const nextjs = require("../../src/nextjs");
 const sbom = require("../../src/sbom");
-const security = require("../../src/security");
 const { Publisher } = require("../../src/sbom/populate");
-const { Repairer } = require("../../src/security/repair");
-const CFG = {
-  project_id: "123",
-  project_path: "example/webapp",
-  branch: "main",
-  sha: "a".repeat(40),
-  pipeline_id: "456",
-  pipeline_url: "https://gitlab.example.com/pipelines/456",
-  youtrack_project: "APP",
-  tester: "qa.user",
-  time_article: "security",
-  subsystem: "",
-};
-const FINDING = {
-  id: "CVE-2099-12345",
-  aliases: ["CVE-2099-12345"],
-  severity: "HIGH",
-  sources: ["npm"],
-  occurrences: [{ package: "example-package" }],
-  task: { key: "APP-1" },
-  parent: { key: "CVE-1" },
-};
-const ENV = {
-  PATH: process.env.PATH,
-  NEXUS_USER: "",
-  NEXUS_PASSWORD: "",
-  CI_REGISTRY_USER: "",
-  CI_REGISTRY_PASSWORD: "",
-  CI_PROJECT_ID: "123",
-  CI_PROJECT_PATH: "example/webapp",
-  CI_COMMIT_SHA: CFG.sha,
-  CI_PIPELINE_ID: "456",
-  CI_PIPELINE_URL: CFG.pipeline_url,
-  CI_JOB_ID: "789",
-  NIGHTLY_YOUTRACK_PROJECT: "APP",
-  NIGHTLY_YOUTRACK_TIME_TRACKING_ARTICLE: "security",
-  NIGHTLY_YOUTRACK_TESTER: "qa.user",
-};
 let dirs, log, error, previousCode;
 beforeEach(() => {
   dirs = [];
@@ -147,31 +107,6 @@ test.each([[["--dry", "--silence"]], [["-ds"]]])(
     expect(snapshot(cwd)).toEqual(before);
   },
 );
-test("scan dry checks source/tools/registry without npm audit, Trivy scan or report files", async () => {
-  const cwd = directory();
-  put(cwd, "Dockerfile", "FROM registry.example.com/runtime:24.1.0\n");
-  const before = snapshot(cwd);
-  const run = jest.fn(() => ({
-    stdout: "sha256:" + "1".repeat(64),
-    status: 0,
-  }));
-  const checkExecutables = jest.fn();
-  const registry = { immutableImage: jest.fn(async () => "image@sha256:" + "1".repeat(64)) };
-  await dry(security.scan, {
-    cwd,
-    env: {
-      ...ENV,
-      NIGHTLY_NPM_ENABLED: "false",
-      NIGHTLY_CHECK_NODE: "false",
-      NIGHTLY_DOCKERFILE: "Dockerfile",
-    },
-    deps: { run, checkExecutables, registry },
-  });
-  expect(run).not.toHaveBeenCalled();
-  expect(registry.immutableImage).toHaveBeenCalledWith("registry.example.com/runtime:24.1.0");
-  expect(checkExecutables.mock.calls[0][0]).toEqual(["trivy"]);
-  expect(snapshot(cwd)).toEqual(before);
-});
 test("resolve dry reads image descriptor but never scans with Syft, submits request or writes reports", async () => {
   const cwd = directory(),
     before = snapshot(cwd),
@@ -221,110 +156,7 @@ test("populate dry logs in and checks namespace without fetching upstream, build
   expect(publisher.publish).not.toHaveBeenCalled();
   expect(snapshot(cwd)).toEqual(before);
 });
-test("track dry validates trusted consumer and YouTrack without creating issues or tracked artifact", async () => {
-  const cwd = directory();
-  put(cwd, "security-report/tracked.json", "previous result");
-  const before = snapshot(cwd);
-  const tracker = { ensure: jest.fn() },
-    api = {
-      post: jest.fn(),
-      get: jest.fn(async (location) => {
-        if (location.endsWith("/jobs/10")) return { pipeline: { id: "456" } };
-        if (location.includes("/pipelines/"))
-          return { source: "schedule", ref: "main", sha: CFG.sha, id: "456" };
-        if (location.includes("/artifacts/"))
-          return Buffer.from(
-            JSON.stringify({
-              schemaVersion: 1,
-              config: CFG,
-              findings: [FINDING],
-              errors: [],
-            }),
-          );
-        return { protected: true };
-      }),
-    };
-  await dry(security.track, {
-    cwd,
-    env: {
-      YOUTRACK_URL: "https://issues.example.com",
-      YOUTRACK_PRIVATE_TOKEN: "fake",
-      NIGHTLY_CONSUMER_PROJECT: "123",
-      NIGHTLY_CONSUMER_SCAN_JOB: "10",
-      NIGHTLY_EXPECTED_COMPONENT_SHA: CFG.sha,
-      CI_COMMIT_SHA: CFG.sha,
-    },
-    deps: {
-      api,
-      tracker,
-      checkGitlabAccess: async () => ({}),
-      checkYouTrackAccess: async () => ({}),
-    },
-  });
-  expect(tracker.ensure).not.toHaveBeenCalled();
-  expect(api.post).not.toHaveBeenCalled();
-  expect(snapshot(cwd)).toEqual(before);
-});
-test("reconcile dry checks component reference but never creates pipeline or overwrites tracked artifact", async () => {
-  const cwd = directory();
-  save(path.join(cwd, "security-report/findings.json"), {
-    schemaVersion: 1,
-    config: CFG,
-    findings: [FINDING],
-    errors: [],
-  });
-  put(cwd, "security-report/tracked.json", "previous result");
-  const before = snapshot(cwd),
-    api = { post: jest.fn(), get: jest.fn(async () => ({ id: CFG.sha })) };
-  await dry(security.reconcile, {
-    cwd,
-    env: {
-      NIGHTLY_TRACKER_PROJECT: "automation/security",
-      NIGHTLY_COMPONENT_SHA: CFG.sha,
-      NIGHTLY_TRACKER_REF: "v2.0.0",
-      NIGHTLY_SCAN_JOB_ID: "10",
-      CI_PROJECT_ID: "123",
-    },
-    deps: { api, checkGitlabAccess: async () => ({}) },
-  });
-  expect(api.post).not.toHaveBeenCalled();
-  expect(snapshot(cwd)).toEqual(before);
-});
-test("repair dry checks tasks and source SHA without cloning, modifying dependencies, checks, commits or MRs", async () => {
-  const cwd = directory();
-  save(path.join(cwd, "security-report/tracked.json"), {
-    config: CFG,
-    findings: [FINDING],
-    errors: [],
-  });
-  put(cwd, "security-report/final.json", "previous result");
-  put(cwd, "security-report/message.json", "previous messages");
-  put(cwd, "package.json", "{}");
-  put(cwd, "package-lock.json", "{}");
-  const before = snapshot(cwd);
-  const api = {
-      post: jest.fn(),
-      get: jest.fn(async () => ({ commit: { id: CFG.sha } })),
-    },
-    run = jest.fn(() => ({ status: 0, stdout: "" }));
-  const repairOne = jest.spyOn(Repairer.prototype, "repairOne");
-  await dry(security.repair, {
-    cwd,
-    env: { ...ENV, NIGHTLY_CHECK_COMMANDS: '[["npm","test"]]' },
-    deps: {
-      api,
-      run,
-      checkExecutables: () => {},
-      checkGitlabAccess: async () => ({}),
-    },
-  });
-  expect(repairOne).not.toHaveBeenCalled();
-  expect(api.post).not.toHaveBeenCalled();
-  expect(run.mock.calls.map(([args]) => args.slice(0, 2))).toEqual([
-    ["git", "cat-file"],
-  ]);
-  expect(snapshot(cwd)).toEqual(before);
-});
+
 test("dry with silence still reports failed preflight and does not create outputs", async () => {
   const cwd = directory(),
     before = snapshot(cwd);
@@ -349,98 +181,6 @@ test("dry with silence still reports failed preflight and does not create output
   );
   expect(snapshot(cwd)).toEqual(before);
 });
-test("silence suppresses successful service preflight messages while retaining errors", async () => {
-  const env = {
-      CI_API_V4_URL: "https://gitlab.example.com/api/v4",
-      GLAB_BOT_PAT: "fake",
-    },
-    api = {
-      get: async (location) =>
-        location === "user"
-          ? { id: 1, state: "active" }
-          : location === "personal_access_tokens/self"
-            ? { active: true, scopes: ["api"] }
-            : { permissions: { project_access: { access_level: 40 } } },
-    };
-  await runAutomationAction(
-    async () => {
-      await checkGitlabAccess(env, ["123"], { api });
-      return 0;
-    },
-    { opts: () => ({ silence: true }) },
-  );
-  expect(log).not.toHaveBeenCalled();
-  await runAutomationAction(
-    async () => {
-      throw Error("preflight denied");
-    },
-    { opts: () => ({ silence: true }) },
-  );
-  expect(error).toHaveBeenCalledWith("ERROR: preflight denied");
-  expect(process.exitCode).toBe(1);
-});
-
-test('track no-verify reads its report and creates tasks without access or pipeline preflights', async () => {
-  const cwd = directory();
-  const checkGitlabAccess = jest.fn(() => { throw Error('preflight called'); });
-  const checkYouTrackAccess = jest.fn(() => { throw Error('preflight called'); });
-  const tracker = { ensure: jest.fn(async () => ({ task: { key: 'APP-1' }, parent: { key: 'CVE-1' } })) };
-  const api = { get: jest.fn(async () => Buffer.from(JSON.stringify({
-    schemaVersion: 1, config: CFG, findings: [FINDING], errors: []
-  }))) };
-  await runAutomationAction(() => security.track({
-    cwd,
-    env: { YOUTRACK_URL: 'https://issues.example.com', YOUTRACK_PRIVATE_TOKEN: 'fake',
-      NIGHTLY_CONSUMER_PROJECT: '123', NIGHTLY_CONSUMER_SCAN_JOB: '10' },
-    deps: { api, tracker, checkGitlabAccess, checkYouTrackAccess }
-  }), { verify: false });
-  expect(process.exitCode).toBe(0);
-  expect(checkGitlabAccess).not.toHaveBeenCalled();
-  expect(checkYouTrackAccess).not.toHaveBeenCalled();
-  expect(api.get).toHaveBeenCalledTimes(1);
-  expect(api.get.mock.calls[0][0]).toContain('/artifacts/');
-  expect(tracker.ensure).toHaveBeenCalledTimes(1);
-  expect(read(path.join(cwd, 'security-report/tracked.json')).preflight).toBeUndefined();
-});
-
-test('reconcile no-verify starts the tracker without introspection or ref verification', async () => {
-  const cwd = directory();
-  const report = { config: CFG, findings: [FINDING], errors: [] };
-  save(path.join(cwd, 'security-report/findings.json'), report);
-  const checkGitlabAccess = jest.fn(() => { throw Error('preflight called'); });
-  const api = {
-    post: jest.fn(async () => ({ id: 1, sha: CFG.sha, status: 'success' })),
-    get: jest.fn(async (location) => location.includes('/artifacts/')
-      ? Buffer.from(JSON.stringify(report)) : [{ id: 2, name: 'nightly:track' }])
-  };
-  await runAutomationAction(() => security.reconcile({ cwd,
-    env: { NIGHTLY_TRACKER_PROJECT: 'automation/security', NIGHTLY_COMPONENT_SHA: CFG.sha,
-      NIGHTLY_TRACKER_REF: 'v2.0.0', NIGHTLY_SCAN_JOB_ID: '10', CI_PROJECT_ID: '123' },
-    deps: { api, checkGitlabAccess }
-  }), { verify: false });
-  expect(process.exitCode).toBe(0);
-  expect(checkGitlabAccess).not.toHaveBeenCalled();
-  expect(api.post).toHaveBeenCalledTimes(1);
-  expect(api.get.mock.calls.every(([location]) => !location.includes('/repository/'))).toBe(true);
-  expect(read(path.join(cwd, 'security-report/tracked.json'))).toEqual(report);
-});
-
-test('repair no-verify enters repairOne without an access preflight', async () => {
-  const cwd = directory();
-  save(path.join(cwd, 'package.json'), { dependencies: { 'example-package': '1.0.0' } });
-  save(path.join(cwd, 'package-lock.json'), { packages: {} });
-  save(path.join(cwd, 'security-report/tracked.json'), { config: CFG, findings: [{ ...FINDING, occurrences: [{ package: 'example-package', entry: 'example-package' }] }], errors: [] });
-  const checkGitlabAccess = jest.fn(() => { throw Error('preflight called'); });
-  const repairOne = jest.spyOn(Repairer.prototype, 'repairOne').mockResolvedValue({ status: 'verified' });
-  await runAutomationAction(() => security.repair({ cwd, env: ENV,
-    deps: { api: {}, checkGitlabAccess }
-  }), { verify: false });
-  expect(process.exitCode).toBe(0);
-  expect(checkGitlabAccess).not.toHaveBeenCalled();
-  expect(repairOne).toHaveBeenCalledTimes(1);
-  expect(read(path.join(cwd, 'security-report/final.json')).preflight).toBeUndefined();
-});
-
 test('populate no-verify logs in and executes without protected-main or registry preflights', async () => {
   const cwd = directory();
   const checkRegistryAccess = jest.fn(() => { throw Error('preflight called'); });
@@ -462,10 +202,6 @@ test.each([
   "nextjs licenses",
   "sbom catalog resolve",
   "sbom catalog populate",
-  "security scan",
-  "security track",
-  "security reconcile",
-  "security repair",
 ])("%s help lists short and long flags", (command) => {
   const result = spawnSync(
     process.execPath,
@@ -481,23 +217,29 @@ test.each([
   expect(result.stdout).toContain("-s, --silence");
 });
 
-test.each(["reconcile", "repair"])(
-  "%s dry reports incomplete evidence even with no findings, preserving files",
-  async (phase) => {
-    const cwd = directory(),
-      file = phase === "repair" ? "tracked.json" : "findings.json";
-    save(path.join(cwd, "security-report", file), {
-      config: CFG,
-      findings: [],
-      errors: ["scan failed"],
-    });
+
+test("silence suppresses successful preflight messages while retaining errors", async () => {
+  await runAutomationAction(async () => {
+    reportPreflight("automation", "fixture");
+    return 0;
+  }, { opts: () => ({ silence: true }) });
+  expect(log).not.toHaveBeenCalled();
+  await runAutomationAction(async () => { throw Error("preflight denied"); },
+    { opts: () => ({ silence: true }) });
+  expect(error).toHaveBeenCalledWith("ERROR: preflight denied");
+  expect(process.exitCode).toBe(1);
+});
+
+test.each(["scan", "track", "reconcile", "repair"])(
+  "removed security %s is rejected by the real CLI without creating files",
+  (command) => {
+    const cwd = directory();
     const before = snapshot(cwd);
-    await runAutomationAction(
-      (options) => security[phase]({ ...options, cwd, env: ENV }),
-      { opts: () => ({ dry: true, silence: true }) },
-    );
-    expect(process.exitCode).toBe(1);
-    expect(error.mock.calls.flat().join(" ")).toContain("Incomplete scan");
+    const result = spawnSync(process.execPath,
+      [path.resolve(__dirname, "../../index.js"), "security", command],
+      { cwd, encoding: "utf8", timeout: 10000 });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("unknown command 'security'");
     expect(snapshot(cwd)).toEqual(before);
   },
 );

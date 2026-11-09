@@ -6,7 +6,6 @@ const chart = require('../chart');
 const token = require('../token');
 const nextjs = require('../nextjs');
 const sbom = require('../sbom');
-const security = require('../security');
 const { upgrade } = require('./update-check');
 const { version: pkgVersion } = require('../../package.json');
 const { runAction, runAutomationAction } = require('./run-action');
@@ -65,47 +64,6 @@ catalogCmd
   .option("-d, --dry", "Запустить только предпроверки")
   .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
   .action((command) => runAutomationAction(sbom.populate, command));
-
-// Команды security
-const securityCmd = program
-  .command("security")
-  .description("Ночная проверка и исправление HIGH/CRITICAL");
-
-securityCmd
-  .command("scan")
-  .description("Проверить production npm-зависимости и runtime-образ")
-  .allowExcessArguments(false)
-  .option("-n, --no-verify", "Выполнить команду без предпроверок")
-  .option("-d, --dry", "Запустить только предпроверки")
-  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
-  .action((command) => runAutomationAction(security.scan, command));
-
-securityCmd
-  .command("track")
-  .description("Создать или найти YouTrack-задачи в центральном pipeline")
-  .allowExcessArguments(false)
-  .option("-n, --no-verify", "Выполнить команду без предпроверок")
-  .option("-d, --dry", "Запустить только предпроверки")
-  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
-  .action((command) => runAutomationAction(security.track, command));
-
-securityCmd
-  .command("reconcile")
-  .description("Дождаться центрального tracker и получить номера задач")
-  .allowExcessArguments(false)
-  .option("-n, --no-verify", "Выполнить команду без предпроверок")
-  .option("-d, --dry", "Запустить только предпроверки")
-  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
-  .action((command) => runAutomationAction(security.reconcile, command));
-
-securityCmd
-  .command("repair")
-  .description("Подготовить общий Draft MR на исправление группы уязвимостей")
-  .allowExcessArguments(false)
-  .option("-n, --no-verify", "Выполнить команду без предпроверок")
-  .option("-d, --dry", "Запустить только предпроверки")
-  .option("-s, --silence", "Скрыть сообщения об успешно пройденных предпроверках")
-  .action((command) => runAutomationAction(security.repair, command));
 
 // Команды релиза
 const releaseCmd = program

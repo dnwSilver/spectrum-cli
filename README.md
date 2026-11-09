@@ -72,14 +72,10 @@ spectrum changelog write               # Выравнять заголовки C
 # 🔑 GitLab токены
 spectrum token rotate  # Пролить SC_BOT_PAT в CI variables
 
-# CI: Next.js, SBOM и security
+# CI: Next.js и SBOM
 spectrum nextjs licenses
 spectrum sbom catalog resolve
 spectrum sbom catalog populate
-spectrum security scan
-spectrum security track
-spectrum security reconcile
-spectrum security repair
 ```
 
 По умолчанию команды с действием показывают, какая предпроверка успешно пройдена;
@@ -104,7 +100,6 @@ stable-версии. Число и порядок более старых раз
 ```bash
 spectrum release start -n
 spectrum chart start --no-verify --no-wait
-spectrum security repair -ns
 ```
 
 `--dry` и `--no-verify` несовместимы: CLI завершится с ошибкой до действий.
@@ -154,7 +149,6 @@ spectrum token --help
 # Справка по CI-командам
 spectrum nextjs --help
 spectrum sbom catalog --help
-spectrum security --help
 ```
 
 ## ✨ Особенности
@@ -190,8 +184,7 @@ spectrum-cli/
 │   ├── integrations/    # Общие функции внешних сервисов
 │   ├── automation/      # Общие операции ввода-вывода для CI
 │   ├── nextjs/          # LICENSE standalone-пакетов
-│   ├── sbom/            # Поиск и публикация OCI-каталогов
-│   └── security/        # Аудит, задачи и исправления
+│   └── sbom/            # Поиск и публикация OCI-каталогов
 ├── __tests__/           # Модульные и интеграционные тесты
 ├── package.json
 ├── install.sh
@@ -227,10 +220,6 @@ spectrum-cli/
 | `spectrum nextjs licenses` | — | Сохранить LICENSE compiled-пакетов в standalone |
 | `spectrum sbom catalog resolve` | — | Найти OCI-каталоги зависимостей образа |
 | `spectrum sbom catalog populate` | — | Построить и опубликовать OCI-каталоги |
-| `spectrum security scan` | — | Проверить npm-зависимости и runtime |
-| `spectrum security track` | — | Найти или создать задачи YouTrack |
-| `spectrum security reconcile` | — | Запустить tracker и получить номера задач |
-| `spectrum security repair` | — | Исправить зависимости, проверить и создать MR |
 
 ### 🛡️ Preflight-проверки по командам
 
@@ -547,59 +536,23 @@ MIT License - см. [LICENSE](./LICENSE)
 
 _Создано для автоматизации повседневных задач разработки_ 🛠️
 
-## Команды для CI: Next.js, SBOM и security
+## Команды для CI: Next.js и SBOM
 
-Начиная с 5.1.0 логика команд написана на JavaScript и входит в npm-пакет.
-Команды не задают вопросов и не проверяют обновления CLI. Они не запускают
-release/hotfix preflight, рассчитанный на интерактивную работу разработчика.
+Команды не задают вопросов и не проверяют обновления CLI. Их JavaScript-реализация
+входит в npm-пакет; Python и интерактивные release/hotfix preflight не нужны.
 
 | Команда | Назначение | Результат |
 | --- | --- | --- |
 | `spectrum nextjs licenses` | Сохранить исходные LICENSE уже включённых compiled-пакетов Next.js | JSON summary в stdout; код 2 при неполном результате |
 | `spectrum sbom catalog resolve` | Найти Next в immutable образе, проверить OCI-каталоги, запросить отсутствующие версии | `sbom-catalog/<prefix>/{selection.json,report.json,report.md}` |
 | `spectrum sbom catalog populate` | Построить каталог по официальному npm tarball и историческому Git tree | `sbom-catalog-updater/{report.json,report.md}` |
-| `spectrum security scan` | Проверить `npm audit --omit=dev`, runtime и фактическую версию Node | `security-report/findings.json`, raw evidence, `scan.env` |
-| `spectrum security reconcile` | Запустить центральный tracker и получить ссылки на задачи | `security-report/tracked.json` |
-| `spectrum security track` | Найти/создать общие CVE и проектные задачи | `security-report/tracked.json` в центральном pipeline |
-| `spectrum security repair` | Сгруппировать исправления, повторить аудит и создать общий Draft MR | `security-report/{final.json,message.json}` |
 
 На Windows сегмент пути отчётов SBOM кодируется для совместимости с файловой
 системой: например, `site:` → `site%3A`. В Linux пути артефактов CI сохраняются
 как `sbom-catalog/site:/`.
 
-Код 0 означает успешное выполнение, 1 — ошибку security/запуска, 2 — неполный
-результат SBOM или LICENSE. Команды работают в текущем каталоге. Отсутствующие
-credentials/некорректные отчёты приводят к ошибке, а не к чистому аудиту.
-Автоматическое слияние MR отключено; сетевые записи не повторяются вслепую.
-
-Компоненты передают свои inputs через job-local окружение. `security scan`
-читает `NIGHTLY_YOUTRACK_PROJECT`, `NIGHTLY_YOUTRACK_TIME_TRACKING_ARTICLE`,
-`NIGHTLY_YOUTRACK_TESTER`, необязательный `NIGHTLY_YOUTRACK_SUBSYSTEM`,
-`NIGHTLY_DOCKERFILE`, `NIGHTLY_PLATFORMS` и `NIGHTLY_CHECK_NODE`.
-Токены `GLAB_BOT_PAT` и `YOUTRACK_PRIVATE_TOKEN` остаются секретными CI variables;
-Родительская CVE и проектные задачи получают тег `BOT` при создании и обновлении.
-Тег добавляется отдельно с сохранением остальных тегов; повторный запуск не дублирует запись.
-Чтобы метку видели коллеги и мог использовать CI-бот, настройте общий тег `BOT`
-с правами просмотра для команды и применения для учётной записи автоматики.
-По умолчанию новый тег YouTrack личный; добавление тега командой не меняет его видимость.
-Найденные задачи синхронизируются при отличиях заголовка, Markdown-описания и
-управляемых полей. Заголовок CVE заканчивается списком пакетов. Приоритет
-проектных задач совпадает с общей CVE: HIGH → Critical (Критическая), CRITICAL →
-Stopper (Неотложная); ранее обнаруженный CRITICAL не понижается из-за другого
-проекта. Статья учёта времени, тестировщик и подсистема из настройки проекта
-задаются только проектной задаче. Общая CVE использует независимую статью
-`NIGHTLY_CVE_TIME_TRACKING_ARTICLE` (по умолчанию `needs-definition`). Поля записываются через REST по реальным
-именам и типам, включая многозначного тестировщика с псевдонимом Tester
-и подсистемы `ownedField[1]` / `ownedField[*]`.
-Описание содержит сведения сканера, локализацию, безопасную версию, ссылки и
-чеклист; неизвестные версии не выдумываются. Общая CVE хранит только общие сведения об уязвимости и компонентах: без путей
-репозиториев, установленных версий, локализации и pipeline. Старые проектные
-блоки мигрируют в общий формат при обновлении. Затронутые проекты определяются
-по дочерним задачам; ссылка на родителя в тексте подзадачи не дублируется.
-
-YouTrack-токен нужен только центральному tracker. Для registry используются
-`NEXUS_USER`/`NEXUS_PASSWORD` либо стандартные CI registry credentials.
-Секреты автоматизации исключаются из окружения npm-подпроцессов.
+Код 0 означает успех, 1 — ошибку запуска, 2 — неполный результат SBOM или LICENSE.
+Команды работают в текущем каталоге; сетевые записи не повторяются вслепую.
 
 `sbom catalog resolve` читает `SBOM_CATALOG_CLIENT_ENABLED=true`,
 `SBOM_CATALOG_FRAMEWORK=nextjs`, `SBOM_CATALOG_PREFIX` (по умолчанию `site:`),
@@ -610,19 +563,38 @@ YouTrack-токен нужен только центральному tracker. Д
 `NEXUS_USER`/`NEXUS_PASSWORD`. Namespace записи задаёт только доверенная
 project variable `SBOM_CATALOG_PUBLISH_REPOSITORY`.
 
-Внешние инструменты: Linux amd64 для SBOM bootstrap; Git для каталога,
-Trivy для аудита опубликованных runtime-образов и HTTPS Registry API для чтения тегов, digest и метаданных. SBOM-команды скачивают
-закреплённые ORAS/Syft с проверкой SHA-256, ограничениями размера и времени.
-Python для этих команд не требуется. Они не выполняют код из npm tarball
-или upstream build-рецептов. Неоднозначное происхождение остаётся unresolved.
-Поля CVE, Severity, Priority и Type=Group проверяются до создания подзадач;
-CRITICAL получает Stopper (Неотложная), HIGH — Critical (Критическая).
+Для SBOM bootstrap нужен Linux amd64, для построения каталогов — Git.
+Закреплённые ORAS/Syft скачиваются с проверкой SHA-256 и ограничениями размера/времени.
+Код из npm tarball и upstream build-рецепты не исполняются. Неоднозначное
+происхождение компонентов остаётся unresolved.
 
-Образы и адреса сервисов задаёт CI-конфигурация конкретной установки.
-CLI не содержит дефолтов для YouTrack, registry или внутренних GitLab-проектов.
-Само наличие команды `track` не сериализует процессы: job должен оставаться
-в одном центральном проекте с `resource_group: nightly-youtrack-global`.
-Отдельный consumer lock `nightly-security-fix` защищает исправления проекта.
+### Preflight для команд автоматизации
+
+`resolve` проверяет настройки и descriptor образа. Writer выполняет ORAS login и
+чтение точного namespace до скачивания исходников и построения каталога.
+Чтение и login не доказывают право push: его проверяет операция публикации.
+Registry endpoint должен быть HTTPS без credentials, query и fragment.
+
+### No-verify, dry и silence для команд автоматизации
+
+`nextjs licenses` и `sbom catalog resolve/populate` поддерживают `-n, --no-verify`,
+`-d, --dry`, `-s, --silence`, включая сочетания `-ns` и `-ds`.
+
+```sh
+spectrum nextjs licenses --dry
+spectrum sbom catalog populate --dry --silence
+spectrum sbom catalog resolve --no-verify --silence
+```
+
+`--dry` выполняет предпроверки, сохраняя исходники и отчёты. Он не копирует LICENSE,
+не сканирует образ Syft, не запускает downstream pipeline и не публикует каталог.
+Preflight может скачать проверенные инструменты во временную папку, прочитать image
+metadata и выполнить registry login с временным auth-файлом. Временные файлы удаляются.
+
+`--silence` скрывает успешные preflight-сообщения; ошибки, предупреждения, результаты
+и итог dry остаются видимыми. `--no-verify` пропускает preflight, сохраняя обязательное
+чтение входных данных, аутентификацию операций и проверки целостности артефактов.
+`--dry` и `--no-verify` несовместимы.
 
 Для проверки миграции:
 
@@ -635,152 +607,6 @@ npm pack --dry-run
 Тесты используют локальные Git-репозитории и fake API. Зафиксированные parity
 fixtures получены из прежнего Python-кода; исполняемый Python в пакет не входит.
 Публикация CLI, образов, компонентов и запуск живого pipeline — отдельные шаги.
-
-### Ошибки ночного процесса
-
-Ошибки `security track`, `reconcile` и `repair` выводятся в stderr с именем фазы. При ошибке отдельного
-исправления указывается advisory ID; при блокировке repair — исходные ошибки scan/tracking. Это действует
-и с `--silence`: флаг скрывает успешные preflight-сообщения, а не ошибки. Артефакты продолжают сохраняться.
-Credentials удаляются из диагностических сообщений и новых ошибок отчёта.
-
-CLI по-прежнему использует `GLAB_BOT_PAT`. CI-компонент перед запуском подставляет в него
-`GITLAB_PRIVATE_TOKEN`, если `GLAB_BOT_PAT` пуст. Уже заданный bot token сохраняется. Эта подстановка
-выполняется отдельно в consumer job и в центральном tracker; переменные между проектами не пересылаются.
-
-### npm registry и проверка runtime
-
-`security scan` и повторный audit после исправлений всегда вызывают:
-
-```sh
-npm audit --registry=https://registry.npmjs.org/ --omit=dev --audit-level=high --json
-```
-
-Публичный registry указан прямо в argv команды, как в локальном алиасе `na`. Nexus-авторизация для аудита
-не создаётся. Настройки registry в проектном `.npmrc` и user config не меняются: установка и обновление
-зависимостей продолжают использовать конфигурацию проекта. Порог ночного процесса — HIGH/CRITICAL.
-Ошибки audit сохраняют HTTP-код и причину с удалением credentials из диагностических сообщений.
-
-Ночной процесс группирует уязвимости по исправлению и создаёт один Draft MR на группу:
-обновление прямой npm-зависимости или runtime-образа. Взаимосвязанные обновления, необходимые для одной CVE, входят в общую группу. Связанные задачи YouTrack остаются
-отдельными; общий MR перечисляет их все, и центральный tracker записывает ссылку в
-каждую проектную задачу. Поле `scan_job_id` в отчёте связывает запись ссылок с исходным
-scheduled scan; YouTrack-токен в consumer не передаётся.
-
-Повторный nightly использует тот же MR. Владелец ветки определяется по метаданным
-MR, SHA и хешам файлов; ручные коммиты останавливают автоматическую запись. Обновления
-добавляются без force-push, с проверкой `last_commit_id`. Таймаут после успешной записи
-коммита или MR не должен создавать дубли. Старые MR, созданные на каждую CVE без
-метаданных группы, требуют ручного объединения: бот не закрывает их и не создаёт ещё один.
-
-Security-коммиты не содержат `[skip ci]` / `[ci skip]`. Обычный pipeline ветки должен
-выполнить сборку и проверки; repair не отменяет pipelines и не считает аудит проверкой
-совместимости приложения. Он не устанавливает
-полное дерево зависимостей, не запускает проектные проверки и не собирает контейнерные образы. npm-исправления
-меняют manifest/lockfile с `--package-lock-only --ignore-scripts` и проходят повторный production audit.
-Если совместимого обновления недостаточно, repair допускает мажорную версию, предложенную npm audit,
-только для прямой production/optional-зависимости. Устанавливается конкретная версия без `--force`;
-мажорное обновление отмечается в Draft MR и отчёте. Сохранены повторный аудит, запрет новых
-HIGH/CRITICAL и ручное ревью; успешный аудит не подтверждает совместимость API приложения.
-Runtime-исправления выбирают уже опубликованный образ того же Node major, повторно сканируют его на всех
-настроенных платформах и меняют `FROM`/digest. Сборка и проверки проекта выполняются обычным MR pipeline;
-статус нового исправления — `created`, а не `verified`.
-
-Теги и digest читаются через HTTPS Registry API v2 с проверкой SHA-256 содержимого manifest.
-Trivy работает с `--image-src remote`; Docker/Buildah, Skopeo, umoci, chroot и binfmt/QEMU не требуются.
-Версия Node берётся из platform-specific manifest annotation `com.google.distroless.nodejs.version`
-или `NODE_VERSION`/одноимённой distroless label в конфигурации просканированного образа. Config blob
-при отсутствии ImageConfig в отчёте Trivy читается напрямую из registry и сверяется с digest/размером в manifest.
-При пересборке runtime annotation исходного manifest может потеряться: владелец runtime должен сохранять
-версию в отдельной `LABEL com.google.distroless.nodejs.version="<version>"`. Ночной repair владельца
-(`NIGHTLY_RUNTIME_PUBLISH_VARIABLE`) обновляет эту LABEL вместе с `FROM` и тегом публикации. Бинарный файл
-не исполняется; версия не угадывается по тегу. Отсутствующие или противоречивые метаданные при включённом
-`NIGHTLY_CHECK_NODE` считаются ошибкой сканирования. Это проверка опубликованных метаданных, а не фактического
-вывода `node --version`.
-
-Прежние `NIGHTLY_CHECK_COMMANDS` и `NIGHTLY_NODE_BINARY` больше не используются. Настройки MR CI остаются
-в проекте. Защиты от неполного сканирования, дублирующих MR и изменения исходной ветки сохраняются.
-
-### Preflight для команд автоматизации
-
-Обязательные deployment-настройки задаются явно:
-
-| Команда | Настройки |
-| --- | --- |
-| `security track` | `YOUTRACK_URL`, `YOUTRACK_PRIVATE_TOKEN`, `CI_API_V4_URL`, `GLAB_BOT_PAT`, идентификаторы consumer job/project и component SHA |
-| `security reconcile` | `NIGHTLY_TRACKER_PROJECT`, `NIGHTLY_COMPONENT_SHA`, `NIGHTLY_SCAN_JOB_ID`, `CI_PROJECT_ID`, GitLab API/token; при пустом отчёте сеть не нужна |
-| `security repair` | GitLab API/token и результаты scan/tracking; при пустом отчёте запись и проверка токена не нужны |
-| `sbom catalog resolve` | `SBOM_CATALOG_REPOSITORY`, `DOCKER_IMAGE`, `APP_VERSION`; `SBOM_CATALOG_UPDATER_PROJECT` для запроса отсутствующих версий |
-| `sbom catalog populate` | `SBOM_CATALOG_PUBLISH_REPOSITORY`, `NEXUS_USER`, `NEXUS_PASSWORD`, защищённый main и точные `NEXT_CATALOG_VERSIONS` |
-| `security scan/repair` с `NEXUS_*` | Дополнительно явный `NIGHTLY_REGISTRY_HOSTS`; один логин без пароля или наоборот считается ошибкой |
-
-В GitLab выполняются GET `/user`, `/personal_access_tokens/self` и чтение
-целевых проектов. Проверяются активность токена, scope `api` для записи
-(`api`/`read_api` для чтения), эффективная роль Developer/Reporter и состояние
-проекта. Fine-grained/прочие токены, для которых introspection не подтверждает
-эти scope, не считаются проверенными. Защита веток/тегов дополнительно
-проверяется сервером при конкретной операции.
-
-Для `security reconcile` роль проверяется в проекте `NIGHTLY_TRACKER_PROJECT`:
-там токен запускает центральный pipeline. Для `security repair` Developer нужен
-в проекте приложения. Учитывается доступ через родительские и приглашённые группы: если сводных
-`permissions.project_access/group_access` недостаточно, CLI читает
-`GET /projects/:id/members/all/:user_id` для пользователя текущего токена.
-Доступ к приложению сам по себе не подтверждает доступ к tracker-проекту. Ошибки доступа содержат проект,
-пользователя фактически использованного токена, уровень роли и операцию без значения токена.
-
-В YouTrack выполняются GET `/users/me`, чтение двух проектов, их полей и
-поиск задач. До создания первой задачи проверяются активность пользователя,
-доступность проектов и обязательные поля. Ответы 401/403, недоступность и
-неверный TLS приводят к ошибке с названием проверки; секреты/тела ответов
-не выводятся. Инспекция полей не требует тестового изменения проекта.
-
-Writer выполняет ORAS login и чтение точного namespace до скачивания исходников
-и построения каталога. Preflight сохраняется в отчёте. Чтение/логин не доказывают
-права Create/Update/Link Issue, доступ к приватным полям, workflow-переходам или
-registry push: эти права проверяются соответствующими операциями. Они явно
-помечены `checked_by_operations`/`checked_by_publish`, без ложного статуса
-«запись проверена». Preflight не создаёт задач, MR, upload-сессий или пробных
-каталогов. Ошибка preflight останавливает следующие изменения и остаётся
-в JSON/Markdown/notification-артефактах, когда исходный отчёт уже доступен.
-
-Источник контрактов: [GitLab token scopes](https://docs.gitlab.com/security/tokens/access_token_scopes/),
-[YouTrack My User Profile](https://www.jetbrains.com/help/youtrack/devportal/resource-api-users-me.html),
-[YouTrack project fields](https://www.jetbrains.com/help/youtrack/devportal/resource-api-admin-projects-projectID-customFields.html).
-
-### No-verify, dry и silence для команд автоматизации
-
-Все семь команд `nextjs licenses`, `sbom catalog resolve/populate` и
-`security scan/track/reconcile/repair` поддерживают `-n, --no-verify`, `-d, --dry` и
-`-s, --silence`, включая сочетания `-ns` и `-ds`.
-
-```sh
-spectrum nextjs licenses --dry
-spectrum sbom catalog populate --dry --silence
-spectrum security repair -ds
-spectrum security repair --no-verify --silence
-```
-
-`--dry` выполняет предпроверки настроек, файлов, инструментов и доступов,
-после чего останавливается перед действиями команды. Он не копирует LICENSE,
-не выполняет npm audit/Trivy/Syft scan или исправления, не создаёт задачи,
-MR и downstream pipeline, не публикует каталоги и не перезаписывает отчёты.
-Для проверки используются GET-запросы, чтение image descriptor и metadata
-Git/проектов; SBOM preflight может загрузить закреплённые инструменты во
-временную папку и выполнить registry login с временным auth-файлом.
-Временные файлы удаляются; исходники, lockfiles и существующие артефакты
-сохраняются. При неполных входных отчётах dry завершается с ошибкой.
-
-`--silence` скрывает только сообщения об успешно пройденных предпроверках.
-Ошибки, предупреждения, результаты команды и итог dry остаются видимыми.
-Это тот же смысл флага, что у release/hotfix команд. Без dry выполняются
-обычные действия и сохраняются прежние коды завершения 0/1/2.
-
-`--no-verify` пропускает предварительные проверки доступов GitLab/YouTrack,
-registry и соответствия tracker ref. Команда сразу переходит к своим действиям:
-аудиту, копированию LICENSE, работе с каталогами, задачами или исправлениям.
-Загрузка входных отчётов, аутентификация для операций, проверка целостности
-артефактов и проверочные команды после исправления остаются частью действия.
-Пропущенные preflight не получают статус «проверено» в отчёте.
 
 ### CI launcher: independent CLI versions
 
@@ -808,7 +634,9 @@ are stripped and public npm is explicit. Application npm config/node_modules are
 unchanged. Resolved source is printed to stderr; command stdout/exit status and
 all command flags are preserved. `--dry` does not write a CLI identity artifact.
 
-Nightly reports record the selected identity; reconcile forwards it to the central
-tracker and repair rejects mismatches. The catalogue client forwards the same
-identity to its writer. Named component branches can select the corresponding
-tracker branch while component SHA verification stays enabled.
+### Nightly security
+
+Команда `spectrum security` удалена вместе с scan/reconcile/repair и прежним track.
+Ночной аудит, группировка находок и подготовка исправлений принадлежат
+`ci-security/tools/nightly`. GitLab, YouTrack и Mattermost операции выполняются
+через dev-bot. Для nightly не устанавливаются Spectrum CLI и его launcher.
